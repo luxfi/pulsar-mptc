@@ -1,14 +1,33 @@
-# Pulsar-M
+# Pulsar-M — NIST MPTC submission package
 
 > **Threshold ML-DSA** — a 2-round threshold signing and DKG system whose
 > generated signatures are verifiable by **unmodified FIPS 204 ML-DSA
 > verification**. Targeting NIST MPTC Class N1 (signing) + N4 (ML keygen / DKG).
 
-`Pulsar-M` is the Module-LWE sibling of [Pulsar](https://github.com/luxfi/pulsar)
-(Ring-LWE). Pulsar's 2-round threshold protocol structure is transplanted onto
-ML-DSA-65's polynomial-vector-over-`R_q` algebra so the per-party-aggregated
-signature is bit-identical to a single-party FIPS 204 signature on the same
-message + public key.
+This repository is the **frozen NIST MPTC submission package** for Pulsar-M.
+The production Go library has moved on to a stable module identity; this
+repository is the submission artifact pinned to the state NIST reviewers
+will see.
+
+## Library identities (post-2026 split)
+
+`Pulsar-M` is the Module-LWE threshold ML-DSA construction. The 2-round
+threshold protocol structure operates on ML-DSA-65's polynomial-vector-
+over-`R_q` algebra so the per-party-aggregated signature is bit-identical
+to a single-party FIPS 204 signature on the same message + public key.
+
+| Repository | Module path | Role |
+|---|---|---|
+| **luxfi/pulsar-mptc** (this repo) | `github.com/luxfi/pulsar-m` | Frozen NIST MPTC submission package |
+| [luxfi/pulsar](https://github.com/luxfi/pulsar) | `github.com/luxfi/pulsar` | Production Module-LWE Go library |
+| [luxfi/corona](https://github.com/luxfi/corona) | `github.com/luxfi/corona` | Production Ring-LWE Go library (sibling kernel) |
+
+The module path inside this submission package remains
+`github.com/luxfi/pulsar-m` because that is the identifier NIST receives
+and reviews against the submitted KAT vectors and spec. Downstream
+consumers who want the live production library should pin
+`github.com/luxfi/pulsar@v1.0.x` (Module-LWE) or
+`github.com/luxfi/corona@v0.2.x` (Ring-LWE) instead.
 
 > **Status: Research / Reference (not production hardened, not FIPS validated).**
 > NIST-profile vectors use SHAKE / cSHAKE / KMAC. Any BLAKE3 deltas are
