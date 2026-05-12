@@ -1474,15 +1474,61 @@ Ringtail~\cite{ringtail2024} construction with the beacon-quorum
 strengthening of DD-006, both of which are explicitly placed into
 the public domain by this submission.
 
-\section{Known limitations}
+\section{Production go-live blockers and deferred theorems}
 \label{sec:knownlimits}
-Mirror of \texttt{docs/known-limitations.md}, frozen at submission.
-Round-1 MPTC limitations and round-2 roadmap items:
+Mirror of \texttt{BLOCKERS.md} (replaces the earlier
+\texttt{docs/known-limitations.md} framing, which was too lenient).
+A 4-red-agent + 1-scientist adversarial audit (2026-05) confirmed
+that the v0.1 reference implementation is paper-track-shippable but
+\emph{not} production-go-live ready as a strict-PQ threshold signer
+in an open public permissionless blockchain. The findings below are
+production blockers, not informational caveats; each is filed against
+specific files and lines in the \texttt{BLOCKERS.md} document.
+
+\paragraph{Cryptographic gaps that must close before production
+deployment.}
 
 \begin{itemize}[leftmargin=*, itemsep=0pt]
-\item \textbf{Adaptive corruption proof.} Round-1 proves
-TS-UF under static corruption only; the formal adaptive-corruption
-proof is deferred to round-2 (Game ADAPT, \texttt{security-games.tex}).
+\item \textbf{DKG commit-opening (CR-6).} The current Round-1
+\texttt{cSHAKE256(c_i \| \mathit{blind}_i)} commit is broadcast but
+$(c_i, \mathit{blind}_i)$ are never transmitted in any later round.
+The commit binds nothing the protocol verifies. A malicious dealer
+can broadcast an arbitrary commit and bias the joint public key.
+Fix: include $(c_i, \mathit{blind}_i)$ in Round-2 reveal and verify
+the digest opens, or drop \texttt{myCommit} entirely and document
+the actual protocol (Shamir + sum).
+\item \textbf{Sign-round session-key derivation (CR-7).}
+\texttt{deriveMACKey} derives per-pair MAC keys from public inputs
+$(\mathit{pk}_\mathrm{group}, \mathit{nodeID}_i, \mathit{nodeID}_j)$.
+Any network observer computes the key and forges Round-1 messages,
+breaking the commit-and-reveal binding and the identifiable-abort
+property under no network partition. Fix: ephemeral session-key
+exchange (Noise/X3DH/ML-KEM-768) bound to long-term ML-DSA identity.
+\item \textbf{DKG envelope confidentiality (CR-8).} Round-1
+envelopes carry per-recipient Shamir shares in plaintext on the
+broadcast wire. A passive network observer recovers the master key
+from one DKG ceremony. Fix: KEM-wrap envelopes (ML-KEM-768) per
+recipient.
+\item \textbf{Adaptive corruption proof (deferred).} The
+\Cref{thm:euf-cma} unforgeability theorem is stated against the
+static-corruption model only. The adaptive-corruption variant
+(Game ADAPT) is the only deferred theorem in the round-1 security
+analysis; production deployment under nation-state corruption requires
+discharging Game ADAPT.
+\item \textbf{Cross-domain isolation between Pulsar (M-LWE) and
+Corona (R-LWE).} These are within the same algebraic-lattice
+hardness family, not independent failure modes. Defense-in-depth
+claims require a hash-based (SLH-DSA) layer also wired into the
+QuasarCert envelope.
+\item \textbf{Verify constant-time.} \Cref{sec:verify} asserts but
+does not measure constant-time behaviour of the verifier path. The
+\texttt{ct/dudect/} harness is scaffolded; results are pinned at
+the submission tag from a quiet benchmarking machine.
+\end{itemize}
+
+\paragraph{Round-1 deferred items (out of scope for v0.1).}
+
+\begin{itemize}[leftmargin=*, itemsep=0pt]
 \item \textbf{Asynchronous network model.} Round-1 assumes synchronous
 broadcast within the round window. Partial synchrony is acceptable
 in practice; full asynchrony requires structural protocol changes

@@ -90,7 +90,7 @@ Optional but strongly recommended:
 - Executive summary (1-2 pages) at front of spec.
 - Threat-model document (`docs/threat-model.md`).
 - System-model document (`docs/system-model.md` → `spec/system-model.tex`).
-- Known-limitations appendix (so reviewers see the gaps before they find them).
+- BLOCKERS.md (red-team and scientist findings, replaces prior known-limitations framing) (so reviewers see the gaps before they find them).
 
 ## Required security strengths
 

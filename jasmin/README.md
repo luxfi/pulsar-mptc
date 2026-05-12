@@ -50,7 +50,7 @@ deadline; what we commit at submission time is:
 2. Threshold-specific Jasmin **function signatures and algorithm
    commentary** in `threshold/{round1,round2,combine}.jazz`. These are
    stubs, marked `// TODO: jasmin implementation`. Implementing them is
-   tracked in the Pulsar-M roadmap (see `docs/known-limitations.md`).
+   tracked in the Pulsar-M roadmap (see `BLOCKERS.md`).
 3. EasyCrypt **theory shells** in `../proofs/easycrypt/`. The Class N1
    lemma is stated; the proof body is `admit`. Every `admit` is marked
    with a `TODO` comment.

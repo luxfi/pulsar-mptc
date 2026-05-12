@@ -64,11 +64,11 @@ The win, if Pulsar-M's Sign output is byte-equal to FIPS 204 Sign:
 
 ```
 pulsar-m/
+├── BLOCKERS.md               PRODUCTION-GO-LIVE BLOCKER LIST (13 critical findings from red-team audit, 5 weak claims from scientist)
 ├── docs/                     human-readable design notes
 │   ├── threat-model.md
 │   ├── nist-mptc-category.md
 │   ├── design-decisions.md
-│   ├── known-limitations.md
 │   └── patent-notes-draft.md
 ├── spec/                     LaTeX technical specification (MPTC package)
 │   ├── pulsar-m.tex          main spec

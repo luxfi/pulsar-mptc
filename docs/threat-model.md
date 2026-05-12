@@ -48,7 +48,7 @@ explicitly.
   KMAC-256). NIST FIPS 202 + SP 800-185 are taken as building blocks.
 - Side-channel attacks on the *physical* hardware running a party
   (power analysis, EM, fault injection). Mitigation discussed in
-  `docs/known-limitations.md` as future work.
+  `BLOCKERS.md` as future work.
 - Compromise of the BIP-32/BIP-39 mnemonic from which device-specific
   keys are derived. The HD-derivation security argument lives in
   HIP-0077 §"Identity"; the Pulsar-M layer assumes parties' input keys

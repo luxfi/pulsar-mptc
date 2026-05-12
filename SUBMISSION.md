@@ -60,7 +60,7 @@ A reviewer with limited time should read in this order:
    - §7 NIST MPTC category mapping
 3. **`README.md`** — repository layout and how to reproduce vectors
 4. **`vectors/README.md`** — KAT format + cross-validation gates
-5. **`spec/known-limitations.tex`** — what the construction does NOT
+5. **`BLOCKERS.md`** — what the construction does NOT
    claim (e.g. v0.1 cross-committee reshare without external state
    binding, identifiable-abort attribution under network partitions)
 
@@ -198,7 +198,7 @@ next submission".
 
 ## What this submission does NOT claim
 
-Read `spec/known-limitations.tex` for the authoritative list. Highlights:
+Read `BLOCKERS.md` for the authoritative list. Highlights:
 
 - **No identifiable abort under network partition** — Pulsar-M
   identifies aborting parties under synchronous network assumptions;
