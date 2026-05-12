@@ -26,7 +26,7 @@ All variants share:
   complaints.
 - **Hash suite** — NIST SP 800-185 (cSHAKE256, KMAC256, TupleHash256) is
   canonical for every NIST-track variant. BLAKE3 deltas appear only in
-  legacy / academic profiles (`Pulsar.R-BLAKE3`, upstream Ringtail) and
+  legacy / academic profiles (`Pulsar.R-BLAKE3`, upstream Corona) and
   are explicitly out-of-scope for any MPTC submission.
 - **Constant-time discipline** — every secret-touching path constant-time
   via `crypto/subtle` or local equivalents. No stdlib `log` in any
@@ -97,9 +97,9 @@ algorithms in Round 3.
   the canonical machine form is `pulsar-r`, `pulsar-m` (lowercase,
   hyphen).
 - Variants do **not** carry the lattice basis in the umbrella name.
-  Calling Pulsar.R "Ringtail-Pulsar" or "RPulsar" is wrong. Ringtail
-  is a separate academic upstream (`luxfi/ringtail`) that Pulsar.R
-  forks; Pulsar.R is not Ringtail.
+  Calling Pulsar.R "Corona-Pulsar" or "RPulsar" is wrong. Corona
+  is a separate academic upstream (`luxfi/corona`) that Pulsar.R
+  forks; Pulsar.R is not Corona.
 - HashSuiteID byte (per HIP-0077 §"Lux consensus PQ modes") identifies
   the **hash family**, not the variant. Pulsar.R and Pulsar.M canonical
   profiles both use `HashSuiteSHA3 = 2`. A future Pulsar.M with a
@@ -110,7 +110,7 @@ algorithms in Round 3.
 
 ```
 ~/work/lux/
-├── pulsar/                ← Pulsar.R (R-LWE, production fork of Ringtail)
+├── pulsar/                ← Pulsar.R (R-LWE, production fork of Corona)
 │   ├── sign/
 │   ├── primitives/
 │   ├── dkg2/              ← Pedersen DKG over R_q
@@ -122,7 +122,7 @@ algorithms in Round 3.
 │   ├── spec/              ← own MPTC technical spec PDF
 │   ├── docs/              ← family-architecture.md = THIS file
 │   └── ...
-├── ringtail/              ← academic upstream (NOT Pulsar; cited as the
+├── corona/              ← academic upstream (NOT Pulsar; cited as the
 │                            R-LWE 2-round skeleton's origin)
 └── consensus/
     └── protocol/quasar/   ← witness orchestrator that consumes Pulsar

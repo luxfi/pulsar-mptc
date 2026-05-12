@@ -98,7 +98,7 @@ production-PQ until blockers close" gate has been opened.
 
 **CR-10** Triple-mode QuasarCert is unenforced — `IsTripleMode()` never gates vote acceptance or cert verification  **[CLOSED consensus v1.23.17 — `addVoteLocked` refuses single-layer under strict-PQ; `generateCert` refuses partial triple]**
 - `~/work/lux/consensus/protocol/quasar/{core.go:312-330,quasar.go:594-644,engine.go:253-281,types.go:30-69}`
-- `Certifier.generateCert` falls back to single-scheme `SignMessageWithContext` on any error. `realCert` sets `cert.Ringtail = nil` unconditionally. `addVoteLocked` checks `len(qBlock.ValidatorSigs) >= threshold` — counts votes, not valid-triple-mode votes.
+- `Certifier.generateCert` falls back to single-scheme `SignMessageWithContext` on any error. `realCert` sets `cert.Corona = nil` unconditionally. `addVoteLocked` checks `len(qBlock.ValidatorSigs) >= threshold` — counts votes, not valid-triple-mode votes.
 - Adversary who breaks any single layer (e.g. BLS via 2030 quantum) forges finality.
 - **Fix**: vote-acceptance path MUST gate on `IsTripleMode()` && `cert.HasAllThreeLayers()`. `QuasarCert.Verify()` already structurally requires three layers — wire it into the consensus accept path.
 

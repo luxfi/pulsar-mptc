@@ -46,7 +46,7 @@ default.
 
 **Decision.** Pulsar-M operates over `R_q^k` (module of polynomials)
 with the same `(q, k, ℓ, η, β, ω, ...)` parameter set as ML-DSA-65.
-Not `R_q` (single polynomial) as Pulsar / Ringtail use.
+Not `R_q` (single polynomial) as Pulsar / Corona use.
 
 **Rationale.** This is the whole point of the project. Class N1
 interchangeability requires the protocol's signing operation to land on
@@ -83,8 +83,8 @@ module-shaped Pedersen commitment scheme.
 (R-LWE). The M-LWE port preserves the soundness argument with constant
 overhead per coefficient slot.
 
-**Alternative.** Trusted-dealer DKG (academic Ringtail). Rejected:
-incompatible with open public chains (HIP-0077 §"Pulsar vs Ringtail").
+**Alternative.** Trusted-dealer DKG (academic Corona). Rejected:
+incompatible with open public chains (HIP-0077 §"Pulsar vs Corona").
 
 **Status.** Final.
 

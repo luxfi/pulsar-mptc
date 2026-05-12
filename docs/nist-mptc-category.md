@@ -124,8 +124,8 @@ point we freeze the spec encoding.
 
 Pulsar (R-LWE) targets **Class S1 + S4**: special threshold-friendly
 two-round signature, not output-interchangeable with any NIST-approved
-primitive. The S1/S4 framing is the right framing for Ringtail-derivatives
-unless and until NIST blesses Ringtail-shaped outputs as a primitive.
+primitive. The S1/S4 framing is the right framing for Corona-derivatives
+unless and until NIST blesses Corona-shaped outputs as a primitive.
 
 ## Status
 

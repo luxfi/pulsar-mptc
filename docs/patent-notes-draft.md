@@ -23,14 +23,14 @@ its README:
 This applies to Pulsar-M to the extent that Pulsar-M code or protocol
 elements are derivative of Pulsar.
 
-### Ringtail (`luxfi/ringtail`)
+### Corona (`luxfi/corona`)
 
-Pulsar (and therefore Pulsar-M) is a fork of academic Ringtail.
-Ringtail (ePrint 2024/1113) authors: Cecilia Boschini, Darya Kaviani,
+Pulsar (and therefore Pulsar-M) is a fork of academic Corona.
+Corona (ePrint 2024/1113) authors: Cecilia Boschini, Darya Kaviani,
 Russell W. F. Lai, Giulio Malavolta, Akira Takahashi, Mehdi Tibouchi.
-Ringtail's open-source repo is Apache-2.0 with no asserted patent
+Corona's open-source repo is Apache-2.0 with no asserted patent
 claims as of mid-2026. Pulsar-M's M-LWE adaptation does not import
-Ringtail code directly but inherits the protocol structure.
+Corona code directly but inherits the protocol structure.
 
 ### ML-DSA / FIPS 204
 
@@ -79,7 +79,7 @@ Our final statement, once the spec freezes:
 
 > *To be drafted at spec freeze. Will incorporate every disclosure in
 > the contributor table above, every inherited claim from Pulsar /
-> Ringtail / ML-DSA, and the third-party investigation outcome.*
+> Corona / ML-DSA, and the third-party investigation outcome.*
 
 ## Process
 

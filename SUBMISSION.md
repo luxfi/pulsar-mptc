@@ -221,7 +221,7 @@ Read `BLOCKERS.md` for the authoritative list. Highlights:
 | **Pulsar-M** (this) | 2 | Byte-equal to FIPS 204 ML-DSA | Module-LWE (M-LWE) |
 | Lux Corona (R-LWE sibling) | 2 | Byte-equal to FIPS 204 ML-DSA | Ring-LWE (R-LWE) |
 | Raccoon | 3 | Compatible verification | Module-LWE |
-| Ringtail (upstream academic) | 2 | Not interchange-tested at submission time | R-LWE |
+| Corona (upstream academic) | 2 | Not interchange-tested at submission time | R-LWE |
 
 The R-LWE sibling library lives at <https://github.com/luxfi/corona>
 and is not part of this submission. It is included only in the
