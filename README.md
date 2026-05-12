@@ -49,9 +49,12 @@ project is collecting them now (IR 8214C, January 2026; first call package
 deadline expected 2026-Nov-16).
 
 Pulsar-M aims to enter that process with a credible, output-interchangeable
-threshold ML-DSA candidate — built from the production-tested protocol
-machinery already shipping in `luxfi/pulsar` (R-LWE), retargeted to the
-M-LWE primitives ML-DSA itself uses.
+threshold ML-DSA candidate. The 2-round threshold protocol skeleton is
+the same one Lux ships in production for Ring-LWE (see
+[`luxfi/corona`](https://github.com/luxfi/corona)), retargeted to the
+Module-LWE primitives ML-DSA itself uses; the resulting per-party-
+aggregated signature is bit-identical to a single-party FIPS 204 ML-DSA
+signature on the same message + public key.
 
 The win, if Pulsar-M's Sign output is byte-equal to FIPS 204 Sign:
 - Threshold-produced signatures verify under unmodified FIPS 204 verifiers.
@@ -144,11 +147,58 @@ Target dates:
 
 ## Relationship to upstream
 
-| repo | what | hash family |
-|---|---|---|
-| [luxfi/ringtail](https://github.com/luxfi/ringtail) | academic R-LWE 2-round threshold sig (Boschini–Kaviani–Lai–Malavolta–Takahashi–Tibouchi, ePrint 2024/1113) | BLAKE3 |
-| [luxfi/pulsar](https://github.com/luxfi/pulsar) | production fork of Ringtail with Pedersen DKG + proactive resharing | SHA-3 / cSHAKE256 (canonical), BLAKE3 (legacy) |
-| **luxfi/pulsar-m** (this repo) | **Module-LWE sibling: threshold ML-DSA** | **SHA-3 / SHAKE256** (NIST profile) only |
+**Scope of this submission.** Pulsar-M is the standalone NIST MPTC
+submission for the Module-LWE threshold ML-DSA construction. The spec,
+KAT vectors, reference implementation, and proofs are self-contained.
+Reviewers do not need to fetch any sibling repository to evaluate the
+submission.
+
+**Earlier R-LWE work.** The 2-round threshold construction line begins
+with Boschini–Kaviani–Lai–Malavolta–Takahashi–Tibouchi's Ring-LWE
+paper ([ePrint 2024/1113](https://eprint.iacr.org/2024/1113)); the
+academic codebase is preserved as
+[`luxfi/nasua`](https://github.com/luxfi/nasua) as a historical
+reference fork (trusted-dealer DKG; not for public-chain use). The
+production R-LWE library Lux deploys is
+[`luxfi/corona`](https://github.com/luxfi/corona) — same 2-round
+threshold algorithm retargeted at production lifecycle (Pedersen DKG
+over `R_q` with proper hiding + proactive resharing). Corona and
+Pulsar-M are **independent libraries** with no shared types; Pulsar-M
+is reviewable on its own merits and Corona is documented separately.
+
+| repo | role | lattice basis | hash family |
+|---|---|---|---|
+| [luxfi/nasua](https://github.com/luxfi/nasua) | academic R-LWE reference (Boschini et al, ePrint 2024/1113); trusted-dealer DKG only | Ring-LWE (`R_q`) | BLAKE3 (academic profile) |
+| [luxfi/corona](https://github.com/luxfi/corona) | production R-LWE threshold ML-DSA — Pedersen DKG over `R_q` + proactive resharing | Ring-LWE (`R_q`) | SHA-3 / cSHAKE256 (SP 800-185) |
+| [luxfi/pulsar](https://github.com/luxfi/pulsar) | production M-LWE threshold ML-DSA — same protocol skeleton retargeted to ML-DSA's polynomial-vector-over-`R_q^k` algebra; output byte-equal to FIPS 204 ML-DSA | Module-LWE (`R_q^k`) | SHA-3 / cSHAKE256 (SP 800-185) |
+| **luxfi/pulsar-mptc** (this repo) | NIST MPTC submission package for the M-LWE construction — frozen spec, KATs, reference impl, interop harness, proofs | Module-LWE (`R_q^k`) | SHA-3 / SHAKE256 (NIST profile) only |
+
+**Optional layered defence on a downstream chain.** A downstream
+consumer (e.g. Lux's primary-network QuasarCert) MAY combine Corona
+(Ring-LWE) and Pulsar (Module-LWE) as a **Double Lattice** PQ pair so
+a break in one lattice family does not break finality. That layered
+combination is the consumer's design choice and is not part of this
+submission. Pulsar-M stands alone as an MPTC Class N1 + N4 candidate.
+
+### Where the identity rollup lives
+
+Pulsar-M is *just* the threshold sign + DKG layer. The per-validator
+ML-DSA-65 identity attestation that QuasarCert separately carries
+(`MLDSARollup`) is **succinct via STARK / FRI** through the **P3Q**
+backend — Lux's Plonky3 fork with a cSHAKE256 Merkle commitment.
+P3Q is post-quantum end-to-end (no Groth16/BN254 wrapper; no KZG;
+no pairings). The rollup statement is
+
+```
+∀ i ∈ [N]: ML-DSA.Verify(mldsa_pk_i, msg, mldsa_σ_i) = 1
+```
+
+and the resulting proof is constant in validator count. Specs:
+`ProofPolicySTARKFRISHA3PQ` (0x10) + `ProofBackendP3QSTARKFRISHA3`
+(0x22) in `github.com/luxfi/consensus/config/pq_mode.go`. The
+historic "Z-Chain Groth16 / BN254" framing was retired alongside the
+classical-curve rip in 2026-Q2; any residual reference in this
+package's older drafts is being swept out before submission.
 
 ## Security
 
@@ -157,4 +207,5 @@ bug bounty.
 
 ## License
 
-Apache-2.0 — same as `luxfi/pulsar` and `luxfi/ringtail`. See `LICENSE`.
+Apache-2.0 — same as `luxfi/pulsar`, `luxfi/corona`, and `luxfi/nasua`.
+See `LICENSE`.
