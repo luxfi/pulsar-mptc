@@ -19,16 +19,14 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: ref/go/go.mod
-          cache-dependency-path: ref/go/go.sum
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
 
       - name: Build (Go ref)
-        working-directory: ref/go
-        run: go build -count=1 ./...
+        run: go build ./ref/go/...
 
       - name: Test (Go ref, all)
-        working-directory: ref/go
-        run: go test -count=1 -race -timeout=900s ./...
+        run: go test -count=1 -race -timeout=900s ./ref/go/...
 
       - name: KAT replay
         run: |
