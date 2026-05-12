@@ -1,0 +1,72 @@
+// Pulsar-M Round-2 — per-party response after aggregated challenge
+//
+// STATUS: STUB. The function signature is committed in Jasmin syntax;
+// the body is a `// TODO: jasmin implementation` marker. See
+// ./README.md for the high-assurance-track roadmap.
+//
+// -----------------------------------------------------------------------------
+// Algorithm (mirrors ref/go/pkg/pulsarm/threshold.go ThresholdSigner.Round2)
+// -----------------------------------------------------------------------------
+//
+// Inputs:
+//   share       — this party's Shamir secret share (secret)
+//   y_i_state   — y_i mask carried over from Round-1 (secret)
+//   round1_msgs — aggregated Round-1 commit messages from the quorum (public)
+//   c_tilde     — Fiat-Shamir challenge derived from aggregated w1 (public)
+//
+// Outputs:
+//   response    — Round-2 response message:
+//                   {z_i = y_i + c·share_i, h_i hint vector, abort_evidence?}
+//                 (see spec/pulsar-m.tex §4.4)
+//
+// Constant-time obligations:
+//   - Time and memory-access patterns independent of `share` and `y_i_state`
+//   - Norm checks on z_i and h_i use libjade's CT-proven `check_norm` routines
+//   - Rejection-sampling outcome (reject vs accept) is treated as PUBLIC under
+//     the Pulsar-M threat model; the count of rejections may leak (this is
+//     the same posture as single-party ML-DSA per FIPS 204 §3.2)
+//
+// FIPS 204 alignment:
+//   z_i is this party's contribution to the aggregated z in the single-party
+//   Sign algorithm. The interpolation identity ∑ λ_i · z_i = y + c·s (where
+//   λ_i are Lagrange coefficients over the active quorum) ensures the
+//   aggregated z reconstructs the single-party z exactly; this is the
+//   load-bearing identity for the Class N1 byte-equality claim.
+//
+// Abort handling:
+//   If any party's round1_msg fails MAC verification or sigma-protocol
+//   check, this routine emits an AbortEvidence with the misbehaving
+//   sender's ID and a transcript snapshot. The abort-evidence path is
+//   deterministic and contains no secret-dependent timing.
+
+require "../ml-dsa-65/libjade/src/crypto_sign/dilithium/dilithium3/amd64/ref/params.jinc"
+
+param int PULSARM_SHARE_BYTES    = 4 * 256 * 4;
+param int PULSARM_Y_STATE_BYTES  = 4 * 256 * 4;
+param int PULSARM_ROUND1_BYTES   = 1952;
+param int PULSARM_CHALLENGE_BYTES = 32;
+param int PULSARM_RESPONSE_BYTES = 2 * 256 * 4 + 84;  // z_i + h_i hint
+
+fn round2_response(
+    reg ptr u8[PULSARM_SHARE_BYTES]      share,
+    reg ptr u8[PULSARM_Y_STATE_BYTES]    y_i_state,
+    reg ptr u8[PULSARM_ROUND1_BYTES]     round1_aggregate,
+    reg ptr u8[PULSARM_CHALLENGE_BYTES]  c_tilde,
+    reg ptr u8[PULSARM_RESPONSE_BYTES]   response
+) -> reg ptr u8[PULSARM_RESPONSE_BYTES]
+{
+    // TODO: jasmin implementation
+    //
+    // Plan:
+    //   1. Sample challenge polynomial c from c_tilde (libjade SampleInBall)
+    //   2. Compute z_i = y_i + c·share_i over R_q
+    //   3. Constant-time norm check ||z_i||_∞ < γ_1 − β
+    //   4. Compute hint h_i for low-bit reconstruction
+    //   5. Constant-time norm check on r0_i
+    //   6. Pack response = {z_i_bytes, h_i_bytes}
+    //
+    // Norm-check failure path: caller retries with fresh y_i in next attempt.
+    // The retry decision is PUBLIC (matches FIPS 204 single-party posture).
+
+    return response;
+}

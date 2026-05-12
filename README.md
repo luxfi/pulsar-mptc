@@ -25,7 +25,7 @@ to a single-party FIPS 204 signature on the same message + public key.
 
 | Repository | Module path | Role |
 |---|---|---|
-| **luxfi/pulsar-mptc** (this repo) | `github.com/luxfi/pulsar-m` | Frozen NIST MPTC submission package |
+| **luxfi/pulsar-mptc** (this repo) | `github.com/luxfi/pulsar-m` | Active NIST MPTC submission package |
 | [luxfi/pulsar](https://github.com/luxfi/pulsar) | `github.com/luxfi/pulsar` | Production Module-LWE Go library |
 | [luxfi/corona](https://github.com/luxfi/corona) | `github.com/luxfi/corona` | Production Ring-LWE Go library (sibling kernel) |
 
@@ -90,40 +90,57 @@ pulsar-m/
 ├── test/                     fuzz / negative / interoperability tests
 ├── ct/dudect/                constant-time analysis harness
 ├── estimator/                lattice-estimator parameter scripts
-├── scripts/                  build.sh / test.sh / bench.sh / gen_vectors.sh / sbom.sh
+├── jasmin/                   high-assurance Jasmin sources (initial track)
+│   ├── ml-dsa-65/             libjade single-party baseline (fetched on demand)
+│   └── threshold/             Pulsar-M threshold layer (stubs)
+├── proofs/easycrypt/         high-assurance EasyCrypt theories (theory shells)
+│   ├── PulsarM_N1.ec          Class N1 byte-equality reduction
+│   ├── PulsarM_N4.ec          Class N4 public-key preservation
+│   └── lemmas/PulsarM_CT.ec   constant-time obligations
+├── scripts/                  build / test / bench / gen_vectors / sbom / check-high-assurance
 └── go.mod
 ```
 
 ## Quickstart
 
-> **Pulsar-M is in pre-spec stage.** Reference impl, vectors, and bench harness
-> ship after the spec freezes. Track [docs/known-limitations.md](docs/known-limitations.md)
-> for what's stable vs in-flight.
+The repository is **live and self-validating**. A fresh clone runs the
+full submission gate (build + test + KAT replay + Class N1 interop)
+end-to-end in under 30 seconds:
 
 ```bash
-git clone https://github.com/luxfi/pulsar-m
-cd pulsar-m
-./scripts/build.sh       # checks spec compile + Go build
-./scripts/test.sh        # runs unit + KAT suite (when available)
-./scripts/bench.sh       # reproduces bench/results/ (when available)
-./scripts/gen_vectors.sh # regenerates KATs from reference impl (when available)
+git clone https://github.com/luxfi/pulsar-mptc
+cd pulsar-mptc
+./scripts/build.sh                  # Go ref + spec PDF (MacTeX / TeX Live)
+./scripts/test.sh                   # unit + no-secret-logs + KAT replay + N1 interop
+./scripts/gen_vectors.sh            # deterministic KAT regen
+./scripts/check-high-assurance.sh   # Jasmin + EasyCrypt (skips if tools missing)
+./scripts/bench.sh                  # signing / verification benchmarks
 ```
+
+`scripts/build.sh` and `scripts/test.sh` exit non-zero on any failure.
+The reproducibility property is the load-bearing CI invariant.
 
 ## NIST MPTC submission
 
 | package element | location | status |
 |---|---|---|
-| Technical Specification | `spec/pulsar-m.pdf` (built from `spec/pulsar-m.tex`) | draft |
-| Reference Implementation | `ref/go/` | skeleton |
+| Technical Specification | `spec/pulsar-m.pdf` (1,536-line LaTeX → 28 pages, 491 KB) | drafted; encoding freeze 2026-Aug |
+| Reference Implementation | `ref/go/pkg/pulsarm/` (89.7% coverage) | shipped |
+| KAT vectors | `vectors/{dkg,keygen,sign,threshold-sign,verify}.json` | deterministic from seed |
+| Class N1 E2E interop | `test/interoperability/` (19/19 subtests vs cloudflare/circl) | passing |
+| Symbolic / Lean proofs | `~/work/lux/proofs/lean/Crypto/Pulsar_M/` (3 files, **zero `sorry`**) | mechanized |
+| Constant-time analysis | `ct/dudect/` | harness present; results TBD |
+| Jasmin high-assurance | `jasmin/{ml-dsa-65,threshold}/` | initial track (libjade fetch + stubs) |
+| EasyCrypt theories | `proofs/easycrypt/PulsarM_{N1,N4}.ec` + `lemmas/PulsarM_CT.ec` | theory shells |
 | Report on Experimental Evaluation | `bench/results/REPORT.md` | TBD |
-| Notes on Patent Claims | `docs/patent-notes-draft.md` | TBD |
-| Open-source license | `LICENSE` (Apache-2.0) | ✓ |
-| Build/test/benchmark scripts | `scripts/` | skeleton |
-| I/O test vectors | `vectors/kat-v1.{json,rsp}` | TBD |
+| Patent posture | `docs/patent-notes-draft.md` | drafted |
+| License | `LICENSE` (Apache-2.0) | ✓ |
+| Build/test/bench scripts | `scripts/` | shipped |
+| SUBMISSION cover sheet | `SUBMISSION.md` | shipped |
 
 Target dates:
 - **2026-Jul-20** preview writeup (NIST third preview deadline)
-- **2026-Nov-16** package submission (NIST first call deadline)
+- **2026-Nov-16** package submission (NIST first call deadline; submission tag `submission-2026-11-16` cut from `main`)
 
 ## Relationship to upstream
 

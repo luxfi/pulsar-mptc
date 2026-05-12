@@ -1,0 +1,69 @@
+// Pulsar-M Round-1 — per-party commit message
+//
+// STATUS: STUB. The function signature is committed in Jasmin syntax;
+// the body is a `// TODO: jasmin implementation` marker. See
+// ./README.md for the high-assurance-track roadmap.
+//
+// -----------------------------------------------------------------------------
+// Algorithm (mirrors ref/go/pkg/pulsarm/threshold.go ThresholdSigner.Round1)
+// -----------------------------------------------------------------------------
+//
+// Inputs:
+//   params      — public ML-DSA-65 parameter handle (immutable)
+//   session_id  — 16-byte ceremony nonce (public)
+//   attempt     — 32-bit attempt counter for rejection-sampling retry (public)
+//   quorum      — sorted node-IDs of the signing committee (public)
+//   my_node_id  — this party's node ID (public)
+//   share       — this party's Shamir secret share over R_q (secret)
+//   message     — message to sign (public)
+//   randomness  — 32 bytes of fresh entropy for masking polynomials (secret;
+//                 derived from a KMS-backed CSPRNG in production)
+//
+// Outputs:
+//   commit      — Round-1 commit message bytes:
+//                   {y_i_high, w1_i, sender_mac_set, transcript_tau1_i}
+//                 (see spec/pulsar-m.tex §4.3)
+//   y_i_state   — local state carrying the secret y_i mask to Round-2
+//
+// Constant-time obligations:
+//   - Time and memory-access patterns independent of `share`
+//   - Time and memory-access patterns independent of `randomness`
+//   - All polynomial sampling uses the libjade rejection sampler
+//     (already CT-proven by formosa-crypto)
+//
+// FIPS 204 alignment:
+//   `y_i_high` is this party's contribution to the aggregated `w1` in the
+//   single-party Sign algorithm. Aggregating `y_i_high` across the quorum
+//   reproduces the single-party `w1` value bit-identically, which is the
+//   load-bearing fact for the Class N1 byte-equality claim.
+
+require "../ml-dsa-65/libjade/src/crypto_sign/dilithium/dilithium3/amd64/ref/params.jinc"
+
+param int PULSARM_SHARE_BYTES   = 4 * 256 * 4;  // l polynomials over R_q, ML-DSA-65: l=5
+param int PULSARM_COMMIT_BYTES  = 1952;         // see spec/pulsar-m.tex §4.3
+param int PULSARM_Y_STATE_BYTES = 4 * 256 * 4;  // l polynomials
+
+fn round1_commit(
+    reg ptr u8[PULSARM_SHARE_BYTES]   share,
+    reg ptr u8[32]                    randomness,
+    reg ptr u8[16]                    session_id,
+    reg u32                           attempt,
+    reg ptr u8[PULSARM_COMMIT_BYTES]  commit,
+    reg ptr u8[PULSARM_Y_STATE_BYTES] y_i_state
+) -> reg ptr u8[PULSARM_COMMIT_BYTES], reg ptr u8[PULSARM_Y_STATE_BYTES]
+{
+    // TODO: jasmin implementation
+    //
+    // Plan:
+    //   1. Expand A from session_id (public matrix, libjade routine)
+    //   2. Sample y_i from randomness using libjade rejection_sample_uniform_eta
+    //   3. Compute w_i = A·y_i, decompose to (w1_i, w0_i)
+    //   4. Pack commit = {w1_i_bytes, mac_set, transcript_tau1_i}
+    //   5. Store y_i in y_i_state for Round-2 consumption
+    //
+    // All steps must be constant-time over `share` and `randomness`.
+    // No early-exit on rejection-sampling outcomes — the libjade
+    // routines already encode this discipline.
+
+    return commit, y_i_state;
+}

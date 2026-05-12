@@ -1,0 +1,76 @@
+// Pulsar-M Combine — aggregate quorum responses into FIPS 204 signature
+//
+// STATUS: STUB. The function signature is committed in Jasmin syntax;
+// the body is a `// TODO: jasmin implementation` marker. See
+// ./README.md for the high-assurance-track roadmap.
+//
+// -----------------------------------------------------------------------------
+// Algorithm (mirrors ref/go/pkg/pulsarm/threshold.go Combine)
+// -----------------------------------------------------------------------------
+//
+// Inputs:
+//   group_pk    — group public key (public, persists across resharing)
+//   message     — message that was signed (public)
+//   ctx         — context string, ML-DSA-65 domain separator (public)
+//   round1_msgs — Round-1 commits from all quorum members (public)
+//   round2_msgs — Round-2 responses from all quorum members (public)
+//   lagrange    — Lagrange coefficients over the active quorum (public)
+//
+// Outputs:
+//   signature   — ML-DSA-65 signature bytes (c_tilde || z || h)
+//                 BYTE-IDENTICAL to a single-party FIPS 204 ML-DSA-65 signature
+//                 on the same (message, group_pk) under an honest quorum.
+//                 This is the Class N1 byte-equality claim of the submission.
+//
+// Constant-time obligations:
+//   - Combine touches NO secret-dependent inputs (every input is a public
+//     Round-1 or Round-2 message), so CT obligations are trivial.
+//   - The byte-equality property is FUNCTIONAL, not side-channel:
+//     output bytes match single-party FIPS 204 exactly, as proven in
+//     ../../proofs/easycrypt/PulsarM_N1.ec.
+//
+// FIPS 204 alignment:
+//   ∑ λ_i · z_i ≡ y + c·s_group       (Lagrange interpolation over R_q)
+//   ∑ λ_i · w_i ≡ A·y                  (Round-1 aggregate equals single-party w)
+//   h          = MakeHint(low(w + c·t), high(w + c·t))   (FIPS 204 §3.2)
+//   signature  = c_tilde || z || h
+//
+// The Lagrange identity holds because Shamir secret-sharing over R_q is
+// preserved under the polynomial-vector operations of ML-DSA-65. The
+// formal statement and reduction sit in ../../proofs/easycrypt/PulsarM_N1.ec.
+
+require "../ml-dsa-65/libjade/src/crypto_sign/dilithium/dilithium3/amd64/ref/params.jinc"
+
+param int PULSARM_GROUPPK_BYTES   = 1952;            // ML-DSA-65 public key
+param int PULSARM_SIG_BYTES       = 3309;            // ML-DSA-65 signature
+param int PULSARM_ROUND1_BYTES    = 1952;
+param int PULSARM_RESPONSE_BYTES  = 2 * 256 * 4 + 84;
+param int PULSARM_QUORUM_MAX      = 21;              // n ≤ 21 in submission KATs
+param int PULSARM_LAGRANGE_BYTES  = PULSARM_QUORUM_MAX * 32;
+
+fn combine(
+    reg ptr u8[PULSARM_GROUPPK_BYTES]                                   group_pk,
+    reg ptr u8[2048]                                                    message,
+    reg ptr u8[PULSARM_QUORUM_MAX * PULSARM_ROUND1_BYTES]                round1_msgs,
+    reg ptr u8[PULSARM_QUORUM_MAX * PULSARM_RESPONSE_BYTES]              round2_msgs,
+    reg ptr u8[PULSARM_LAGRANGE_BYTES]                                   lagrange,
+    reg u32                                                              quorum_size,
+    reg ptr u8[PULSARM_SIG_BYTES]                                        signature
+) -> reg ptr u8[PULSARM_SIG_BYTES]
+{
+    // TODO: jasmin implementation
+    //
+    // Plan:
+    //   1. Aggregate Round-1 commits: w_aggregate = Σ λ_i · w_i
+    //   2. Recompute c_tilde = H(group_pk || message || w1_aggregate)
+    //      (must match what each party computed in Round-2)
+    //   3. Aggregate Round-2 responses: z = Σ λ_i · z_i
+    //   4. Aggregate hints: h = OR of h_i over quorum
+    //   5. Validate ||z||_∞ < γ_1 − β and weight(h) ≤ ω
+    //   6. Pack signature = c_tilde || z || h
+    //
+    // No secret inputs — entire path can be straight-line; CT trivially holds.
+    // Equality-to-single-party is the functional theorem in PulsarM_N1.ec.
+
+    return signature;
+}

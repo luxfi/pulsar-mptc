@@ -116,7 +116,14 @@ pulsar-mptc/
 ├── ct/dudect/               # constant-time analysis (dudect statistical tests)
 ├── bench/                   # benchmark configurations
 ├── estimator/               # security-parameter estimator
-├── scripts/                 # build / test / bench / gen_vectors / SBOM
+├── jasmin/                  # high-assurance Jasmin sources (initial track)
+│   ├── ml-dsa-65/           #   libjade single-party baseline (fetched on demand)
+│   └── threshold/           #   Pulsar-M threshold layer (stubs)
+├── proofs/easycrypt/        # high-assurance EasyCrypt theories (theory shells)
+│   ├── PulsarM_N1.ec        #   Class N1 byte-equality reduction
+│   ├── PulsarM_N4.ec        #   Class N4 public-key preservation
+│   └── lemmas/PulsarM_CT.ec #   constant-time obligations
+├── scripts/                 # build / test / bench / gen_vectors / SBOM / check-high-assurance
 └── docs/                    # design notes + decision-record archive
 ```
 
@@ -142,6 +149,52 @@ identity persists while the secret-share custodians rotate.
 | Algorithmic argument | `spec/pulsar-m.tex` §4.5 (Reshare protocol) |
 | Symbolic / Lean proof | `proofs/lean/Crypto/Pulsar_M/Shamir.lean` (Shamir + ring extension) |
 | Test harness | `vectors/transcripts/n*-t*-reshare.jsonl` carry pre/post-reshare public keys + verify both verify under unmodified ML-DSA |
+
+## High-assurance track (Jasmin + EasyCrypt)
+
+Pulsar-M ships with an **initial** Jasmin + EasyCrypt high-assurance
+track. The intent is to land on the same formal-method footing libjade
+gives the single-party ML-DSA implementation: Jasmin sources whose
+verified compiler produces bit-identical assembly, and EasyCrypt
+theories that machine-check both functional correctness and constant-
+time against the Barthe-Grégoire-Laporte leakage model.
+
+This is honest scaffolding, not a closed proof. What ships at the
+2026-11-16 submission tag:
+
+| Artifact | Status | Location |
+|---|---|---|
+| libjade ML-DSA-65 single-party baseline (Jasmin + EasyCrypt) | Verified upstream; fetched on demand | `jasmin/ml-dsa-65/fetch.sh` |
+| Pulsar-M Round-1 commit (Jasmin) | **Stub** — signature committed, body is `// TODO` | `jasmin/threshold/round1.jazz` |
+| Pulsar-M Round-2 response (Jasmin) | **Stub** — signature committed, body is `// TODO` | `jasmin/threshold/round2.jazz` |
+| Pulsar-M Combine (Jasmin) | **Stub** — signature committed, body is `// TODO` | `jasmin/threshold/combine.jazz` |
+| Class N1 byte-equality (EasyCrypt) | **Theory shell** — lemma stated, proof body `admit` | `proofs/easycrypt/PulsarM_N1.ec` |
+| Class N4 public-key preservation (EasyCrypt) | **Theory shell** — lemma stated, proof body `admit` | `proofs/easycrypt/PulsarM_N4.ec` |
+| Constant-time obligations (EasyCrypt) | **Theory shell** — lemmas stated, proof bodies `admit` | `proofs/easycrypt/lemmas/PulsarM_CT.ec` |
+| Build wiring | Complete (skip-friendly) | `scripts/check-high-assurance.sh` |
+
+Every `admit` in the EasyCrypt tree is paired with a `(* TODO: prove
+this once Jasmin extraction is wired *)` comment. Every `.jazz` stub
+has its function signature in Jasmin syntax and a body that is a
+single `// TODO: jasmin implementation` marker block. No fake proofs;
+no fake implementations.
+
+What this gives the NIST reviewer at submission time:
+
+1. The libjade single-party verified baseline as the kernel under
+   Pulsar-M's threshold layer — real, machine-checked, citable.
+2. The exposed obligation surface for the Pulsar-M-specific work:
+   which Jasmin routines need implementing, which CT lemmas need
+   proving, and how the Class N1 reduction composes with libjade's
+   functional theorem.
+3. A skip-friendly check script (`scripts/check-high-assurance.sh`)
+   that exits 0 on machines without `jasminc`/`easycrypt` and runs
+   the tools when they are present.
+
+Closing the `admit`s + filling the `.jazz` bodies is multi-month work
+tracked across MPTC submission rounds. The initial track exists so
+the high-assurance posture is reviewable today, not deferred to "the
+next submission".
 
 ## What this submission does NOT claim
 
