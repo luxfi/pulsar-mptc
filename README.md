@@ -155,10 +155,7 @@ submission.
 
 **Earlier R-LWE work.** The 2-round threshold construction line begins
 with Boschini–Kaviani–Lai–Malavolta–Takahashi–Tibouchi's Ring-LWE
-paper ([ePrint 2024/1113](https://eprint.iacr.org/2024/1113)); the
-academic codebase is preserved as
-[`luxfi/nasua`](https://github.com/luxfi/nasua) as a historical
-reference fork (trusted-dealer DKG; not for public-chain use). The
+paper ([ePrint 2024/1113](https://eprint.iacr.org/2024/1113)). The
 production R-LWE library Lux deploys is
 [`luxfi/corona`](https://github.com/luxfi/corona) — same 2-round
 threshold algorithm retargeted at production lifecycle (Pedersen DKG
@@ -168,7 +165,6 @@ is reviewable on its own merits and Corona is documented separately.
 
 | repo | role | lattice basis | hash family |
 |---|---|---|---|
-| [luxfi/nasua](https://github.com/luxfi/nasua) | academic R-LWE reference (Boschini et al, ePrint 2024/1113); trusted-dealer DKG only | Ring-LWE (`R_q`) | BLAKE3 (academic profile) |
 | [luxfi/corona](https://github.com/luxfi/corona) | production R-LWE threshold ML-DSA — Pedersen DKG over `R_q` + proactive resharing | Ring-LWE (`R_q`) | SHA-3 / cSHAKE256 (SP 800-185) |
 | [luxfi/pulsar](https://github.com/luxfi/pulsar) | production M-LWE threshold ML-DSA — same protocol skeleton retargeted to ML-DSA's polynomial-vector-over-`R_q^k` algebra; output byte-equal to FIPS 204 ML-DSA | Module-LWE (`R_q^k`) | SHA-3 / cSHAKE256 (SP 800-185) |
 | **luxfi/pulsar-mptc** (this repo) | NIST MPTC submission package for the M-LWE construction — frozen spec, KATs, reference impl, interop harness, proofs | Module-LWE (`R_q^k`) | SHA-3 / SHAKE256 (NIST profile) only |
@@ -207,5 +203,4 @@ bug bounty.
 
 ## License
 
-Apache-2.0 — same as `luxfi/pulsar`, `luxfi/corona`, and `luxfi/nasua`.
-See `LICENSE`.
+Apache-2.0 — same as `luxfi/pulsar` and `luxfi/corona`. See `LICENSE`.
