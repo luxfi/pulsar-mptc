@@ -45,4 +45,8 @@ else
     echo "    [info] vectors/ not generated — run scripts/gen_vectors.sh"
 fi
 
+echo "==> Class N1 interoperability — cross-validate KAT signatures against"
+echo "    cloudflare/circl FIPS 204 verifier (independent of reference impl)"
+go test -count=1 ./test/interoperability/...
+
 echo "==> done"
