@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  go-test:
+    name: Go reference impl + KAT + Class N1 interop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ref/go/go.mod
+          cache-dependency-path: ref/go/go.sum
+
+      - name: Build (Go ref)
+        working-directory: ref/go
+        run: go build -count=1 ./...
+
+      - name: Test (Go ref, all)
+        working-directory: ref/go
+        run: go test -count=1 -race -timeout=900s ./...
+
+      - name: KAT replay
+        run: |
+          set -o pipefail
+          ./scripts/test.sh
+
+  spec-pdf:
+    name: spec PDF build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install TeX Live (latexmk + amsmath + cleveref)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            texlive-latex-base texlive-latex-recommended \
+            texlive-latex-extra texlive-fonts-recommended \
+            texlive-science latexmk
+
+      - name: Build pulsar-m.pdf
+        working-directory: spec
+        run: latexmk -pdf -interaction=nonstopmode -halt-on-error pulsar-m.tex
+
+      - name: Upload PDF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulsar-m-pdf
+          path: spec/pulsar-m.pdf
+          if-no-files-found: error
