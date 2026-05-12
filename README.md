@@ -4,10 +4,17 @@
 > generated signatures are verifiable by **unmodified FIPS 204 ML-DSA
 > verification**. Targeting NIST MPTC Class N1 (signing) + N4 (ML keygen / DKG).
 
-This repository is the **frozen NIST MPTC submission package** for Pulsar-M.
-The production Go library has moved on to a stable module identity; this
-repository is the submission artifact pinned to the state NIST reviewers
-will see.
+This repository is the **active NIST MPTC submission package** for Pulsar-M
+and the canonical home for the submission artifacts (spec, KAT vectors,
+reference implementation, interop harness, ct analysis, scripts). The
+submission tarball for NIST is cut from a tag on `main` at deadline —
+the repository itself stays active so reviewer feedback and post-
+submission patches land here, not in a fork.
+
+The production Go library has split into its own stable module identity
+(`github.com/luxfi/pulsar` / `github.com/luxfi/corona`); this repository
+keeps the original `github.com/luxfi/pulsar-m` module path because that
+is the identifier NIST receives and reviews against.
 
 ## Library identities (post-2026 split)
 

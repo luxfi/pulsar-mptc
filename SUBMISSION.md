@@ -4,6 +4,11 @@ This document is the cover sheet for the Pulsar-M submission to the
 NIST Multi-Party Threshold Cryptography (MPTC) project. It is written
 for NIST reviewers and points at every artifact a reviewer needs.
 
+The repository is **active** (not frozen). The submission tarball is
+cut from a tag on `main` at NIST's deadline; reviewer feedback and
+post-submission patches land in this same repository so the artifact
+chain stays auditable.
+
 ## At a glance
 
 | Field | Value |
