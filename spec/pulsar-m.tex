@@ -55,6 +55,7 @@
 \newcommand{\Rq}{R_q}
 \newcommand{\Zq}{\mathbb{Z}_q}
 \newcommand{\Tq}{\mathbb{T}_q}
+\newcommand{\GF}{\mathrm{GF}}
 \newcommand{\negl}{\mathsf{negl}}
 \newcommand{\poly}{\mathsf{poly}}
 \newcommand{\PPT}{\mathsf{PPT}}
@@ -1532,7 +1533,7 @@ deployment.}
 
 \begin{itemize}[leftmargin=*, itemsep=0pt]
 \item \textbf{DKG commit-opening (CR-6)} [CLOSED in v0.2.0]: The
-unopened \texttt{cSHAKE256(c_i \| \mathit{blind}_i)} commit was
+unopened \texttt{cSHAKE256(c\_i $\Vert$ blind\_i)} commit was
 dropped (Path A in BLOCKERS.md). The v0.1 reference implementation
 now realises the Shamir+sum protocol with no separate commit-and-open
 layer; binding comes from Round-2 envelope-digest agreement over the
@@ -1557,7 +1558,7 @@ a cSHAKE256 stream keyed by the KEM-derived envelope key. A passive
 network observer learns only ciphertexts; no per-recipient share
 leaks (\S\ref{sec:dkg}).
 \item \textbf{Adaptive corruption proof (deferred).} The
-\Cref{thm:euf-cma} unforgeability theorem is stated against the
+\Cref{thm:reshare-pkinv} unforgeability theorem is stated against the
 static-corruption model only. The adaptive-corruption variant
 (Game ADAPT) is the only deferred theorem in the round-1 security
 analysis; production deployment under nation-state corruption requires
