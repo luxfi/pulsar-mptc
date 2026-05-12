@@ -11,11 +11,22 @@ import (
 // and returns the group public key + per-party shares.
 func runDKG(t *testing.T, n, threshold int, mode Mode) (*PublicKey, []*KeyShare, [48]byte) {
 	t.Helper()
+	pub, shares, transcript, _ := runDKGWithIdentities(t, n, threshold, mode)
+	return pub, shares, transcript
+}
+
+// runDKGWithIdentities is the extended helper that also returns the
+// identity fixture used by the DKG ceremony. Threshold-sign tests
+// reuse the fixture to derive the per-pair session keys for the
+// signing quorum.
+func runDKGWithIdentities(t *testing.T, n, threshold int, mode Mode) (*PublicKey, []*KeyShare, [48]byte, *identityFixture) {
+	t.Helper()
 	params := MustParamsFor(mode)
 	committee := makeCommittee(n)
+	ident := newIdentityFixture(t, committee, []byte{byte(n), byte(threshold), byte(mode)})
 	sessions := make([]*DKGSession, n)
 	for i := range sessions {
-		s, err := NewDKGSession(params, committee, threshold, committee[i], deterministicReader([]byte{byte(i), 0xCA, 0xFE}))
+		s, err := NewDKGSession(params, committee, threshold, committee[i], ident.keys[committee[i]], ident.directory, deterministicReader([]byte{byte(i), 0xCA, 0xFE}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -44,7 +55,7 @@ func runDKG(t *testing.T, n, threshold int, mode Mode) (*PublicKey, []*KeyShare,
 	for i := range outputs {
 		shares[i] = outputs[i].SecretShare
 	}
-	return outputs[0].GroupPubkey, shares, outputs[0].TranscriptHash
+	return outputs[0].GroupPubkey, shares, outputs[0].TranscriptHash, ident
 }
 
 func TestThresholdSign_RoundTrip(t *testing.T) {
@@ -59,7 +70,7 @@ func TestThresholdSign_RoundTrip(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			params := MustParamsFor(ModeP65)
-			pub, shares, _ := runDKG(t, tc.n, tc.t, ModeP65)
+			pub, shares, _, ident := runDKGWithIdentities(t, tc.n, tc.t, ModeP65)
 
 			msg := []byte("threshold sign — Class N1 round-trip")
 			var sid [16]byte
@@ -71,10 +82,13 @@ func TestThresholdSign_RoundTrip(t *testing.T) {
 				quorum[i] = shares[i].NodeID
 			}
 
+			// Establish per-pair session keys for the quorum (CR-7).
+			sessionKeys := ident.quorumSessionKeys(t, quorum, sid, msg)
+
 			// Per-party ThresholdSigner.
 			signers := make([]*ThresholdSigner, tc.t)
 			for i := 0; i < tc.t; i++ {
-				s, err := NewThresholdSigner(params, sid, attempt, quorum, shares[i], msg, deterministicReader([]byte{byte(i), 0xFE}))
+				s, err := NewThresholdSigner(params, sid, attempt, quorum, shares[i], sessionKeys[shares[i].NodeID], msg, deterministicReader([]byte{byte(i), 0xFE}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -120,15 +134,16 @@ func TestThresholdSign_RoundTrip(t *testing.T) {
 
 func TestThresholdSign_BadMAC_Detected(t *testing.T) {
 	params := MustParamsFor(ModeP65)
-	pub, shares, _ := runDKG(t, 5, 3, ModeP65)
+	pub, shares, _, ident := runDKGWithIdentities(t, 5, 3, ModeP65)
 	msg := []byte("test-bad-mac")
 	var sid [16]byte
 	copy(sid[:], "bad-mac-sess-01")
 	quorum := []NodeID{shares[0].NodeID, shares[1].NodeID, shares[2].NodeID}
+	sessionKeys := ident.quorumSessionKeys(t, quorum, sid, msg)
 
 	signers := make([]*ThresholdSigner, 3)
 	for i := 0; i < 3; i++ {
-		s, _ := NewThresholdSigner(params, sid, 1, quorum, shares[i], msg, deterministicReader([]byte{byte(i)}))
+		s, _ := NewThresholdSigner(params, sid, 1, quorum, shares[i], sessionKeys[shares[i].NodeID], msg, deterministicReader([]byte{byte(i)}))
 		signers[i] = s
 	}
 	r1 := make([]*Round1Message, 3)
@@ -154,15 +169,16 @@ func TestThresholdSign_BadMAC_Detected(t *testing.T) {
 
 func TestThresholdSign_DifferentAttempt_Rejected(t *testing.T) {
 	params := MustParamsFor(ModeP65)
-	pub, shares, _ := runDKG(t, 5, 3, ModeP65)
+	pub, shares, _, ident := runDKGWithIdentities(t, 5, 3, ModeP65)
 	msg := []byte("attempt-mismatch")
 	var sid [16]byte
 	copy(sid[:], "attempt-mism-01")
 	quorum := []NodeID{shares[0].NodeID, shares[1].NodeID, shares[2].NodeID}
+	sessionKeys := ident.quorumSessionKeys(t, quorum, sid, msg)
 
 	signers := make([]*ThresholdSigner, 3)
 	for i := 0; i < 3; i++ {
-		s, _ := NewThresholdSigner(params, sid, 1, quorum, shares[i], msg, deterministicReader([]byte{byte(i)}))
+		s, _ := NewThresholdSigner(params, sid, 1, quorum, shares[i], sessionKeys[shares[i].NodeID], msg, deterministicReader([]byte{byte(i)}))
 		signers[i] = s
 	}
 	r1 := make([]*Round1Message, 3)
@@ -179,15 +195,16 @@ func TestThresholdSign_DifferentAttempt_Rejected(t *testing.T) {
 
 func TestThresholdSign_TamperedReveal_RejectedAtCombine(t *testing.T) {
 	params := MustParamsFor(ModeP65)
-	pub, shares, _ := runDKG(t, 5, 3, ModeP65)
+	pub, shares, _, ident := runDKGWithIdentities(t, 5, 3, ModeP65)
 	msg := []byte("tampered-reveal")
 	var sid [16]byte
 	copy(sid[:], "tamper-reveal-01")
 	quorum := []NodeID{shares[0].NodeID, shares[1].NodeID, shares[2].NodeID}
+	sessionKeys := ident.quorumSessionKeys(t, quorum, sid, msg)
 
 	signers := make([]*ThresholdSigner, 3)
 	for i := 0; i < 3; i++ {
-		s, _ := NewThresholdSigner(params, sid, 1, quorum, shares[i], msg, deterministicReader([]byte{byte(i)}))
+		s, _ := NewThresholdSigner(params, sid, 1, quorum, shares[i], sessionKeys[shares[i].NodeID], msg, deterministicReader([]byte{byte(i)}))
 		signers[i] = s
 	}
 	r1 := make([]*Round1Message, 3)
@@ -217,23 +234,30 @@ func TestThresholdSign_TamperedReveal_RejectedAtCombine(t *testing.T) {
 
 func TestThresholdSign_QuorumTooSmall(t *testing.T) {
 	params := MustParamsFor(ModeP65)
-	_, shares, _ := runDKG(t, 5, 3, ModeP65)
+	_, shares, _, _ := runDKGWithIdentities(t, 5, 3, ModeP65)
 	msg := []byte("small-q")
 	var sid [16]byte
+	// Single-party quorum: no peers needed, so empty sessionKeys is OK.
 	quorum := []NodeID{shares[0].NodeID}
-	_, err := NewThresholdSigner(params, sid, 1, quorum, shares[0], msg, deterministicReader([]byte{1}))
+	_, err := NewThresholdSigner(params, sid, 1, quorum, shares[0], map[NodeID][32]byte{}, msg, deterministicReader([]byte{1}))
 	if err != nil {
 		t.Fatalf("single-party quorum: %v", err)
 	}
 	// Now try with empty quorum.
-	_, err = NewThresholdSigner(params, sid, 1, nil, shares[0], msg, deterministicReader([]byte{1}))
+	_, err = NewThresholdSigner(params, sid, 1, nil, shares[0], map[NodeID][32]byte{}, msg, deterministicReader([]byte{1}))
 	if err != ErrEmptyQuorum {
 		t.Fatalf("empty quorum not rejected: %v", err)
 	}
 	// Member not in quorum.
-	_, err = NewThresholdSigner(params, sid, 1, []NodeID{NodeID{0xff}}, shares[0], msg, deterministicReader([]byte{1}))
+	_, err = NewThresholdSigner(params, sid, 1, []NodeID{NodeID{0xff}}, shares[0], map[NodeID][32]byte{}, msg, deterministicReader([]byte{1}))
 	if err != ErrNotInQuorum {
 		t.Fatalf("non-member not rejected: %v", err)
+	}
+	// Missing session key for peer.
+	twoQ := []NodeID{shares[0].NodeID, shares[1].NodeID}
+	_, err = NewThresholdSigner(params, sid, 1, twoQ, shares[0], map[NodeID][32]byte{}, msg, deterministicReader([]byte{1}))
+	if err != ErrSessionKeyMissing {
+		t.Fatalf("missing session key not rejected: %v", err)
 	}
 }
 
@@ -241,15 +265,16 @@ func TestThresholdSign_DifferentQuorum_SameMessage(t *testing.T) {
 	// Two different quorums of size t over the same DKG should both
 	// produce valid FIPS 204 signatures on the same message.
 	params := MustParamsFor(ModeP65)
-	pub, shares, _ := runDKG(t, 7, 4, ModeP65)
+	pub, shares, _, ident := runDKGWithIdentities(t, 7, 4, ModeP65)
 	msg := []byte("multi-quorum-test")
 	for round, idxs := range [][4]int{{0, 1, 2, 3}, {3, 4, 5, 6}} {
 		var sid [16]byte
 		sid[0] = byte(round)
 		quorum := []NodeID{shares[idxs[0]].NodeID, shares[idxs[1]].NodeID, shares[idxs[2]].NodeID, shares[idxs[3]].NodeID}
+		sessionKeys := ident.quorumSessionKeys(t, quorum, sid, msg)
 		signers := make([]*ThresholdSigner, 4)
 		for j, idx := range idxs {
-			s, _ := NewThresholdSigner(params, sid, 1, quorum, shares[idx], msg, deterministicReader([]byte{byte(idx)}))
+			s, _ := NewThresholdSigner(params, sid, 1, quorum, shares[idx], sessionKeys[shares[idx].NodeID], msg, deterministicReader([]byte{byte(idx)}))
 			signers[j] = s
 		}
 		r1 := make([]*Round1Message, 4)

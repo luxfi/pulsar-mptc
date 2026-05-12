@@ -553,17 +553,59 @@ learns nothing more than from a single attempt. We address this in
 \subsection{Distributed key generation \texorpdfstring{$\DKG$}{DKG}}
 \label{sec:dkg}
 
-The DKG produces a group public key $\mathit{pk}$ jointly distributed
-as a fresh FIPS~204 ML-DSA public key, plus per-party Shamir shares
-$(\mathbf{s}_i, \mathbf{u}_i)$ of the secret $\mathbf{s}_1$ and the
-Pedersen blinding $\mathbf{u}$ respectively. Three rounds. Pedersen
-commitments give verifiable secret sharing.
+The DKG produces a group public key $\mathit{pk}$ that is a fresh
+FIPS~204 ML-DSA public key together with per-party threshold shares
+of the master 32-byte ML-DSA seed.
+
+\paragraph{Two instantiation paths.}
+Pulsar-M admits two protocol families that produce the same FIPS~204
+output shape:
+\begin{description}[leftmargin=*, itemsep=0pt]
+\item[v0.2 target (Pedersen-VSS, this section).] A degree-$(t-1)$
+Shamir polynomial over $\Rq^\ell$ with Pedersen polynomial commits
+in $\Rq^k$. The aggregated commit $\mathbf{t}$ identifies with the
+FIPS~204 public-key inner vector $\mathbf{A}\mathbf{s}_1 +
+\mathbf{B}\mathbf{u}$, and the substitution $\mathbf{s}_2 =
+\mathbf{B}\mathbf{u}$ is M-LWE-indistinguishable from a fresh
+$\chi_\eta^k$ sample (\Cref{thm:outind}). No party ever reconstructs
+the master secret. The security analysis (\S\ref{sec:security}) is
+stated on this protocol.
+\item[v0.1 reference (Path~A reconstruction aggregator).] A
+byte-level instantiation realised by the reference Go code
+(\texttt{ref/go/pkg/pulsarm}, v0.2.0). Each party samples a 32-byte
+contribution $c_i$, byte-wise Shamir-shares $c_i$ over $\GF(257)$ to
+the committee, and ML-KEM-768-wraps each per-recipient envelope
+against the recipient's long-term identity public key. Round~3
+reconstructs the master seed $\sigma = \cSHAKE(\sum_i c_i \,\|\,
+\mathit{root})$ in every committee member's memory and runs
+\texttt{ML-DSA.KeyGen} verbatim on $\sigma$. Threshold sign
+reconstructs $\sigma$ at sign time and runs \texttt{ML-DSA.Sign}
+verbatim, which is what makes the byte-equality argument
+(\Cref{thm:outind}) trivial under this path. The trust model is
+documented in \S\ref{sec:knownlimits}.
+\end{description}
+The remainder of this subsection specifies the v0.2 protocol;
+``v0.1 note'' paragraphs flag the deviations realised by the reference
+implementation.
 
 \paragraph{Setup (out of band).}
 Before $\DKG$, all parties agree on the common public parameters
 $(q, n_{\mathrm{ring}}, k, \ell, \eta, \tau, \gamma_1, \gamma_2, \omega, \beta, d, \lambda)$
 matching the chosen FIPS~204 parameter set (one of $\{44, 65, 87\}$),
 plus the threshold pair $(n, t)$ with $n \ge 2t-1$.
+
+\paragraph{Setup: identity directory (v0.1 reference, CR-7 + CR-8
+closure).}
+Each party publishes a long-term identity public key
+$\mathit{IPK}_i = (\mathit{KEMpk}_i, \mathit{DSApk}_i)$ pairing an
+ML-KEM-768 encapsulation key with an ML-DSA-65 verification key,
+typically anchored in the chain's validator-set record. Every party
+constructs an $\textsc{IdentityDirectory}: \mathit{NodeID} \mapsto
+\mathit{IPK}$ covering every committee member before DKG begins.
+Round-1 envelopes are KEM-sealed against each recipient's
+$\mathit{KEMpk}$; threshold-sign per-pair MAC keys are derived from
+ephemeral ML-KEM-768 session secrets authenticated under the long-term
+ML-DSA-65 keys (see \S\ref{sec:sign}).
 
 \paragraph{Public matrices.}
 $\mathbf{A} = \texttt{ExpandA}(\rho)$ from a public seed $\rho$
@@ -1489,26 +1531,31 @@ specific files and lines in the \texttt{BLOCKERS.md} document.
 deployment.}
 
 \begin{itemize}[leftmargin=*, itemsep=0pt]
-\item \textbf{DKG commit-opening (CR-6).} The current Round-1
-\texttt{cSHAKE256(c_i \| \mathit{blind}_i)} commit is broadcast but
-$(c_i, \mathit{blind}_i)$ are never transmitted in any later round.
-The commit binds nothing the protocol verifies. A malicious dealer
-can broadcast an arbitrary commit and bias the joint public key.
-Fix: include $(c_i, \mathit{blind}_i)$ in Round-2 reveal and verify
-the digest opens, or drop \texttt{myCommit} entirely and document
-the actual protocol (Shamir + sum).
-\item \textbf{Sign-round session-key derivation (CR-7).}
-\texttt{deriveMACKey} derives per-pair MAC keys from public inputs
-$(\mathit{pk}_\mathrm{group}, \mathit{nodeID}_i, \mathit{nodeID}_j)$.
-Any network observer computes the key and forges Round-1 messages,
-breaking the commit-and-reveal binding and the identifiable-abort
-property under no network partition. Fix: ephemeral session-key
-exchange (Noise/X3DH/ML-KEM-768) bound to long-term ML-DSA identity.
-\item \textbf{DKG envelope confidentiality (CR-8).} Round-1
-envelopes carry per-recipient Shamir shares in plaintext on the
-broadcast wire. A passive network observer recovers the master key
-from one DKG ceremony. Fix: KEM-wrap envelopes (ML-KEM-768) per
-recipient.
+\item \textbf{DKG commit-opening (CR-6)} [CLOSED in v0.2.0]: The
+unopened \texttt{cSHAKE256(c_i \| \mathit{blind}_i)} commit was
+dropped (Path A in BLOCKERS.md). The v0.1 reference implementation
+now realises the Shamir+sum protocol with no separate commit-and-open
+layer; binding comes from Round-2 envelope-digest agreement over the
+ordered Round-1 broadcast set (\S\ref{sec:dkg}).
+\item \textbf{Sign-round session-key derivation (CR-7)} [CLOSED in
+v0.2.0]: \texttt{deriveMACKey} was deleted. The threshold signer now
+consumes a per-pair ephemeral session key established before Round~1
+via authenticated ML-KEM-768 key agreement, where each party
+encapsulates a fresh shared secret to the peer's long-term ML-KEM-768
+identity public key and signs the ciphertext with their long-term
+ML-DSA-65 identity key. The final session key mixes both parties'
+contributions through HKDF-SHA3-256 over a canonical-ordered NodeID
+pair (\S\ref{sec:sign} and \S\ref{sec:system-model}).
+\item \textbf{DKG envelope confidentiality (CR-8)} [CLOSED in v0.2.0]:
+Round-1 envelopes are ML-KEM-768-wrapped against each recipient's
+long-term identity public key. The wire shape is
+$\textsc{DKGShareEnvelope} = (\mathit{KEMCT}, \mathit{Sealed})$ where
+$\mathit{KEMCT}$ is the ML-KEM-768 ciphertext (1088 B) and
+$\mathit{Sealed}$ is the 128-byte sealed payload carrying
+$(\mathit{share} \| \mathit{contribution} \| \mathit{tag})$ XORed with
+a cSHAKE256 stream keyed by the KEM-derived envelope key. A passive
+network observer learns only ciphertexts; no per-recipient share
+leaks (\S\ref{sec:dkg}).
 \item \textbf{Adaptive corruption proof (deferred).} The
 \Cref{thm:euf-cma} unforgeability theorem is stated against the
 static-corruption model only. The adaptive-corruption variant

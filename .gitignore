@@ -1,6 +1,19 @@
 # Build artefacts
 bench/results/*.txt
 bench/results/*.json
+
+# dudect harness artefacts
+ct/dudect/dudect/
+ct/dudect/dudect_verify
+ct/dudect/dudect_combine
+ct/dudect/libpulsarm_verify.so
+ct/dudect/libpulsarm_verify.dylib
+ct/dudect/libpulsarm_verify.h
+ct/dudect/libpulsarm_combine.so
+ct/dudect/libpulsarm_combine.dylib
+ct/dudect/libpulsarm_combine.h
+ct/dudect/results/*.log
+ct/dudect/results/*.stdout
 spec/*.pdf
 spec/*.aux
 spec/*.bbl

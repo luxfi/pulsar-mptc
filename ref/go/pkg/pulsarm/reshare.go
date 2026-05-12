@@ -23,6 +23,17 @@ package pulsarm
 // selecting the first k. Without a beacon, the deterministic
 // canonical-order selection is used (acceptable for single-shot
 // reshares; mobile-adversary deployments MUST pass a beacon).
+//
+// Envelope confidentiality (CR-8): per-recipient envelopes are
+// ML-KEM-768-wrapped against the new committee's long-term identity
+// public keys, mirroring DKG. Each ReshareSession requires a
+// IdentityDirectory of the new committee and the caller's
+// IdentityKey if it expects to receive new shares.
+//
+// Commit-and-open (CR-6 path A): the v0.1 myCommit field on
+// reshare Round-1 messages was broadcast but never opened; dropped
+// alongside DKG's myCommit. Binding comes from Round-2 digest
+// agreement over the ordered envelope set.
 
 import (
 	"crypto/rand"
@@ -58,6 +69,16 @@ type ReshareSession struct {
 	// of the old committee).
 	MyOldShare *KeyShare
 
+	// MyIdentity is this party's long-term ML-KEM-768 + ML-DSA-65
+	// keypair, used to (a) seal outgoing envelopes if in the reshare
+	// quorum and (b) open incoming envelopes if in the new committee.
+	MyIdentity *IdentityKey
+
+	// NewDirectory carries the published identity public key for
+	// every new-committee member. The reshare quorum uses this to
+	// KEM-wrap outgoing envelopes.
+	NewDirectory IdentityDirectory
+
 	// Beacon is the chain randomness used to permute the old
 	// committee before quorum selection. Pass nil to use canonical
 	// ordering (acceptable for single-shot reshares; mobile-adversary
@@ -79,10 +100,16 @@ type ReshareSession struct {
 // quorum (i.e. is a new-committee-only party that only receives
 // shares). If myOldShare is non-nil, it must be a share from the
 // most recent DKG/Reshare against the same group public key.
+//
+// myIdentity is this party's long-term ML-KEM-768 + ML-DSA-65
+// keypair. newDirectory must contain a published IdentityPublicKey
+// for every new-committee member; the reshare quorum uses these keys
+// to KEM-wrap outgoing envelopes (BLOCKERS.md CR-8).
 func NewReshareSession(params *Params,
 	oldCommittee []NodeID, oldThreshold int,
 	newCommittee []NodeID, newThreshold int,
 	myID NodeID, myOldShare *KeyShare,
+	myIdentity *IdentityKey, newDirectory IdentityDirectory,
 	beacon []byte, rng io.Reader) (*ReshareSession, error) {
 
 	if err := params.Validate(); err != nil {
@@ -100,12 +127,25 @@ func NewReshareSession(params *Params,
 	if newThreshold < 1 || len(newCommittee) < newThreshold {
 		return nil, ErrNewThresholdSmall
 	}
+	if myIdentity == nil {
+		return nil, ErrIdentityKeyMissing
+	}
+	if newDirectory == nil {
+		return nil, ErrDirectoryIncomplete
+	}
 
 	// Canonicalise committees.
 	oldSorted := append([]NodeID(nil), oldCommittee...)
 	sort.Slice(oldSorted, func(i, j int) bool { return nodeIDLess(oldSorted[i], oldSorted[j]) })
 	newSorted := append([]NodeID(nil), newCommittee...)
 	sort.Slice(newSorted, func(i, j int) bool { return nodeIDLess(newSorted[i], newSorted[j]) })
+
+	// Directory must cover every new committee member.
+	for _, id := range newSorted {
+		if newDirectory[id] == nil {
+			return nil, ErrDirectoryIncomplete
+		}
+	}
 
 	// Beacon-permuted reshare-quorum selection.
 	quorum := selectReshareQuorum(oldSorted, oldThreshold, beacon)
@@ -129,6 +169,8 @@ func NewReshareSession(params *Params,
 		NewThreshold:  newThreshold,
 		MyID:          myID,
 		MyOldShare:    myOldShare,
+		MyIdentity:    myIdentity,
+		NewDirectory:  newDirectory,
 		Beacon:        beacon,
 		rng:           rng,
 		myIdxInOld:    myIdxInOld,
@@ -159,7 +201,9 @@ func (s *ReshareSession) InReshareQuorum() bool {
 // old quorum).
 //
 // The implementation derives λ_i^Q at the byte level over GF(257),
-// matching the byte-wise share format installed by DKG.
+// matching the byte-wise share format installed by DKG. Envelopes are
+// ML-KEM-768-wrapped against each new-committee member's long-term
+// identity key (CR-8).
 func (s *ReshareSession) Round1() (*DKGRound1Msg, error) {
 	if !s.InReshareQuorum() {
 		return nil, ErrNotInCommittee
@@ -184,21 +228,26 @@ func (s *ReshareSession) Round1() (*DKGRound1Msg, error) {
 	for b := 0; b < SeedSize; b++ {
 		contribution[b] = uint16((uint32(lambda) * uint32(oldShare.Y[b])) % shamirPrime)
 	}
+	// Per-byte representation of contribution as a SeedSize-byte
+	// value mod 256 for the envelope. Reshare contributions can take
+	// the 257-th GF value, but for envelope embedding we use the
+	// least-significant byte (the high byte is implicit from the
+	// 16-bit Shamir share lanes). The sealing path bundles both the
+	// Shamir share (16-bit lanes) and the per-byte contribution
+	// (8-bit reduced mod 256) so the recipient can both aggregate
+	// shares and recompute the byte-sum-mod-257 by lifting the share
+	// back into GF(257) at decode.
+	var contribBytes [SeedSize]byte
+	for b := 0; b < SeedSize; b++ {
+		contribBytes[b] = byte(contribution[b] % 256)
+	}
 
-	// Sample blinding for the RO commit.
+	// Sample deterministic-RNG blinding bytes for envelope-encap seed
+	// derivation (also kept for future v0.2 algebraic-binding path).
 	var blind [32]byte
 	if _, err := io.ReadFull(s.rng, blind[:]); err != nil {
 		return nil, ErrShortRand
 	}
-	// Commit binds the contribution as 2 bytes per GF(257) slot
-	// (big-endian) so the 257-th value is faithfully represented.
-	contribBytes := make([]byte, SeedSize*2)
-	for b := 0; b < SeedSize; b++ {
-		contribBytes[2*b] = byte(contribution[b] >> 8)
-		contribBytes[2*b+1] = byte(contribution[b])
-	}
-	commitInput := append(append([]byte{}, contribBytes...), blind[:]...)
-	myCommit := transcriptHash32(tagReshareCommit, commitInput)
 
 	// Shamir-share the contribution at threshold newT to the new committee.
 	keyMaterial := []byte{}
@@ -217,27 +266,44 @@ func (s *ReshareSession) Round1() (*DKGRound1Msg, error) {
 	}
 	s.myShares = shares
 
+	// committeeRoot for the envelope auth-tag binding uses the NEW
+	// committee root (recipient-side context).
+	var newRoot [32]byte
+	copy(newRoot[:], s.commitNewCommitteeRoot())
+
 	envelopes := make(map[NodeID]DKGShareEnvelope, len(s.NewCommittee))
 	for posIdx, recipient := range s.NewCommittee {
 		shareBytes := shareToBytes(shares[posIdx])
-		blindMask := cshake256(
-			append(append([]byte{}, blind[:]...), recipient[:]...),
-			shareWireSize,
-			"PULSAR-M-RESHARE-BLINDMASK-V1",
+		// Per-recipient deterministic encapsulation seed.
+		encapBlind := cshake256(
+			append(append(append([]byte{}, blind[:]...),
+				s.MyID[:]...), recipient[:]...),
+			64,
+			"PULSAR-M-RESHARE-ENCAPSEED-V1",
 		)
-		var envShare [64]byte
-		copy(envShare[:], shareBytes[:])
-		var envBlind [64]byte
-		copy(envBlind[:], blindMask)
-		envelopes[recipient] = DKGShareEnvelope{
-			Share: envShare,
-			Blind: envBlind,
+		encapSeed := hashForEncapSeed(newRoot, s.MyID, recipient, encapBlind)
+
+		recipientIPK := s.NewDirectory[recipient]
+		if recipientIPK == nil {
+			return nil, ErrDirectoryIncomplete
 		}
+		env, err := sealEnvelope(
+			s.MyID,
+			recipient,
+			newRoot,
+			shareBytes,
+			contribBytes,
+			recipientIPK.KEMPub,
+			encapSeed[:],
+		)
+		if err != nil {
+			return nil, err
+		}
+		envelopes[recipient] = env
 	}
 
 	return &DKGRound1Msg{
 		NodeID:    s.MyID,
-		Commits:   [][]byte{myCommit[:]},
 		Envelopes: envelopes,
 	}, nil
 }
@@ -254,12 +320,21 @@ func (s *ReshareSession) Round2(round1 []*DKGRound1Msg) (*DKGRound2Msg, error) {
 	}
 	s.round1Cache = ordered
 
+	digest := s.computeReshareDigest(ordered)
+	return &DKGRound2Msg{
+		NodeID: s.MyID,
+		Digest: digest,
+	}, nil
+}
+
+// computeReshareDigest binds the dealer NodeID and every recipient's
+// KEM-wrapped envelope (ciphertext + sealed payload) into a single
+// 32-byte digest. Equivalent to DKGSession.computeRound2Digest but
+// over the reshare tag.
+func (s *ReshareSession) computeReshareDigest(ordered []*DKGRound1Msg) [32]byte {
 	parts := [][]byte{}
 	for _, m := range ordered {
 		parts = append(parts, m.NodeID[:])
-		for _, c := range m.Commits {
-			parts = append(parts, c)
-		}
 		recipKeys := make([]NodeID, 0, len(m.Envelopes))
 		for k := range m.Envelopes {
 			recipKeys = append(recipKeys, k)
@@ -268,15 +343,11 @@ func (s *ReshareSession) Round2(round1 []*DKGRound1Msg) (*DKGRound2Msg, error) {
 		for _, k := range recipKeys {
 			env := m.Envelopes[k]
 			parts = append(parts, k[:])
-			parts = append(parts, env.Share[:])
-			parts = append(parts, env.Blind[:])
+			parts = append(parts, env.KEMCiphertext)
+			parts = append(parts, env.Sealed)
 		}
 	}
-	digest := transcriptHash32(tagReshareCommit, parts...)
-	return &DKGRound2Msg{
-		NodeID: s.MyID,
-		Digest: digest,
-	}, nil
+	return transcriptHash32(tagReshareCommit, parts...)
 }
 
 // Round3 verifies the digest agreement and aggregates the calling
@@ -310,25 +381,7 @@ func (s *ReshareSession) Round3(round1 []*DKGRound1Msg, round2 []*DKGRound2Msg) 
 	}
 
 	// Recompute and verify the canonical digest.
-	parts := [][]byte{}
-	for _, m := range ordered {
-		parts = append(parts, m.NodeID[:])
-		for _, c := range m.Commits {
-			parts = append(parts, c)
-		}
-		recipKeys := make([]NodeID, 0, len(m.Envelopes))
-		for k := range m.Envelopes {
-			recipKeys = append(recipKeys, k)
-		}
-		sort.Slice(recipKeys, func(i, j int) bool { return nodeIDLess(recipKeys[i], recipKeys[j]) })
-		for _, k := range recipKeys {
-			env := m.Envelopes[k]
-			parts = append(parts, k[:])
-			parts = append(parts, env.Share[:])
-			parts = append(parts, env.Blind[:])
-		}
-	}
-	expected := transcriptHash32(tagReshareCommit, parts...)
+	expected := s.computeReshareDigest(ordered)
 	for _, r2 := range round2 {
 		if !ctEqual32(r2.Digest, expected) {
 			return nil, &AbortEvidence{
@@ -339,8 +392,11 @@ func (s *ReshareSession) Round3(round1 []*DKGRound1Msg, round2 []*DKGRound2Msg) 
 		}
 	}
 
-	// Aggregate the new share: sum the per-dealer envelope shares for
-	// this party's NEW evaluation point.
+	// Aggregate the new share: decrypt each dealer's envelope
+	// addressed to me, sum the recovered shares at my NEW evaluation
+	// point.
+	var newRoot [32]byte
+	copy(newRoot[:], s.commitNewCommitteeRoot())
 	newEval := uint32(myNewIdx + 1)
 	var aggY [SeedSize]uint16
 	for _, m := range ordered {
@@ -352,9 +408,17 @@ func (s *ReshareSession) Round3(round1 []*DKGRound1Msg, round2 []*DKGRound2Msg) 
 				Accused: m.NodeID,
 			}, ErrEnvelopeMissing
 		}
-		var buf [shareWireSize]byte
-		copy(buf[:], env.Share[:])
-		senderShare := shareFromBytes(newEval, buf)
+		senderShareBytes, _, openErr := sealOpenEnvelope(
+			m.NodeID, s.MyID, newRoot, env, s.MyIdentity,
+		)
+		if openErr != nil {
+			return nil, &AbortEvidence{
+				Kind:    ComplaintBadDelivery,
+				Accuser: s.MyID,
+				Accused: m.NodeID,
+			}, openErr
+		}
+		senderShare := shareFromBytes(newEval, senderShareBytes)
 		for b := 0; b < SeedSize; b++ {
 			aggY[b] = uint16((uint32(aggY[b]) + uint32(senderShare.Y[b])) % shamirPrime)
 		}

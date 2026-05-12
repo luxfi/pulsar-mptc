@@ -1,0 +1,134 @@
+/*
+ * Copyright (C) 2025-2026, Lux Industries Inc. All rights reserved.
+ * See the file LICENSE for licensing terms.
+ *
+ * dudect_verify.c — dudect main loop driving pulsarm.Verify through
+ * the cgo bridge in verify_ct.go.
+ *
+ * dudect API contract: the user provides do_one_computation(data) and
+ * prepare_inputs(cfg, input, classes); dudect's `dudect_main` invokes
+ * them via the extern declarations at the bottom of dudect.h. See
+ * https://github.com/oreparaz/dudect/blob/master/src/dudect.h
+ *
+ * We define DUDECT_IMPLEMENTATION exactly once before including the
+ * header so the whole library compiles into this translation unit.
+ *
+ * dudect_compat.h is `-include`-d by the Makefile on AArch64 hosts;
+ * on x86 it is a no-op.
+ */
+
+#define DUDECT_IMPLEMENTATION
+#include "dudect/src/dudect.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+/* Exported by libpulsarm_verify (verify_ct.go). */
+extern int    pulsarm_verify_ct_setup(void);
+extern size_t pulsarm_verify_ct_sig_size(void);
+extern void   pulsarm_verify_ct(uint8_t *data);
+
+/* Per-sample input width. Filled in main() after setup. */
+static size_t g_chunk_size = 0;
+
+/*
+ * dudect API hook: populate cfg->number_measurements samples of
+ * cfg->chunk_size bytes each, and assign each sample a binary class
+ * label (0 = fixed class A, 1 = random class B). dudect supplies
+ * randombytes() / randombit() for us — same RNG it uses internally,
+ * so the class assignment is uncorrelated with anything Verify could
+ * see.
+ */
+void prepare_inputs(dudect_config_t *cfg, uint8_t *input_data, uint8_t *classes) {
+    randombytes(input_data, cfg->chunk_size * cfg->number_measurements);
+    for (size_t i = 0; i < cfg->number_measurements; i++) {
+        classes[i] = randombit();
+        if (classes[i] == 0) {
+            /* Class A: all-zero signature bytes — the simplest
+             * always-invalid signature. Byte-identical across every
+             * class-A sample, which is what the Welch t-test
+             * requires. */
+            memset(input_data + (size_t)i * cfg->chunk_size, 0x00, cfg->chunk_size);
+        }
+        /* Class B: random bytes, already populated by randombytes(). */
+    }
+}
+
+/*
+ * dudect API hook: one measurement sample. Must depend on `data` (so
+ * the compiler cannot dead-code-eliminate the body), must NOT branch
+ * on `data` (or we measure our own branch, not Verify's), and must
+ * return a uint8_t that flows out of the function so the result is
+ * observed.
+ */
+uint8_t do_one_computation(uint8_t *data) {
+    pulsarm_verify_ct(data);
+    uint8_t acc = 0;
+    for (size_t i = 0; i < g_chunk_size; i++) acc ^= data[i];
+    return acc;
+}
+
+int main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
+    int rc = pulsarm_verify_ct_setup();
+    if (rc != 0) {
+        fprintf(stderr, "pulsarm_verify_ct_setup failed: rc=%d\n", rc);
+        return 1;
+    }
+    g_chunk_size = pulsarm_verify_ct_sig_size();
+    if (g_chunk_size == 0) {
+        fprintf(stderr, "pulsarm_verify_ct_sig_size returned 0\n");
+        return 1;
+    }
+
+    /*
+     * SMOKE-TEST default (10 000 samples per batch). The full NIST
+     * submission run uses ~10^9 samples on a quiet, CPU-pinned host.
+     * Override per-batch sample count with DUDECT_SAMPLES, and limit
+     * total batches with DUDECT_MAX_BATCHES so smoke tests terminate
+     * even when the t-test stays under threshold.
+     */
+    size_t number_measurements = 10000;
+    const char *env_n = getenv("DUDECT_SAMPLES");
+    if (env_n) {
+        long n = strtol(env_n, NULL, 10);
+        if (n > 0) number_measurements = (size_t)n;
+    }
+    size_t max_batches = 4;
+    const char *env_b = getenv("DUDECT_MAX_BATCHES");
+    if (env_b) {
+        long b = strtol(env_b, NULL, 10);
+        if (b > 0) max_batches = (size_t)b;
+    }
+
+    dudect_config_t cfg = {
+        .chunk_size = g_chunk_size,
+        .number_measurements = number_measurements,
+    };
+    dudect_ctx_t ctx;
+    if (dudect_init(&ctx, &cfg) != 0) {
+        fprintf(stderr, "dudect_init failed\n");
+        return 1;
+    }
+
+    fprintf(stderr, "dudect_verify: ML-DSA-65, chunk=%zu bytes, batch=%zu samples, max_batches=%zu\n",
+            g_chunk_size, number_measurements, max_batches);
+
+    dudect_state_t state = DUDECT_NO_LEAKAGE_EVIDENCE_YET;
+    for (size_t batch = 0; batch < max_batches; batch++) {
+        state = dudect_main(&ctx);
+        if (state == DUDECT_LEAKAGE_FOUND) break;
+    }
+    dudect_free(&ctx);
+
+    if (state == DUDECT_LEAKAGE_FOUND) {
+        fprintf(stderr, "dudect_verify: LEAKAGE FOUND (t-statistic exceeded threshold)\n");
+        return 2;
+    }
+    fprintf(stderr, "dudect_verify: no leakage evidence after %zu batches of %zu samples\n",
+            max_batches, number_measurements);
+    return 0;
+}

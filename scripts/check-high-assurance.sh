@@ -13,6 +13,7 @@ cd "$REPO_ROOT"
 
 JASMIN_ROOT="$REPO_ROOT/jasmin"
 EC_ROOT="$REPO_ROOT/proofs/easycrypt"
+CT_ROOT="$REPO_ROOT/ct/dudect"
 
 have_jasmin=0
 have_ec=0
@@ -22,6 +23,7 @@ command -v easycrypt >/dev/null 2>&1 && have_ec=1
 echo "==> Pulsar-M high-assurance track"
 echo "    jasmin/   $JASMIN_ROOT"
 echo "    easycrypt $EC_ROOT"
+echo "    dudect    $CT_ROOT"
 echo
 
 # -----------------------------------------------------------------------------
@@ -90,6 +92,69 @@ else
             echo "    [info] $f: easycrypt could not close the file (expected — uses admit)"
         }
     done
+fi
+
+echo
+
+# -----------------------------------------------------------------------------
+# dudect — constant-time analysis
+# -----------------------------------------------------------------------------
+#
+# The harness shape: a cgo shim (verify_ct.go, combine_ct.go) exposes
+# pulsarm.Verify / pulsarm.Combine to a small C dudect main loop
+# (dudect_verify.c, dudect_combine.c) linked against the upstream
+# single-header dudect.h.
+#
+# We never vendor dudect.h — ct/dudect/fetch.sh clones the pinned
+# upstream commit on demand. If the header has not been fetched, or
+# the C toolchain / Go cgo build cannot be invoked, the check skips
+# cleanly. This stays additive to the default CI gate.
+
+CT_HDR="$CT_ROOT/dudect/src/dudect.h"
+have_dudect=0
+[[ -f "$CT_HDR" ]] && have_dudect=1
+
+if [[ $have_dudect -eq 0 ]]; then
+    echo "==> dudect"
+    echo "    [skip] $CT_HDR not present"
+    echo "           fetch: $CT_ROOT/fetch.sh"
+    echo "           upstream: https://github.com/oreparaz/dudect"
+else
+    echo "==> dudect found ($CT_HDR — $(cd "$CT_ROOT/dudect" && git rev-parse --short HEAD))"
+    mkdir -p "$CT_ROOT/results"
+    # Compile both harnesses. If either fails (most likely the pulsarm
+    # package fails to build under cgo), record the build log under
+    # results/ and continue — the rest of the high-assurance track is
+    # still useful even when the cgo harness is mid-refactor.
+    BUILD_LOG="$CT_ROOT/results/build.log"
+    if ( cd "$CT_ROOT" && make -s all ) >"$BUILD_LOG" 2>&1; then
+        echo "    [check] dudect_verify (smoke: 10000 samples/batch × 4 batches)"
+        ( cd "$CT_ROOT" && ./dudect_verify ) \
+            >"$CT_ROOT/results/verify.stdout" 2>"$CT_ROOT/results/verify.log"
+        VERIFY_RC=$?
+        if [[ $VERIFY_RC -eq 0 ]]; then
+            echo "    [ok]  no leakage evidence at smoke budget"
+        elif [[ $VERIFY_RC -eq 2 ]]; then
+            echo "    [LEAK] dudect_verify reported leakage — see results/verify.log"
+        else
+            echo "    [warn] dudect_verify exited rc=$VERIFY_RC — see results/verify.log"
+        fi
+        echo "    [check] dudect_combine (smoke: 2000 samples/batch × 4 batches)"
+        ( cd "$CT_ROOT" && ./dudect_combine ) \
+            >"$CT_ROOT/results/combine.stdout" 2>"$CT_ROOT/results/combine.log"
+        COMBINE_RC=$?
+        if [[ $COMBINE_RC -eq 0 ]]; then
+            echo "    [ok]  no leakage evidence at smoke budget"
+        elif [[ $COMBINE_RC -eq 2 ]]; then
+            echo "    [LEAK] dudect_combine reported leakage — see results/combine.log"
+        else
+            echo "    [warn] dudect_combine exited rc=$COMBINE_RC — see results/combine.log"
+        fi
+    else
+        echo "    [info] harness build failed — see results/build.log"
+        echo "           this is expected when ref/go/pkg/pulsarm is mid-refactor"
+        echo "           and the cgo target cannot link the import graph"
+    fi
 fi
 
 echo

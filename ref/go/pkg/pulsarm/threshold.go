@@ -7,11 +7,18 @@ package pulsarm
 //
 // Protocol shape (v0.1 reconstruction-aggregator instantiation):
 //
+//   Round 0 (pre-protocol): every pair of parties in the quorum
+//     establishes an ephemeral session key via authenticated
+//     ML-KEM-768 key agreement (see identity.go, EstablishSession).
+//     The session key is the per-pair MAC key used in Round 1.
+//     This replaces the v0.1 deriveMACKey from public inputs
+//     (BLOCKERS.md CR-7).
+//
 //   Round 1 (party i): sample per-round mask r_i. Compute the masked
 //     share s'_i = share_i ⊕ r_i. Compute the commit
 //       D_i = cSHAKE256(s'_i || tau_1)
 //     where tau_1 = (sid, kappa, T, i, pk, mu). MAC D_i for every
-//     peer j ∈ T \ {i} under the long-lived MAC key K_{i,j} via
+//     peer j ∈ T \ {i} under the per-pair session key K_{i,j} via
 //     KMAC256. Broadcast (D_i, {MAC_{i,j}}).
 //
 //   Round 2 (party i): verify every received MAC; on success reveal
@@ -85,12 +92,13 @@ type ThresholdSigner struct {
 	// mldsa.SignTo would consume).
 	Message []byte
 
-	// MACKeys is the long-lived per-peer MAC key set. In v0.1 this
-	// is derived at session setup via cSHAKE256 over (myNodeID,
-	// peerNodeID, group-pubkey) — a non-secret value sufficient for
-	// the v0.1 commit-and-reveal binding. v0.2 (production) replaces
-	// this with per-session ephemeral keys exchanged at the
-	// preprocessing phase per pulsar-m.tex §6.2.
+	// MACKeys is the per-pair MAC key set for this session. Each key
+	// is an ephemeral session key established via authenticated
+	// ML-KEM-768 exchange between this party and its peer
+	// (see EstablishSession in identity.go). The legacy v0.1
+	// derivation from public inputs (NodeID pair + group public key)
+	// was forgeable by any network observer (BLOCKERS.md CR-7);
+	// session keys close that hole.
 	MACKeys map[NodeID][32]byte
 
 	// rng is the entropy source for per-round mask r_i.
@@ -112,9 +120,26 @@ type ThresholdSigner struct {
 // signer.NodeID. All parties in the quorum must share the same group
 // public key (i.e. they completed the same DKG).
 //
+// sessionKeys carries this party's per-peer ephemeral session key for
+// every other quorum member. Each session key must be the byte-equal
+// output of EstablishSession run between this party and the peer
+// (typically: caller drives Round 0 of identity.go's KEM exchange
+// before constructing the ThresholdSigner). The map MUST contain an
+// entry for every peer in quorum except myShare.NodeID itself;
+// missing entries return ErrSessionKeyMissing.
+//
 // rng may be nil — crypto/rand is used by default. Pass a
 // deterministic reader for KAT runs.
-func NewThresholdSigner(params *Params, sessionID [16]byte, attempt uint32, quorum []NodeID, myShare *KeyShare, message []byte, rng io.Reader) (*ThresholdSigner, error) {
+func NewThresholdSigner(
+	params *Params,
+	sessionID [16]byte,
+	attempt uint32,
+	quorum []NodeID,
+	myShare *KeyShare,
+	sessionKeys map[NodeID][32]byte,
+	message []byte,
+	rng io.Reader,
+) (*ThresholdSigner, error) {
 	if err := params.Validate(); err != nil {
 		return nil, err
 	}
@@ -141,13 +166,17 @@ func NewThresholdSigner(params *Params, sessionID [16]byte, attempt uint32, quor
 	if rng == nil {
 		rng = rand.Reader
 	}
-	// Derive per-peer MAC keys.
+	// Validate every peer has a session key.
 	macKeys := make(map[NodeID][32]byte, len(quorum)-1)
 	for _, peer := range quorum {
 		if peer == myShare.NodeID {
 			continue
 		}
-		macKeys[peer] = deriveMACKey(myShare.NodeID, peer, myShare.Pub)
+		key, ok := sessionKeys[peer]
+		if !ok {
+			return nil, ErrSessionKeyMissing
+		}
+		macKeys[peer] = key
 	}
 	return &ThresholdSigner{
 		Params:      params,
@@ -442,21 +471,6 @@ func transcriptTau1Bytes(sid [16]byte, attempt uint32, quorum []NodeID, sender N
 		out = append(out, encodeString(p)...)
 	}
 	return out
-}
-
-// deriveMACKey derives a symmetric MAC key between (a, b). Symmetric:
-// deriveMACKey(a, b, pk) == deriveMACKey(b, a, pk) for the same pk.
-func deriveMACKey(a, b NodeID, pk *PublicKey) [32]byte {
-	// Sort the pair so both ends derive the same key.
-	first, second := a, b
-	if nodeIDLess(b, a) {
-		first, second = b, a
-	}
-	parts := [][]byte{first[:], second[:]}
-	if pk != nil {
-		parts = append(parts, pk.Bytes)
-	}
-	return transcriptHash32("PULSAR-M-SIGN-MACKEY-V1", parts...)
 }
 
 // committeeRootFromShares reconstructs the DKG committee root from a
