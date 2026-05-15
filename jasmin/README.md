@@ -42,8 +42,8 @@ control- and memory-access path.
 
 This is the **initial** high-assurance scaffolding for the submission.
 Functional verification of the threshold layer in EasyCrypt is a
-multi-month effort and is not in scope for the 2026-11-16 submission
-deadline; what we commit at submission time is:
+in this repository
+release point; what we commit at submission time is:
 
 1. The libjade ML-DSA-65 single-party baseline as the verified core
    (vendored via `ml-dsa-65/fetch.sh`, not checked into this repository).
@@ -55,7 +55,7 @@ deadline; what we commit at submission time is:
    lemma is stated; the proof body is `admit`. Every `admit` is marked
    with a `TODO` comment.
 
-This is honest and standard for an MPTC initial submission — NIST
+This is honest and standard for an MPTC this repository — NIST
 reviewers see the high-assurance intent, the directory structure, the
 formal-method tooling wiring, and the libjade integration plan. The
 proof work tracks the submission process across rounds.

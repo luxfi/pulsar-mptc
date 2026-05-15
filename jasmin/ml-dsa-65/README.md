@@ -33,7 +33,7 @@ references `./libjade/src/crypto_sign/dilithium/dilithium3/amd64/` as
 the ML-DSA-65 (parameter set 3) single-party implementation.
 
 The pinned commit is updated only at submission-tag time so the
-2026-11-16 submission tarball reproduces deterministically.
+release tarball reproduces deterministically.
 
 ## What we use from libjade
 

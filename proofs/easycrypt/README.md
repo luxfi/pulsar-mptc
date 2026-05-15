@@ -25,7 +25,7 @@ reviewers see:
    Class N4 public-key preservation; constant-time of secret-dependent
    threshold-layer routines).
 
-Closing the `admit`s is a multi-month effort tracked across the MPTC
+Closing the `admit`s is a non-trivial effort tracked across the MPTC
 submission process. The shell exists so the proof surface is exposed
 and reviewable today.
 

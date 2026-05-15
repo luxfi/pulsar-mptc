@@ -21,7 +21,7 @@ chain stays auditable.
 | Round count | 2 rounds per signature |
 | Signature output | **Byte-identical** to single-party FIPS 204 ML-DSA-65 |
 | Repository | <https://github.com/luxfi/pulsar-mptc> |
-| Submission tag | `submission-2026-11-16` (cut from `main` at deadline) |
+| Submission tag | `submission-` (cut from `main` at deadline) |
 | Spec PDF | `spec/pulsar-m.pdf` (built via `scripts/build.sh`) |
 | License | Apache-2.0 (see `LICENSE`) |
 | Patent posture | See `SECURITY.md` — Lux Industries grants a royalty-free patent license on the submitted construction to any MPTC-class N1/N4 implementer |
@@ -69,7 +69,7 @@ A reviewer with limited time should read in this order:
 The reproducibility gate is `scripts/build.sh` from a fresh clone:
 
 ```bash
-git clone --branch submission-2026-11-16 https://github.com/luxfi/pulsar-mptc
+git clone --branch submission- https://github.com/luxfi/pulsar-mptc
 cd pulsar-mptc
 scripts/build.sh          # builds Go ref + spec PDF
 scripts/test.sh           # runs unit + KAT + interoperability tests
@@ -160,7 +160,7 @@ theories that machine-check both functional correctness and constant-
 time against the Barthe-Grégoire-Laporte leakage model.
 
 This is honest scaffolding, not a closed proof. What ships at the
-2026-11-16 submission tag:
+this repository tag:
 
 | Artifact | Status | Location |
 |---|---|---|
@@ -191,7 +191,7 @@ What this gives the NIST reviewer at submission time:
    that exits 0 on machines without `jasminc`/`easycrypt` and runs
    the tools when they are present.
 
-Closing the `admit`s + filling the `.jazz` bodies is multi-month work
+Closing the `admit`s + filling the `.jazz` bodies is non-trivial work
 tracked across MPTC submission rounds. The initial track exists so
 the high-assurance posture is reviewable today, not deferred to "the
 next submission".
@@ -239,5 +239,5 @@ kernels as parallel options selectable per-chain.
 
 The build, test, vector-generation, and benchmark scripts are
 deterministic from a 48-byte seed. A reviewer reproducing the
-submission tarball from `submission-2026-11-16` should obtain
+submission tarball from `submission-` should obtain
 byte-identical artifacts. Drift is a build bug; please open an issue.

@@ -27,7 +27,7 @@
 (*   5. The top-level `pulsar_m_n1_byte_equality` THEOREM REMAINS       *)
 (*      `admit`: closing it requires mechanizing Module-LWE rejection-  *)
 (*      sampling against libjade's MLDSA65_Functional theory, which is  *)
-(*      the upstream Formosa-Crypto work-in-progress (see               *)
+(*      the upstream Formosa-Crypto in this repository (see               *)
 (*      libjade/proof/crypto_sign/dilithium/dilithium3/amd64 -- empty   *)
 (*      placeholders at the time of writing).                           *)
 (*                                                                      *)

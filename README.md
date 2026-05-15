@@ -143,7 +143,7 @@ The reproducibility property is the load-bearing CI invariant.
 
 Target dates:
 - **2026-Jul-20** preview writeup (NIST third preview deadline)
-- **2026-Nov-16** package submission (NIST first call deadline; submission tag `submission-2026-11-16` cut from `main`)
+- **2026-Nov-16** package submission (NIST first call deadline; submission tag `submission-` cut from `main`)
 
 ## Relationship to upstream
 

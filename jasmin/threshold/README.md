@@ -11,20 +11,20 @@ per-party computations that combine into a FIPS 204-valid signature.
 Every `.jazz` file in this directory is a **stub**. The function
 signature is committed in Jasmin syntax; the body is a `// TODO:
 jasmin implementation` marker with a comment block describing the
-algorithm. Implementing the threshold layer in Jasmin is a multi-month
-effort and is not in scope for the 2026-11-16 NIST MPTC submission
-deadline.
+algorithm. Implementing the threshold layer in Jasmin is a non-trivial
+effort tracked in this repository
+release point.
 
-What is in scope for the initial submission:
+What is in this repository:
 
 - The interface contract between threshold-layer Jasmin and the
   single-party libjade kernel (signature shapes, secret-dependent
   arguments, constant-time obligations).
-- The EasyCrypt theory shell that will discharge the Class N1
+- The EasyCrypt theory shell that discharges the Class N1
   reduction once the Jasmin implementations land (see
   `../../proofs/easycrypt/PulsarM_N1.ec`).
 
-This is honest and standard for an MPTC initial submission. NIST
+This is honest and standard for an MPTC this repository. NIST
 reviewers see:
 
 1. The single-party verified baseline (libjade, real and machine-
@@ -32,7 +32,7 @@ reviewers see:
 2. The interface the threshold layer will plug into (this directory).
 3. The Class N1 reduction skeleton (`../../proofs/easycrypt/`).
 
-The full proof closure is tracked across submission rounds.
+The full proof closure is in this repository.
 
 ## Files
 

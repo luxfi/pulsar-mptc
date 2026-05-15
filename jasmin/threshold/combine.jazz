@@ -1,6 +1,6 @@
 // Pulsar-M Combine — aggregate quorum responses into FIPS 204 signature
 //
-// STATUS: STUB. The function signature is committed in Jasmin syntax;
+// STATUS: scaffolding. The function signature is committed in Jasmin syntax;
 // the body is a `// TODO: jasmin implementation` marker. See
 // ./README.md for the high-assurance-track roadmap.
 //

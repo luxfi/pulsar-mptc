@@ -145,7 +145,7 @@ exits 0 either way:
 
 ## Submission run
 
-NIST evaluates constant-time at the submission deadline. The
+NIST evaluates constant-time at the release point. The
 submission-grade run requires:
 - ~10^9 samples (configure via `DUDECT_SAMPLES` × `DUDECT_MAX_BATCHES`)
 - Quiet machine: no background processes, perf governor pinned
@@ -153,7 +153,7 @@ submission-grade run requires:
   inside the harness on macOS)
 
 Pin the results to `ct/dudect/results/{verify,combine}-submission.log`
-on the `submission-2026-11-16` tag.
+on the `submission-` tag.
 
 Pass criterion: no t-test statistic above 4.5σ (dudect calls this
 `t_threshold_moderate=10` by default — we apply the stricter NIST 4.5σ
