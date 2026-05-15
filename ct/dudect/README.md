@@ -6,19 +6,19 @@ random) and applies a Welch's t-test to the timing distributions. If
 the test detects a statistically significant timing difference, the
 target leaks information through wall-clock time.
 
-This directory holds the Pulsar-M dudect harness. We measure two
+This directory holds the Pulsar dudect harness. We measure two
 operations:
 
-1. **`pulsarm.Verify`** — the load-bearing entry point. Must be
+1. **`pulsar.Verify`** — the load-bearing entry point. Must be
    constant-time in the public key, message, and signature bytes.
-2. **`pulsarm.Combine`** — the threshold aggregator. Must be
+2. **`pulsar.Combine`** — the threshold aggregator. Must be
    constant-time in the per-party signature shares.
 
-`pulsarm.Sign` is intentionally NOT constant-time per FIPS 204 §3.3 —
+`pulsar.Sign` is intentionally NOT constant-time per FIPS 204 §3.3 —
 the rejection-sampling loop has secret-dependent retry count. This is
-a property of ML-DSA itself, not Pulsar-M. Production deployments that
+a property of ML-DSA itself, not Pulsar. Production deployments that
 need constant-time Sign use the FIPS 204 "ext-ml-dsa-65-cs" context-
-supplied variant (open question for MPTC); Pulsar-M inherits whatever
+supplied variant (open question for MPTC); Pulsar inherits whatever
 Sign property the underlying FIPS 204 implementation gives.
 
 ## Status
@@ -27,8 +27,8 @@ Harness layout: **wired**.
 
 | File | Status |
 |---|---|
-| `verify_ct.go` | cgo bridge exposing `pulsarm.Verify` |
-| `combine_ct.go` | cgo bridge exposing `pulsarm.Combine` |
+| `verify_ct.go` | cgo bridge exposing `pulsar.Verify` |
+| `combine_ct.go` | cgo bridge exposing `pulsar.Combine` |
 | `dudect_verify.c` | dudect main loop driving Verify |
 | `dudect_combine.c` | dudect main loop driving Combine |
 | `dudect_compat.h` | AArch64 shim for `_mm_mfence` / `__rdtsc` |
@@ -56,20 +56,20 @@ target is constant time. We achieve this with a thin cgo bridge:
 
 ```
 +-------------------+        +-----------------------+        +----------+
-|  dudect_verify.c  |  --->  |  libpulsarm_verify.*  |  --->  |  pulsarm |
+|  dudect_verify.c  |  --->  |  libpulsarm_verify.*  |  --->  |  pulsar |
 |  (C main loop)    |  cgo   |  (verify_ct.go bridge)|  Go    |  .Verify |
 +-------------------+        +-----------------------+        +----------+
 ```
 
 The bridge holds a fixture (pk + valid signature on a fixed message)
 built once at startup. `pulsarm_verify_ct(data)` copies `data` into a
-fresh `*Signature` and calls `pulsarm.Verify(params, pk, msg, sig)`
+fresh `*Signature` and calls `pulsar.Verify(params, pk, msg, sig)`
 — the result is discarded; dudect measures cycles around the call.
 
 For Combine the bridge runs a real (n=3, t=2, ModeP65) DKG +
 threshold-sign once at startup, then on each sample overwrites one
 party's Round-2 PartialSig bytes with the caller's bytes before
-invoking `pulsarm.Combine`.
+invoking `pulsar.Combine`.
 
 ### AArch64 compatibility
 
@@ -140,7 +140,7 @@ exits 0 either way:
 - harness builds but reports no leakage → `[ok]`
 - harness reports leakage → `[LEAK]` (results pinned for review)
 - harness build fails → `[info]` (mid-refactor, expected during
-  ongoing development; the pulsarm package may not compile under
+  ongoing development; the pulsar package may not compile under
   cgo at every commit)
 
 ## Submission run

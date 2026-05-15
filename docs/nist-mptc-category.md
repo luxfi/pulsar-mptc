@@ -4,7 +4,7 @@
 > (January 2026). Package deadline expected 2026-Nov-16. Preview deadline
 > 2026-Jul-20.
 
-## Pulsar-M target: **Class N1 + N4**
+## Pulsar target: **Class N1 + N4**
 
 NIST MPTC subdivides threshold schemes into:
 
@@ -19,16 +19,16 @@ NIST MPTC subdivides threshold schemes into:
   - **N3**: KEM
   - **N4**: ML keygen / DKG (Module-Lattice key generation, distributed)
 
-Pulsar-M aims for **N1 (threshold ML-DSA signing) + N4 (distributed ML-DSA
+Pulsar aims for **N1 (threshold ML-DSA signing) + N4 (distributed ML-DSA
 keygen)**. The headline interchangeability claim:
 
-> A signature `σ` produced by a Pulsar-M threshold ceremony on message `μ`
+> A signature `σ` produced by a Pulsar threshold ceremony on message `μ`
 > against group public key `pk` verifies under unmodified
 > [FIPS 204 ML-DSA.Verify(pk, μ, σ)] returning `accept`.
 
-If we can prove and demonstrate this, Pulsar-M is a Class N candidate. If
+If we can prove and demonstrate this, Pulsar is a Class N candidate. If
 the output is not bit-for-bit FIPS 204 (e.g. encoding differs in any
-field), Pulsar-M falls back to Class S — still valid, but a weaker NIST
+field), Pulsar falls back to Class S — still valid, but a weaker NIST
 positioning.
 
 ## Output interchangeability — what has to hold
@@ -57,7 +57,7 @@ components decompose exactly as:
   total: 48 + 3200 + 61 = 3309 bytes                           ✓ FIPS 204 Table 2
 ```
 
-For Pulsar-M to claim Class N1, the threshold-aggregated signature MUST
+For Pulsar to claim Class N1, the threshold-aggregated signature MUST
 deserialize as exactly this triple, with the same byte layout, the same
 canonicalization rules, and the same rejection criteria. The threshold
 protocol is allowed to perform multiple rounds internally, but its emitted
@@ -65,7 +65,7 @@ artifact MUST be a single FIPS 204 σ.
 
 This is non-trivial: ML-DSA's rejection sampling means a single-shot
 threshold output can fail rejection and require restart. Pulsar's
-2-round structure handles this for R-LWE; Pulsar-M needs to reproduce
+2-round structure handles this for R-LWE; Pulsar needs to reproduce
 the rejection-restart logic for M-LWE without leaking secret information
 across the restart.
 
@@ -75,13 +75,13 @@ Per NIST IR 8214C §5:
 
 | element | format | location |
 |---|---|---|
-| Technical Specification | PDF (LaTeX) | `spec/pulsar-m.pdf` |
+| Technical Specification | PDF (LaTeX) | `spec/pulsar.pdf` |
 | Reference Implementation | open-source code | `ref/go/` |
 | Report on Experimental Evaluation | PDF + reproducible scripts | `bench/results/REPORT.md` + `bench/run_all.sh` |
 | Notes on Patent Claims | PDF | `docs/patent-notes-draft.md` → finalized |
 | Concrete parameter set | section in spec | `spec/parameters.tex` |
 | Security analysis (proofs) | section in spec | `spec/security-games.tex` |
-| Public repository | GitHub or equiv | `https://github.com/luxfi/pulsar-m` |
+| Public repository | GitHub or equiv | `https://github.com/luxfi/pulsar` |
 | Build/test/benchmark scripts | shell | `scripts/*.sh` |
 | Open-source license | text | `LICENSE` (Apache-2.0) |
 | I/O test vectors | JSON / RSP | `vectors/kat-v1.{json,rsp}` |
@@ -101,13 +101,13 @@ NIST MPTC §4.5 gives the required and suggested security-strength targets:
 | **required** (≥1 parameterization) | ≥ 128 bits | ≥ Category 1 | ≥ 40 bits |
 | **suggested** (additional, optional) | ≥ 192 bits | ≥ Category 3 | ≥ 64 bits |
 
-Pulsar-M will ship parameter sets matching ML-DSA-65 (Category 3) for the
+Pulsar will ship parameter sets matching ML-DSA-65 (Category 3) for the
 suggested target, and potentially ML-DSA-44 (Category 2) and ML-DSA-87
 (Category 5) for full coverage.
 
 ## Class N vs Class S decision
 
-Pulsar-M is N if and only if:
+Pulsar is N if and only if:
 1. A working reference implementation produces signatures byte-equal to
    FIPS 204 ML-DSA on the same `(pk, μ)` for some valid threshold ceremony.
 2. The threshold key generation produces a `pk` that's a valid FIPS 204

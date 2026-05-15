@@ -1,19 +1,19 @@
 // Copyright (C) 2025-2026, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package pulsarm
+package pulsar
 
 // verify.go — the canonical consensus-consumer entry point.
 //
 // This file is the Class N1 manifesto in code: Verify literally
 // dispatches to mldsa{44,65,87}.Verify from cloudflare/circl, which
-// is the FIPS 204 §6.3 verifier verbatim. No Pulsar-M-specific
+// is the FIPS 204 §6.3 verifier verbatim. No Pulsar-specific
 // logic; no threshold-specific extension fields; no envelope. A
 // signature produced by ThresholdSign (threshold.go) flows through
 // the SAME Verify code path as a single-party Sign output.
 //
-// Per pulsar-m.tex §4.3 and docs/nist-mptc-category.md, this is the
-// load-bearing property of the entire Pulsar-M family: anything that
+// Per pulsar.tex §4.3 and docs/nist-mptc-category.md, this is the
+// load-bearing property of the entire Pulsar family: anything that
 // changes Verify breaks Class N1 output interchangeability.
 
 import (
@@ -25,31 +25,31 @@ import (
 )
 
 // Verification errors. Returning a typed error rather than a panic
-// is mandated by pulsar-m.tex §6.1 (DD-007: no panic in the verify
+// is mandated by pulsar.tex §6.1 (DD-007: no panic in the verify
 // path) and CONTRIBUTING.md.
 var (
 	// ErrInvalidSignature is returned when the signature does not
 	// verify under FIPS 204 ML-DSA.Verify(pk, message, signature).
-	ErrInvalidSignature = errors.New("pulsarm: signature verification failed")
+	ErrInvalidSignature = errors.New("pulsar: signature verification failed")
 
 	// ErrSignatureWrongSize is returned when the signature byte
 	// length does not match the expected FIPS 204 signature size for
 	// the params.Mode.
-	ErrSignatureWrongSize = errors.New("pulsarm: signature wrong size")
+	ErrSignatureWrongSize = errors.New("pulsar: signature wrong size")
 
 	// ErrPublicKeyWrongSize is returned when the public-key byte
 	// length does not match the expected FIPS 204 public-key size.
-	ErrPublicKeyWrongSize = errors.New("pulsarm: public-key wrong size")
+	ErrPublicKeyWrongSize = errors.New("pulsar: public-key wrong size")
 
 	// ErrNilSignature is returned when sig is nil.
-	ErrNilSignature = errors.New("pulsarm: nil signature")
+	ErrNilSignature = errors.New("pulsar: nil signature")
 
 	// ErrNilPublicKey is returned when groupPubkey is nil.
-	ErrNilPublicKey = errors.New("pulsarm: nil public key")
+	ErrNilPublicKey = errors.New("pulsar: nil public key")
 )
 
 // Verify is the canonical consensus-consumer entry point for
-// Pulsar-M signature verification.
+// Pulsar signature verification.
 //
 // Returns nil if the signature is valid under FIPS 204 ML-DSA.Verify;
 // a typed error otherwise. Never panics: caller code in the consensus
@@ -65,7 +65,7 @@ var (
 // Class N1 manifesto: this function MUST remain a thin dispatch over
 // the FIPS 204 verifier. Adding logic here breaks output
 // interchangeability with single-party FIPS 204 — the whole point
-// of the Pulsar-M.M variant.
+// of the Pulsar.M variant.
 func Verify(params *Params, groupPubkey *PublicKey, message []byte, sig *Signature) error {
 	return VerifyCtx(params, groupPubkey, message, nil, sig)
 }

@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package pulsarm
+package pulsar
 
 // threshold.go — two-round threshold signing.
 //
@@ -32,7 +32,7 @@ package pulsarm
 //     FIPS 204 mldsa.SignTo. Returns the resulting signature.
 //
 // The 2-round commit-and-reveal pattern with MACs is the structural
-// pulsar-m.tex §4.2 form. The reconstruction-aggregator path collapses
+// pulsar.tex §4.2 form. The reconstruction-aggregator path collapses
 // the Lagrange-linearity-of-z computation of §4.2 into a single FIPS
 // 204 Sign call after share Lagrange reconstruction. This trade is
 // documented in BLOCKERS.md; the v0.2 path implements
@@ -47,15 +47,15 @@ import (
 
 // Errors returned by threshold signing.
 var (
-	ErrNilSession       = errors.New("pulsarm: nil ThresholdSigner")
-	ErrEmptyQuorum      = errors.New("pulsarm: empty signing quorum")
-	ErrInsufficientQuor = errors.New("pulsarm: quorum smaller than threshold")
-	ErrRound1MACBad     = errors.New("pulsarm: Round-1 MAC verification failed")
-	ErrRound2CommitBad  = errors.New("pulsarm: Round-2 reveal does not match Round-1 commit")
-	ErrSessionMismatch  = errors.New("pulsarm: round messages from different sessions")
-	ErrAttemptMismatch  = errors.New("pulsarm: round messages from different rejection-restart attempts")
-	ErrNotInQuorum      = errors.New("pulsarm: party not in quorum")
-	ErrPubkeyMismatch   = errors.New("pulsarm: KeyShare public-key does not match")
+	ErrNilSession       = errors.New("pulsar: nil ThresholdSigner")
+	ErrEmptyQuorum      = errors.New("pulsar: empty signing quorum")
+	ErrInsufficientQuor = errors.New("pulsar: quorum smaller than threshold")
+	ErrRound1MACBad     = errors.New("pulsar: Round-1 MAC verification failed")
+	ErrRound2CommitBad  = errors.New("pulsar: Round-2 reveal does not match Round-1 commit")
+	ErrSessionMismatch  = errors.New("pulsar: round messages from different sessions")
+	ErrAttemptMismatch  = errors.New("pulsar: round messages from different rejection-restart attempts")
+	ErrNotInQuorum      = errors.New("pulsar: party not in quorum")
+	ErrPubkeyMismatch   = errors.New("pulsar: KeyShare public-key does not match")
 )
 
 // ThresholdSigner holds one party's state for a 2-round threshold
@@ -64,7 +64,7 @@ var (
 // A ThresholdSigner is single-use: one (sid, attempt) pair per
 // instance. The protocol-layer driver allocates a fresh signer for
 // each rejection-restart attempt (the FIPS 204 restart counter is
-// the Attempt field; see pulsar-m.tex §6.2 for the cross-restart
+// the Attempt field; see pulsar.tex §6.2 for the cross-restart
 // state discipline).
 type ThresholdSigner struct {
 	Params    *Params
@@ -488,7 +488,7 @@ func committeeRootFromShares(shares []*KeyShare) [32]byte {
 		}
 	}
 	parts := make([][]byte, 0, len(ids)+1)
-	parts = append(parts, []byte("PULSAR-M-COMMITTEE-V1"))
+	parts = append(parts, []byte("PULSAR-COMMITTEE-V1"))
 	for _, id := range ids {
 		parts = append(parts, id[:])
 	}

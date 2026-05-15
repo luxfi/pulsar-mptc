@@ -1,6 +1,6 @@
-# Pulsar-M threshold layer — Jasmin sources
+# Pulsar threshold layer — Jasmin sources
 
-This directory holds the Jasmin sources for Pulsar-M's **threshold
+This directory holds the Jasmin sources for Pulsar's **threshold
 layer**. The single-party ML-DSA-65 kernel is provided by the libjade
 sources in `../ml-dsa-65/libjade/` (fetched on demand, see
 `../ml-dsa-65/README.md`); the threshold layer here implements the
@@ -38,9 +38,9 @@ The full proof closure is in this repository.
 
 | File | Algorithm | Mirrors Go reference |
 |---|---|---|
-| `round1.jazz` | Round-1 commit message | `ref/go/pkg/pulsarm/threshold.go` `ThresholdSigner.Round1` |
-| `round2.jazz` | Round-2 response (post-aggregation) | `ref/go/pkg/pulsarm/threshold.go` `ThresholdSigner.Round2` |
-| `combine.jazz` | Aggregate quorum responses into FIPS 204 signature | `ref/go/pkg/pulsarm/threshold.go` `Combine` |
+| `round1.jazz` | Round-1 commit message | `ref/go/pkg/pulsar/threshold.go` `ThresholdSigner.Round1` |
+| `round2.jazz` | Round-2 response (post-aggregation) | `ref/go/pkg/pulsar/threshold.go` `ThresholdSigner.Round2` |
+| `combine.jazz` | Aggregate quorum responses into FIPS 204 signature | `ref/go/pkg/pulsar/threshold.go` `Combine` |
 
 ## Constant-time obligations
 

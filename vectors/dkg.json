@@ -1,6 +1,6 @@
 [
   {
-    "mode": "Pulsar-M-65",
+    "mode": "Pulsar-65",
     "n": 3,
     "t": 2,
     "committee": [
@@ -17,7 +17,7 @@
     ]
   },
   {
-    "mode": "Pulsar-M-65",
+    "mode": "Pulsar-65",
     "n": 5,
     "t": 3,
     "committee": [
@@ -38,7 +38,7 @@
     ]
   },
   {
-    "mode": "Pulsar-M-65",
+    "mode": "Pulsar-65",
     "n": 7,
     "t": 4,
     "committee": [

@@ -16,7 +16,7 @@ points here for the variant table.
 | variant   | repo                              | lattice basis | hash family (canonical)        | FIPS 204 verifier interchange? | NIST MPTC class | status                        |
 |-----------|-----------------------------------|---------------|--------------------------------|--------------------------------|-----------------|-------------------------------|
 | **Pulsar.R**  | `github.com/luxfi/pulsar`     | Ring-LWE (`R_q`)        | SHA-3 / cSHAKE256 (SP 800-185) | no — special threshold-friendly primitive    | Class S1 + S4 | shipping, hardened, MPTC-ready |
-| **Pulsar.M**  | `github.com/luxfi/pulsar-m`   | Module-LWE (`R_q^k`)    | SHA-3 / cSHAKE256 (SP 800-185) | yes — output is a single FIPS 204 ML-DSA σ   | Class N1 + N4 | bootstrap repo, spec in flight |
+| **Pulsar.M**  | `github.com/luxfi/pulsar`   | Module-LWE (`R_q^k`)    | SHA-3 / cSHAKE256 (SP 800-185) | yes — output is a single FIPS 204 ML-DSA σ   | Class N1 + N4 | bootstrap repo, spec in flight |
 | Pulsar.W (reserved)        | TBD                | TBD           | TBD                            | TBD                            | TBD             | reserved for future lattice variant |
 
 All variants share:
@@ -76,11 +76,11 @@ in either Class N or Class S. Submitting two as a coordinated **family**:
 | 2-round protocol description      | shared spec  | parameterised for `R_q`            | parameterised for `R_q^k`           |
 | Pedersen DKG (proper hiding)      | shared spec  | params for `R_q`                   | params for `R_q^k`                  |
 | Proactive resharing (beacon-rand) | shared spec  | params for `R_q`                   | params for `R_q^k`                  |
-| Reference Go impl                 | shared testkit | full primitive in `pulsar/`     | full primitive in `pulsar-m/`       |
+| Reference Go impl                 | shared testkit | full primitive in `pulsar/`     | full primitive in `pulsar/`       |
 | KATs                              | shared format | `vectors/` per repo               | `vectors/` per repo                 |
 | Lattice estimator                 | shared script | parameter file per variant         | parameter file per variant          |
 | Patent claims                     | shared review | repo-local `patent-notes.md`      | repo-local `patent-notes.md`        |
-| MPTC technical specification PDF  | NO           | `pulsar/spec/pulsar-r.pdf`         | `pulsar-m/spec/pulsar-m.pdf`        |
+| MPTC technical specification PDF  | NO           | `pulsar/spec/pulsar-r.pdf`         | `pulsar/spec/pulsar.pdf`        |
 | MPTC submission package           | NO — separate Class S vs Class N | one per variant                   | one per variant                     |
 
 Two separate MPTC packages, one shared technical foundation. The shared
@@ -94,7 +94,7 @@ algorithms in Round 3.
 - A specific variant is **Pulsar.X** where X is one uppercase letter
   identifying the lattice basis: `Pulsar.R` (Ring-LWE), `Pulsar.M`
   (Module-LWE). The dot is part of the name in prose; in identifiers
-  the canonical machine form is `pulsar-r`, `pulsar-m` (lowercase,
+  the canonical machine form is `pulsar-r`, `pulsar` (lowercase,
   hyphen).
 - Variants do **not** carry the lattice basis in the umbrella name.
   Calling Pulsar.R "Corona-Pulsar" or "RPulsar" is wrong. Corona
@@ -117,7 +117,7 @@ algorithms in Round 3.
 │   ├── reshare/           ← proactive resharing
 │   ├── hash/              ← Pulsar-SHA3 + Pulsar-BLAKE3 (legacy)
 │   └── ...
-├── pulsar-m/              ← Pulsar.M (M-LWE, FIPS 204-compatible)
+├── pulsar/              ← Pulsar.M (M-LWE, FIPS 204-compatible)
 │   ├── ref/go/
 │   ├── spec/              ← own MPTC technical spec PDF
 │   ├── docs/              ← family-architecture.md = THIS file
@@ -148,7 +148,7 @@ Per CTO Decision 4 (recorded in this branch's HIP-0077 process notes):
 > requirement.
 
 Single Git tag, simultaneous cut: `mptc-preview-2026` on `pulsar` and
-`pulsar-m` at the same SHA discipline. Both submissions reference frozen
+`pulsar` at the same SHA discipline. Both submissions reference frozen
 artifacts. Drift between the two repos after the tag is only allowed
 via amendments NIST permits in the public-analysis window.
 
@@ -158,7 +158,7 @@ via amendments NIST permits in the public-analysis window.
 - [x] Pulsar.R hardening: F8 (no log of secret state), F9 (constant-time reshare), F12 (LIGHT_MNEMONIC guard)
 - [ ] Pulsar.R MPTC spec doc finalised (`pulsar/spec/pulsar-r.pdf` to be added)
 - [ ] Pulsar.R `mptc-preview-2026` tag
-- [x] Pulsar.M repo bootstrap (`pulsar-m/`)
+- [x] Pulsar.M repo bootstrap (`pulsar/`)
 - [ ] Pulsar.M Module-LWE algorithm body in spec (in flight via scientist agent)
 - [ ] Pulsar.M reference implementation
 - [ ] Pulsar.M FIPS 204 cross-validation (output interchangeability proof)

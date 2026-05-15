@@ -4,13 +4,13 @@ Each entry: decision, rationale, alternatives, status, date.
 
 ## DD-001 Target FIPS 204 output interchangeability (Class N)
 
-**Decision.** Pulsar-M aims for Class N1 + N4 (NIST MPTC IR 8214C):
+**Decision.** Pulsar aims for Class N1 + N4 (NIST MPTC IR 8214C):
 threshold-produced signatures verify under unmodified FIPS 204
 ML-DSA.Verify.
 
 **Rationale.** Output interchangeability gives the strongest NIST
 positioning. FIPS-validated ML-DSA modules in 2026 (BoringSSL FIPS,
-AWS-LC, OpenSSL 3.0) consume Pulsar-M certs without code changes. This
+AWS-LC, OpenSSL 3.0) consume Pulsar certs without code changes. This
 is the headline pitch for MPTC.
 
 **Alternative.** Class S (special threshold-friendly primitive). Easier
@@ -22,7 +22,7 @@ demonstrates byte-equal output on at least one parameter set.
 
 ## DD-002 Hash family: SHA-3 (cSHAKE256 / KMAC256 / TupleHash256) only
 
-**Decision.** Pulsar-M's NIST profile uses exclusively the FIPS 202 + SP
+**Decision.** Pulsar's NIST profile uses exclusively the FIPS 202 + SP
 800-185 hash family. No BLAKE3.
 
 **Rationale.** NIST MPTC §4.6 lists allowed symmetric primitives for
@@ -37,14 +37,14 @@ hash-family soundness arguments).
 
 **Alternative considered.** Dual-suite with BLAKE3 as the production
 profile and SHA-3 as the NIST profile, like Pulsar's current dual-suite.
-Rejected because Pulsar-M is NIST-track and shouldn't ship a non-NIST
+Rejected because Pulsar is NIST-track and shouldn't ship a non-NIST
 default.
 
 **Status.** Final.
 
 ## DD-003 Lattice: Module-LWE per FIPS 204, not Ring-LWE
 
-**Decision.** Pulsar-M operates over `R_q^k` (module of polynomials)
+**Decision.** Pulsar operates over `R_q^k` (module of polynomials)
 with the same `(q, k, ℓ, η, β, ω, ...)` parameter set as ML-DSA-65.
 Not `R_q` (single polynomial) as Pulsar / Corona use.
 
@@ -96,7 +96,7 @@ smallest-ID).
 
 **Rationale.** Deterministic quorum selection (Pulsar's current
 `reshare.go:206-209`) lets a mobile adversary game the corrupt-set
-positioning. HIP-0077 red review F10 flagged this. Pulsar-M's reshare
+positioning. HIP-0077 red review F10 flagged this. Pulsar's reshare
 selects via the chain's randomness beacon at the reshare epoch boundary.
 
 **Alternative.** Deterministic quorum, accept the leakage as a documented

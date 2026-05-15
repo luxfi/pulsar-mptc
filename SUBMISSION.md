@@ -1,6 +1,6 @@
-# NIST MPTC Submission — Pulsar-M
+# NIST MPTC Submission — Pulsar
 
-This document is the cover sheet for the Pulsar-M submission to the
+This document is the cover sheet for the Pulsar submission to the
 NIST Multi-Party Threshold Cryptography (MPTC) project. It is written
 for NIST reviewers and points at every artifact a reviewer needs.
 
@@ -13,7 +13,7 @@ chain stays auditable.
 
 | Field | Value |
 |---|---|
-| Submission name | **Pulsar-M** |
+| Submission name | **Pulsar** |
 | Submitting organisation | Lux Industries, Inc. |
 | Algorithm | Threshold ML-DSA-65 (Module-LWE, FIPS 204-aligned) |
 | Target NIST MPTC classes | **N1** (single-party-compatible threshold signing) + **N4** (multi-party key generation with public-key preservation across resharing) |
@@ -22,19 +22,19 @@ chain stays auditable.
 | Signature output | **Byte-identical** to single-party FIPS 204 ML-DSA-65 |
 | Repository | <https://github.com/luxfi/pulsar-mptc> |
 | Submission tag | `submission-` (cut from `main` at deadline) |
-| Spec PDF | `spec/pulsar-m.pdf` (built via `scripts/build.sh`) |
+| Spec PDF | `spec/pulsar.pdf` (built via `scripts/build.sh`) |
 | License | Apache-2.0 (see `LICENSE`) |
 | Patent posture | See `SECURITY.md` — Lux Industries grants a royalty-free patent license on the submitted construction to any MPTC-class N1/N4 implementer |
 
 ## Headline claim
 
-> Every signature produced by a Pulsar-M threshold ceremony
+> Every signature produced by a Pulsar threshold ceremony
 > (DKG → Round-1 → Round-2 → Combine) is **bit-identical** to a signature
 > produced by single-party FIPS 204 ML-DSA-65 on the same message and
 > group public key.
 
 This is the **Class N1** claim. A FIPS-validated ML-DSA verifier
-(BoringSSL FIPS, AWS-LC, OpenSSL 3.0 PQ provider) accepts a Pulsar-M
+(BoringSSL FIPS, AWS-LC, OpenSSL 3.0 PQ provider) accepts a Pulsar
 signature without modification.
 
 Cross-validation evidence: every KAT vector in `vectors/kat-v1.json` is
@@ -51,7 +51,7 @@ verified by three independent ML-DSA implementations
 A reviewer with limited time should read in this order:
 
 1. **`SUBMISSION.md`** (this file) — submission metadata and headline
-2. **`spec/pulsar-m.pdf`** — full algorithm specification
+2. **`spec/pulsar.pdf`** — full algorithm specification
    - §1 Introduction + §2 System model
    - §3 Parameters (ML-DSA-44 / 65 / 87)
    - §4 Protocol (DKG, Round-1, Round-2, Combine, Reshare)
@@ -90,17 +90,17 @@ pulsar-mptc/
 ├── LICENSE                  # Apache-2.0
 ├── SECURITY.md              # threat model + responsible disclosure
 ├── CONTRIBUTING.md          # external-contribution policy (post-submission)
-├── go.mod                   # module path: github.com/luxfi/pulsar-m
+├── go.mod                   # module path: github.com/luxfi/pulsar
 ├── spec/                    # LaTeX specification source
-│   ├── pulsar-m.tex         # main spec document
+│   ├── pulsar.tex         # main spec document
 │   ├── parameters.tex       # ML-DSA-44/65/87 parameter sets
 │   ├── system-model.tex     # threshold network / adversary model
 │   ├── security-games.tex   # EUF-CMA + identifiable-abort games
 │   ├── references.bib       # bibliography
-│   └── pulsar-m.pdf         # built PDF (committed for reviewer convenience)
+│   └── pulsar.pdf         # built PDF (committed for reviewer convenience)
 ├── ref/go/                  # reference implementation (Go)
 │   ├── cmd/genkat/          # KAT vector generator
-│   └── pkg/pulsarm/         # core library
+│   └── pkg/pulsar/         # core library
 ├── vectors/                 # KAT test vectors
 │   ├── README.md
 │   ├── dkg.json             # DKG transcripts
@@ -118,10 +118,10 @@ pulsar-mptc/
 ├── estimator/               # security-parameter estimator
 ├── jasmin/                  # high-assurance Jasmin sources (initial track)
 │   ├── ml-dsa-65/           #   libjade single-party baseline (fetched on demand)
-│   └── threshold/           #   Pulsar-M threshold layer (stubs)
+│   └── threshold/           #   Pulsar threshold layer (stubs)
 ├── proofs/easycrypt/        # high-assurance EasyCrypt theories (theory shells)
-│   ├── PulsarM_N1.ec        #   Class N1 byte-equality reduction
-│   ├── PulsarM_N4.ec        #   Class N4 public-key preservation
+│   ├── Pulsar_N1.ec        #   Class N1 byte-equality reduction
+│   ├── Pulsar_N4.ec        #   Class N4 public-key preservation
 │   └── lemmas/PulsarM_CT.ec #   constant-time obligations
 ├── scripts/                 # build / test / bench / gen_vectors / SBOM / check-high-assurance
 └── docs/                    # design notes + decision-record archive
@@ -133,7 +133,7 @@ The N1 claim is asserted at four levels of evidence:
 
 | Evidence | Where |
 |---|---|
-| Algorithmic argument | `spec/pulsar-m.tex` §6, Theorem 6.1 |
+| Algorithmic argument | `spec/pulsar.tex` §6, Theorem 6.1 |
 | Symbolic / Lean proof | `proofs/lean/Crypto/Pulsar_M/OutputInterchange.lean` (out-of-repo, separate audit artifact) |
 | Test harness | `test/interoperability/` runs every KAT through 3 independent verifiers |
 | Cross-implementation KATs | `vectors/sign.json` shares vectors with FIPS 204 reference |
@@ -146,13 +146,13 @@ identity persists while the secret-share custodians rotate.
 
 | Evidence | Where |
 |---|---|
-| Algorithmic argument | `spec/pulsar-m.tex` §4.5 (Reshare protocol) |
+| Algorithmic argument | `spec/pulsar.tex` §4.5 (Reshare protocol) |
 | Symbolic / Lean proof | `proofs/lean/Crypto/Pulsar_M/Shamir.lean` (Shamir + ring extension) |
 | Test harness | `vectors/transcripts/n*-t*-reshare.jsonl` carry pre/post-reshare public keys + verify both verify under unmodified ML-DSA |
 
 ## High-assurance track (Jasmin + EasyCrypt)
 
-Pulsar-M ships with an **initial** Jasmin + EasyCrypt high-assurance
+Pulsar ships with an **initial** Jasmin + EasyCrypt high-assurance
 track. The intent is to land on the same formal-method footing libjade
 gives the single-party ML-DSA implementation: Jasmin sources whose
 verified compiler produces bit-identical assembly, and EasyCrypt
@@ -165,11 +165,11 @@ this repository tag:
 | Artifact | Status | Location |
 |---|---|---|
 | libjade ML-DSA-65 single-party baseline (Jasmin + EasyCrypt) | Verified upstream; fetched on demand | `jasmin/ml-dsa-65/fetch.sh` |
-| Pulsar-M Round-1 commit (Jasmin) | **Stub** — signature committed, body is `// TODO` | `jasmin/threshold/round1.jazz` |
-| Pulsar-M Round-2 response (Jasmin) | **Stub** — signature committed, body is `// TODO` | `jasmin/threshold/round2.jazz` |
-| Pulsar-M Combine (Jasmin) | **Stub** — signature committed, body is `// TODO` | `jasmin/threshold/combine.jazz` |
-| Class N1 byte-equality (EasyCrypt) | **Theory shell** — lemma stated, proof body `admit` | `proofs/easycrypt/PulsarM_N1.ec` |
-| Class N4 public-key preservation (EasyCrypt) | **Theory shell** — lemma stated, proof body `admit` | `proofs/easycrypt/PulsarM_N4.ec` |
+| Pulsar Round-1 commit (Jasmin) | **Stub** — signature committed, body is `// TODO` | `jasmin/threshold/round1.jazz` |
+| Pulsar Round-2 response (Jasmin) | **Stub** — signature committed, body is `// TODO` | `jasmin/threshold/round2.jazz` |
+| Pulsar Combine (Jasmin) | **Stub** — signature committed, body is `// TODO` | `jasmin/threshold/combine.jazz` |
+| Class N1 byte-equality (EasyCrypt) | **Theory shell** — lemma stated, proof body `admit` | `proofs/easycrypt/Pulsar_N1.ec` |
+| Class N4 public-key preservation (EasyCrypt) | **Theory shell** — lemma stated, proof body `admit` | `proofs/easycrypt/Pulsar_N4.ec` |
 | Constant-time obligations (EasyCrypt) | **Theory shell** — lemmas stated, proof bodies `admit` | `proofs/easycrypt/lemmas/PulsarM_CT.ec` |
 | Build wiring | Complete (skip-friendly) | `scripts/check-high-assurance.sh` |
 
@@ -182,8 +182,8 @@ no fake implementations.
 What this gives the NIST reviewer at submission time:
 
 1. The libjade single-party verified baseline as the kernel under
-   Pulsar-M's threshold layer — real, machine-checked, citable.
-2. The exposed obligation surface for the Pulsar-M-specific work:
+   Pulsar's threshold layer — real, machine-checked, citable.
+2. The exposed obligation surface for the Pulsar-specific work:
    which Jasmin routines need implementing, which CT lemmas need
    proving, and how the Class N1 reduction composes with libjade's
    functional theorem.
@@ -200,7 +200,7 @@ next submission".
 
 Read `BLOCKERS.md` for the authoritative list. Highlights:
 
-- **No identifiable abort under network partition** — Pulsar-M
+- **No identifiable abort under network partition** — Pulsar
   identifies aborting parties under synchronous network assumptions;
   asynchronous identifiable abort requires the Z-Chain Groth16
   accountability layer (separate Lux artifact, not part of this
@@ -209,7 +209,7 @@ Read `BLOCKERS.md` for the authoritative list. Highlights:
   rejection-sampling step inherent to FIPS 204 ML-DSA precludes a
   1-round threshold variant without a non-NIST-standard preprocessing
   oracle.
-- **DKG without external randomness beacon** — Pulsar-M DKG produces
+- **DKG without external randomness beacon** — Pulsar DKG produces
   unbiased coefficients under honest-majority assumptions but does not
   provide bias resistance under collusion. Production deployments
   bind a randomness beacon at the consensus layer (out of scope here).
@@ -218,7 +218,7 @@ Read `BLOCKERS.md` for the authoritative list. Highlights:
 
 | Submission | Round count | Output interchange | Underlying lattice |
 |---|---|---|---|
-| **Pulsar-M** (this) | 2 | Byte-equal to FIPS 204 ML-DSA | Module-LWE (M-LWE) |
+| **Pulsar** (this) | 2 | Byte-equal to FIPS 204 ML-DSA | Module-LWE (M-LWE) |
 | Lux Corona (R-LWE sibling) | 2 | Byte-equal to FIPS 204 ML-DSA | Ring-LWE (R-LWE) |
 | Raccoon | 3 | Compatible verification | Module-LWE |
 | Corona (upstream academic) | 2 | Not interchange-tested at submission time | R-LWE |

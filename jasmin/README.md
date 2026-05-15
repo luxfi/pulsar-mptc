@@ -1,6 +1,6 @@
-# Pulsar-M — Jasmin high-assurance track
+# Pulsar — Jasmin high-assurance track
 
-This directory holds the **Jasmin** sources for the Pulsar-M high-
+This directory holds the **Jasmin** sources for the Pulsar high-
 assurance implementation track. Jasmin (https://github.com/jasmin-lang/jasmin)
 is a low-level cryptographic implementation language with a verified
 compiler whose generated assembly is bit-identical to the source-level
@@ -16,7 +16,7 @@ et al. (Eurocrypt 2021). NIST PQC submissions that integrate
 libjade-verified primitives sit in the high-assurance evaluation track
 alongside the formosa-crypto reference work.
 
-For Pulsar-M, the high-assurance plan splits along the Class N1 / Class
+For Pulsar, the high-assurance plan splits along the Class N1 / Class
 N4 boundary of the construction itself:
 
 | Layer | What Jasmin verifies | Source of truth |
@@ -24,16 +24,16 @@ N4 boundary of the construction itself:
 | **Single-party ML-DSA-65 core** | Functional equivalence to FIPS 204 + constant-time over secret key and nonce paths | libjade (`jasmin/ml-dsa-65/`, vendored via fetch script) |
 | **Threshold layer** (Round-1 commit, Round-2 response, Combine) | Functional correctness of the round protocol's polynomial-vector arithmetic + constant-time over each party's secret share | new (`jasmin/threshold/`, this submission) |
 
-The Class N1 byte-equality claim composes the two: a Pulsar-M
+The Class N1 byte-equality claim composes the two: a Pulsar
 threshold signature is a single-party FIPS 204 signature whose
 underlying `(z, h, c̃)` components have been computed by an honest
-quorum running the threshold protocol. So the Pulsar-M Jasmin proof
+quorum running the threshold protocol. So the Pulsar Jasmin proof
 chain is
 
     libjade ML-DSA-65 (functional ≡ FIPS 204)
-      ∘ Pulsar-M threshold (functional ≡ single-party computation under
+      ∘ Pulsar threshold (functional ≡ single-party computation under
                             honest quorum + share-additivity)
-      ⇒ Pulsar-M output ≡ FIPS 204 output (Class N1)
+      ⇒ Pulsar output ≡ FIPS 204 output (Class N1)
 
 with constant-time taken as a side condition on every secret-dependent
 control- and memory-access path.
@@ -50,7 +50,7 @@ release point; what we commit at submission time is:
 2. Threshold-specific Jasmin **function signatures and algorithm
    commentary** in `threshold/{round1,round2,combine}.jazz`. These are
    stubs, marked `// TODO: jasmin implementation`. Implementing them is
-   tracked in the Pulsar-M roadmap (see `BLOCKERS.md`).
+   tracked in the Pulsar roadmap (see `BLOCKERS.md`).
 3. EasyCrypt **theory shells** in `../proofs/easycrypt/`. The Class N1
    lemma is stated; the proof body is `admit`. Every `admit` is marked
    with a `TODO` comment.

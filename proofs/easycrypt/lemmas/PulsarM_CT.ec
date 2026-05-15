@@ -1,5 +1,5 @@
 (* -------------------------------------------------------------------- *)
-(* Pulsar-M — Constant-time obligations on threshold-layer routines     *)
+(* Pulsar — Constant-time obligations on threshold-layer routines     *)
 (* -------------------------------------------------------------------- *)
 (* STATUS: THEORY SHELL. Each lemma is stated; proof bodies are `admit` *)
 (* with TODO markers. See ../README.md for the high-assurance-track     *)
@@ -13,7 +13,7 @@
 (*   A routine is constant-time if its leakage trace is independent of   *)
 (*   secret inputs.                                                      *)
 (*                                                                       *)
-(* Pulsar-M secret-touching routines (mirror jasmin/threshold/*.jazz):    *)
+(* Pulsar secret-touching routines (mirror jasmin/threshold/*.jazz):    *)
 (*   - round1_commit:  secret = (share, randomness)                     *)
 (*   - round2_response: secret = (share, y_i_state)                     *)
 (*   - combine:        no secret inputs ⇒ trivially CT                   *)
@@ -87,7 +87,7 @@ declare module M2 <: CTRound2.
 
 (* Norm-rejection caveat: the rejection outcome (accept vs reject) IS
    public under FIPS 204 §3.2 — the count of rejection iterations is
-   observable in single-party ML-DSA as well. Pulsar-M's CT lemma
+   observable in single-party ML-DSA as well. Pulsar's CT lemma
    conditions on (rejection-outcome, retry-count) being a PUBLIC
    input via the session/attempt counter, matching FIPS 204 posture. *)
 lemma round2_response_constant_time

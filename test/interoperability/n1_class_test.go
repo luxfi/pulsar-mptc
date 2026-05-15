@@ -13,11 +13,11 @@
 // submission's headline property has broken: threshold-produced
 // signatures must verify under FIPS 204 verification verbatim.
 //
-// The reference impl's pulsarm.Verify() also dispatches to
-// cloudflare/circl/sign/mldsa internally (see ref/go/pkg/pulsarm/
+// The reference impl's pulsar.Verify() also dispatches to
+// cloudflare/circl/sign/mldsa internally (see ref/go/pkg/pulsar/
 // verify.go), so the FIPS 204 verifier path is exercised on every
 // unit test. This package adds the EXPLICIT acceptance test against
-// vectors loaded as opaque bytes — it does not import pulsarm.Verify
+// vectors loaded as opaque bytes — it does not import pulsar.Verify
 // at all, only the third-party FIPS 204 verifier. That is the
 // independent-verifier discipline NIST asks for.
 package interoperability
@@ -221,13 +221,13 @@ func derivePublicKeyFromSeed(mode string, seedBytes []byte) ([]byte, error) {
 	copy(seed[:], seedBytes)
 
 	switch mode {
-	case "Pulsar-M-44", "ML-DSA-44":
+	case "Pulsar-44", "ML-DSA-44":
 		pk, _ := mldsa44.NewKeyFromSeed(&seed)
 		return pk.MarshalBinary()
-	case "Pulsar-M-65", "ML-DSA-65":
+	case "Pulsar-65", "ML-DSA-65":
 		pk, _ := mldsa65.NewKeyFromSeed(&seed)
 		return pk.MarshalBinary()
-	case "Pulsar-M-87", "ML-DSA-87":
+	case "Pulsar-87", "ML-DSA-87":
 		pk, _ := mldsa87.NewKeyFromSeed(&seed)
 		return pk.MarshalBinary()
 	default:
@@ -245,7 +245,7 @@ func derivePublicKeyFromSeed(mode string, seedBytes []byte) ([]byte, error) {
 // domain-separation tag.
 func verifyUnderFIPS204(mode string, pkBytes, msg, sig, ctx []byte) error {
 	switch mode {
-	case "Pulsar-M-44", "ML-DSA-44":
+	case "Pulsar-44", "ML-DSA-44":
 		var pk mldsa44.PublicKey
 		if err := pk.UnmarshalBinary(pkBytes); err != nil {
 			return fmt.Errorf("mldsa44 unmarshal pk: %w", err)
@@ -254,7 +254,7 @@ func verifyUnderFIPS204(mode string, pkBytes, msg, sig, ctx []byte) error {
 			return errors.New("mldsa44.Verify returned false")
 		}
 		return nil
-	case "Pulsar-M-65", "ML-DSA-65":
+	case "Pulsar-65", "ML-DSA-65":
 		var pk mldsa65.PublicKey
 		if err := pk.UnmarshalBinary(pkBytes); err != nil {
 			return fmt.Errorf("mldsa65 unmarshal pk: %w", err)
@@ -263,7 +263,7 @@ func verifyUnderFIPS204(mode string, pkBytes, msg, sig, ctx []byte) error {
 			return errors.New("mldsa65.Verify returned false")
 		}
 		return nil
-	case "Pulsar-M-87", "ML-DSA-87":
+	case "Pulsar-87", "ML-DSA-87":
 		var pk mldsa87.PublicKey
 		if err := pk.UnmarshalBinary(pkBytes); err != nil {
 			return fmt.Errorf("mldsa87 unmarshal pk: %w", err)
@@ -273,7 +273,7 @@ func verifyUnderFIPS204(mode string, pkBytes, msg, sig, ctx []byte) error {
 		}
 		return nil
 	default:
-		return fmt.Errorf("unknown mode %q (expect Pulsar-M-{44,65,87} or ML-DSA-{44,65,87})", mode)
+		return fmt.Errorf("unknown mode %q (expect Pulsar-{44,65,87} or ML-DSA-{44,65,87})", mode)
 	}
 }
 

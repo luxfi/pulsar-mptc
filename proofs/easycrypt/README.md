@@ -1,11 +1,11 @@
-# Pulsar-M — EasyCrypt theories
+# Pulsar — EasyCrypt theories
 
-This directory holds the **EasyCrypt** theories for Pulsar-M's high-
+This directory holds the **EasyCrypt** theories for Pulsar's high-
 assurance track. EasyCrypt (https://github.com/EasyCrypt/easycrypt) is
 the machine-checked proof assistant for cryptographic protocols paired
 with Jasmin (`../../jasmin/`). The libjade single-party ML-DSA-65
 EasyCrypt theories are imported from `../../jasmin/ml-dsa-65/libjade/`
-(fetched on demand); the Pulsar-M-specific theories live here.
+(fetched on demand); the Pulsar-specific theories live here.
 
 ## Status — theory shells
 
@@ -21,7 +21,7 @@ reviewers see:
 1. The shape of the high-assurance reduction.
 2. The libjade ML-DSA-65 functional + constant-time theorems we plan
    to compose against.
-3. The Pulsar-M-specific obligation surface (Class N1 byte-equality;
+3. The Pulsar-specific obligation surface (Class N1 byte-equality;
    Class N4 public-key preservation; constant-time of secret-dependent
    threshold-layer routines).
 
@@ -33,8 +33,8 @@ and reviewable today.
 
 | File | Theorem |
 |---|---|
-| `PulsarM_N1.ec` | **Class N1**: byte-equality of Pulsar-M threshold output to single-party FIPS 204 ML-DSA-65 output under honest quorum |
-| `PulsarM_N4.ec` | **Class N4**: public-key preservation across Pulsar-M proactive resharing (committee rotation) |
+| `PulsarM_N1.ec` | **Class N1**: byte-equality of Pulsar threshold output to single-party FIPS 204 ML-DSA-65 output under honest quorum |
+| `PulsarM_N4.ec` | **Class N4**: public-key preservation across Pulsar proactive resharing (committee rotation) |
 | `lemmas/PulsarM_CT.ec` | **Constant-time**: every Jasmin threshold-layer routine that touches secret share material is CT under the Barthe-Grégoire-Laporte leakage model |
 
 ## Conventions

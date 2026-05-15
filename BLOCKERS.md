@@ -1,4 +1,4 @@
-# Pulsar-M production go-live blockers
+# Pulsar production go-live blockers
 
 This file replaces `docs/known-limitations.md`. The prior file framed
 critical security gaps as "limitations to be aware of". A deep
@@ -69,22 +69,22 @@ production-PQ until blockers close" gate has been opened.
 - Migration window field is local config. Adversary sets `ActivationHeight = 2^63` on their node → classical accepted forever → peer with strict-PQ validators who accept classical due to mis-config.
 - **Fix**: activation MUST be encoded in genesis SecurityProfile as a chain-time; remove the per-operator knob. Strict-PQ chain refuses classical at genesis, period.
 
-### C. Pulsar-M threshold layer is hollow (3 critical — ALL CLOSED)
+### C. Pulsar threshold layer is hollow (3 critical — ALL CLOSED)
 
 **CR-6** DKG commit is never opened — commits to nothing the protocol verifies  **[CLOSED pulsar-mptc — see dkg.go path A: Shamir+sum, no commit-and-open]**
-- `~/work/lux/pulsar-mptc/ref/go/pkg/pulsarm/dkg.go:153-211,245-348`
+- `~/work/lux/pulsar-mptc/ref/go/pkg/pulsar/dkg.go:153-211,245-348`
 - `myCommit = cSHAKE(c_i || blind_i)` is broadcast; `c_i` and `blind_i` are never transmitted in any later round. Round-3 verifies digest-agreement of the envelope set but never recomputes the commit and checks opening.
 - Malicious dealer broadcasts arbitrary commit + biases Shamir contribution → joint pubkey biased to chosen value.
 - **Fix**: either (a) include `(c_i, blind_i)` in Round-2 reveal and verify the digest opens, or (b) drop `myCommit` from the protocol and document the actual protocol (Shamir+sum, no commit).
 
 **CR-7** `deriveMACKey` derives sign-round MAC keys from public inputs — any network observer forges them  **[CLOSED pulsar-mptc identity.go — ephemeral ML-KEM-768 session keys authenticated under long-term ML-DSA-65]**
-- `~/work/lux/pulsar-mptc/ref/go/pkg/pulsarm/threshold.go:447-460,144-151`
-- `K_{i,j} = transcriptHash32("PULSAR-M-SIGN-MACKEY-V1", first[:], second[:], pk.Bytes)`. All inputs are on-chain public data. Any network observer (not even a committee member) computes K_{i,j}, intercepts Round-1, swaps Commit, recomputes MAC.
+- `~/work/lux/pulsar-mptc/ref/go/pkg/pulsar/threshold.go:447-460,144-151`
+- `K_{i,j} = transcriptHash32("PULSAR-SIGN-MACKEY-V1", first[:], second[:], pk.Bytes)`. All inputs are on-chain public data. Any network observer (not even a committee member) computes K_{i,j}, intercepts Round-1, swaps Commit, recomputes MAC.
 - Identifiable-abort fails with NO network partition. DoS against threshold signer at zero cost.
 - **Fix**: ephemeral session-key exchange at session setup (Noise / X3DH / ML-KEM-768) bound to long-term ML-DSA identity. Per-session AEAD MAC key derived from that secret. Drop the public-input derivation entirely.
 
 **CR-8** DKG envelopes sent plaintext on broadcast wire — passive surveillance recovers master  **[CLOSED pulsar-mptc — DKGShareEnvelope is ML-KEM-768-wrapped per recipient + HKDF-SHA3-256 + AEAD tag]**
-- `~/work/lux/pulsar-mptc/ref/go/pkg/pulsarm/dkg.go:184-211`, `types.go:128`
+- `~/work/lux/pulsar-mptc/ref/go/pkg/pulsar/dkg.go:184-211`, `types.go:128`
 - `DKGRound1Msg.Envelopes[recipient]` is plaintext per-recipient Shamir shares; broadcast contains full envelope map.
 - Network observer with single-broadcast read access obtains t-1 honest shares from a rushing dealer → corrupt any one party for own share → t shares → master key recovered. **One DKG ceremony.**
 - **Fix**: KEM-wrap envelopes (ML-KEM-768) before broadcast. Recipient's KEM public key derived from their long-term identity.
@@ -106,7 +106,7 @@ production-PQ until blockers close" gate has been opened.
 - `~/work/lux/consensus/engine/bft/engine.go:83-95` (entire file)
 - BFT adapter accepts any `bft.Epoch` from `luxfi/bft`. Zero references to `PQProfile` / `FinalitySchemeID` / `QuasarCert`. The `luxfi/bft.Signer` interface accepts any byte sigs and defaults to classical Ed25519.
 - Strict-PQ chain on BFT engine signs blocks with classical Ed25519. The strict-PQ EVM gate covers EVM-layer only, not consensus envelope.
-- **Fix**: BFT adapter MUST validate `cfg.SecurityProfile.FinalitySchemeID.IsPulsarM()` (or equivalent) at `NewEngine`; refuse non-PQ signers under strict-PQ profile.
+- **Fix**: BFT adapter MUST validate `cfg.SecurityProfile.FinalitySchemeID.IsPulsar()` (or equivalent) at `NewEngine`; refuse non-PQ signers under strict-PQ profile.
 
 **CR-12** `ComputeRoundDigest` does NOT bind effective `policy_id`  **[CLOSED consensus protocol/quasar — `effectivePolicy` is bound as a TupleHash part between verifierBytes and netBytes; zero-policy refused]**
 - `~/work/lux/consensus/protocol/quasar/round_digest.go:91-193`
@@ -151,11 +151,11 @@ crypto-engineers + outside cryptographer audit before merge.
 
 ## What ships *now*
 
-- The Pulsar-M NIST MPTC paper submission (algorithmic claims N1 +
+- The Pulsar NIST MPTC paper submission (algorithmic claims N1 +
   N4 + quantum resistance are VALIDATED per scientist audit, with
   documented caveats on adaptive corruption + reconstruction
   aggregator + constant-time + cross-domain isolation).
-- Reference Go implementation at `ref/go/pkg/pulsarm/` for KAT
+- Reference Go implementation at `ref/go/pkg/pulsar/` for KAT
   reproducibility — 89.7% test coverage, deterministic KAT regen,
   19/19 Class N1 interop subtests pass.
 - Lean mechanization of OutputInterchange + Unforgeability + Shamir
@@ -188,7 +188,7 @@ crypto-engineers + outside cryptographer audit before merge.
     binds effective policy_id (CR-12).
   - Sampling: rejection sampling everywhere a uniform index into
     `[0, max)` is drawn from raw 64-bit entropy (CR-13).
-- "Drop BLS safely" — the PQ threshold path under Pulsar-M is now
+- "Drop BLS safely" — the PQ threshold path under Pulsar is now
   honest end-to-end. A Lux deployment can pin a strict-PQ profile
   and run with no classical curves in the validator path
   (Ed25519/secp256k1/BLS) on chains that opt in via
@@ -201,7 +201,7 @@ swarm against the threat model: nation-state with classical+quantum
 compute over 5+ year horizon on an open permissionless blockchain.
 
 Red-team agent transcripts at:
-- `pulsar-mptc-red1` — Pulsar-M crypto break attempts (4 critical, 4 high, 2 medium)
+- `pulsar-mptc-red1` — Pulsar crypto break attempts (4 critical, 4 high, 2 medium)
 - `quasar-red2` — Quasar consensus + cert envelope (3 critical, 4 high, 4 medium)
 - `evm-red3` — EVM precompile + KEM + privacy (2 critical, 2 high, 2 medium)
 - `peer-red4` — Network / peer handshake / identity (3 critical, 3 high, 4 medium)

@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package pulsarm
+package pulsar
 
 import (
 	"testing"
@@ -74,7 +74,7 @@ func TestThresholdSign_RoundTrip(t *testing.T) {
 
 			msg := []byte("threshold sign — Class N1 round-trip")
 			var sid [16]byte
-			copy(sid[:], "pulsar-m-test-01")
+			copy(sid[:], "pulsar-test-01")
 			attempt := uint32(1)
 			// Quorum = first t parties in canonical (sorted) order.
 			quorum := make([]NodeID, tc.t)

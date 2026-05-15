@@ -1,10 +1,10 @@
-# Pulsar-M — NIST MPTC submission package
+# Pulsar — NIST MPTC submission package
 
 > **Threshold ML-DSA** — a 2-round threshold signing and DKG system whose
 > generated signatures are verifiable by **unmodified FIPS 204 ML-DSA
 > verification**. Targeting NIST MPTC Class N1 (signing) + N4 (ML keygen / DKG).
 
-This repository is the **active NIST MPTC submission package** for Pulsar-M
+This repository is the **active NIST MPTC submission package** for Pulsar
 and the canonical home for the submission artifacts (spec, KAT vectors,
 reference implementation, interop harness, ct analysis, scripts). The
 submission tarball for NIST is cut from a tag on `main` at deadline —
@@ -13,24 +13,24 @@ submission patches land here, not in a fork.
 
 The production Go library has split into its own stable module identity
 (`github.com/luxfi/pulsar` / `github.com/luxfi/corona`); this repository
-keeps the original `github.com/luxfi/pulsar-m` module path because that
+keeps the original `github.com/luxfi/pulsar` module path because that
 is the identifier NIST receives and reviews against.
 
 ## Library identities (post-2026 split)
 
-`Pulsar-M` is the Module-LWE threshold ML-DSA construction. The 2-round
+`Pulsar` is the Module-LWE threshold ML-DSA construction. The 2-round
 threshold protocol structure operates on ML-DSA-65's polynomial-vector-
 over-`R_q` algebra so the per-party-aggregated signature is bit-identical
 to a single-party FIPS 204 signature on the same message + public key.
 
 | Repository | Module path | Role |
 |---|---|---|
-| **luxfi/pulsar-mptc** (this repo) | `github.com/luxfi/pulsar-m` | Active NIST MPTC submission package |
+| **luxfi/pulsar-mptc** (this repo) | `github.com/luxfi/pulsar` | Active NIST MPTC submission package |
 | [luxfi/pulsar](https://github.com/luxfi/pulsar) | `github.com/luxfi/pulsar` | Production Module-LWE Go library |
 | [luxfi/corona](https://github.com/luxfi/corona) | `github.com/luxfi/corona` | Production Ring-LWE Go library (sibling kernel) |
 
 The module path inside this submission package remains
-`github.com/luxfi/pulsar-m` because that is the identifier NIST receives
+`github.com/luxfi/pulsar` because that is the identifier NIST receives
 and reviews against the submitted KAT vectors and spec. Downstream
 consumers who want the live production library should pin
 `github.com/luxfi/pulsar@v1.0.x` (Module-LWE) or
@@ -48,7 +48,7 @@ NIST's [Multi-Party Threshold Cryptography](https://csrc.nist.gov/projects/thres
 project is collecting them now (IR 8214C, January 2026; first call package
 deadline expected 2026-Nov-16).
 
-Pulsar-M aims to enter that process with a credible, output-interchangeable
+Pulsar aims to enter that process with a credible, output-interchangeable
 threshold ML-DSA candidate. The 2-round threshold protocol skeleton is
 the same one Lux ships in production for Ring-LWE (see
 [`luxfi/corona`](https://github.com/luxfi/corona)), retargeted to the
@@ -56,17 +56,17 @@ Module-LWE primitives ML-DSA itself uses; the resulting per-party-
 aggregated signature is bit-identical to a single-party FIPS 204 ML-DSA
 signature on the same message + public key.
 
-The win, if Pulsar-M's Sign output is byte-equal to FIPS 204 Sign:
+The win, if Pulsar's Sign output is byte-equal to FIPS 204 Sign:
 - Threshold-produced signatures verify under unmodified FIPS 204 verifiers.
 - Existing FIPS-validated ML-DSA modules (BoringSSL FIPS, AWS-LC, OpenSSL
-  3.0 PQ provider) consume Pulsar-M certs without code changes.
+  3.0 PQ provider) consume Pulsar certs without code changes.
 - The threshold layer can be Class-N-claimed at NIST without a parallel
   algorithm standardization track.
 
 ## Repository layout
 
 ```
-pulsar-m/
+pulsar/
 ├── BLOCKERS.md               PRODUCTION-GO-LIVE BLOCKER LIST (13 critical findings from red-team audit, 5 weak claims from scientist)
 ├── docs/                     human-readable design notes
 │   ├── threat-model.md
@@ -74,7 +74,7 @@ pulsar-m/
 │   ├── design-decisions.md
 │   └── patent-notes-draft.md
 ├── spec/                     LaTeX technical specification (MPTC package)
-│   ├── pulsar-m.tex          main spec
+│   ├── pulsar.tex          main spec
 │   ├── security-games.tex    EUF-CMA / TS-UF / robustness / adaptive corr.
 │   ├── system-model.tex      network / setup / abort / preprocessing
 │   ├── parameters.tex        concrete parameter sets, lattice-estimator
@@ -95,10 +95,10 @@ pulsar-m/
 ├── estimator/                lattice-estimator parameter scripts
 ├── jasmin/                   high-assurance Jasmin sources (initial track)
 │   ├── ml-dsa-65/             libjade single-party baseline (fetched on demand)
-│   └── threshold/             Pulsar-M threshold layer (stubs)
+│   └── threshold/             Pulsar threshold layer (stubs)
 ├── proofs/easycrypt/         high-assurance EasyCrypt theories (theory shells)
-│   ├── PulsarM_N1.ec          Class N1 byte-equality reduction
-│   ├── PulsarM_N4.ec          Class N4 public-key preservation
+│   ├── Pulsar_N1.ec          Class N1 byte-equality reduction
+│   ├── Pulsar_N4.ec          Class N4 public-key preservation
 │   └── lemmas/PulsarM_CT.ec   constant-time obligations
 ├── scripts/                  build / test / bench / gen_vectors / sbom / check-high-assurance
 └── go.mod
@@ -127,14 +127,14 @@ The reproducibility property is the load-bearing CI invariant.
 
 | package element | location | status |
 |---|---|---|
-| Technical Specification | `spec/pulsar-m.pdf` (1,536-line LaTeX → 28 pages, 491 KB) | drafted; encoding freeze 2026-Aug |
-| Reference Implementation | `ref/go/pkg/pulsarm/` (89.7% coverage) | shipped |
+| Technical Specification | `spec/pulsar.pdf` (1,536-line LaTeX → 28 pages, 491 KB) | drafted; encoding freeze 2026-Aug |
+| Reference Implementation | `ref/go/pkg/pulsar/` (89.7% coverage) | shipped |
 | KAT vectors | `vectors/{dkg,keygen,sign,threshold-sign,verify}.json` | deterministic from seed |
 | Class N1 E2E interop | `test/interoperability/` (19/19 subtests vs cloudflare/circl) | passing |
 | Symbolic / Lean proofs | `~/work/lux/proofs/lean/Crypto/Pulsar_M/` (3 files, **zero `sorry`**) | mechanized |
 | Constant-time analysis | `ct/dudect/` | harness present; results TBD |
 | Jasmin high-assurance | `jasmin/{ml-dsa-65,threshold}/` | initial track (libjade fetch + stubs) |
-| EasyCrypt theories | `proofs/easycrypt/PulsarM_{N1,N4}.ec` + `lemmas/PulsarM_CT.ec` | theory shells |
+| EasyCrypt theories | `proofs/easycrypt/Pulsar_{N1,N4}.ec` + `lemmas/PulsarM_CT.ec` | theory shells |
 | Report on Experimental Evaluation | `bench/results/REPORT.md` | TBD |
 | Patent posture | `docs/patent-notes-draft.md` | drafted |
 | License | `LICENSE` (Apache-2.0) | ✓ |
@@ -147,7 +147,7 @@ Target dates:
 
 ## Relationship to upstream
 
-**Scope of this submission.** Pulsar-M is the standalone NIST MPTC
+**Scope of this submission.** Pulsar is the standalone NIST MPTC
 submission for the Module-LWE threshold ML-DSA construction. The spec,
 KAT vectors, reference implementation, and proofs are self-contained.
 Reviewers do not need to fetch any sibling repository to evaluate the
@@ -160,7 +160,7 @@ production R-LWE library Lux deploys is
 [`luxfi/corona`](https://github.com/luxfi/corona) — same 2-round
 threshold algorithm retargeted at production lifecycle (Pedersen DKG
 over `R_q` with proper hiding + proactive resharing). Corona and
-Pulsar-M are **independent libraries** with no shared types; Pulsar-M
+Pulsar are **independent libraries** with no shared types; Pulsar
 is reviewable on its own merits and Corona is documented separately.
 
 | repo | role | lattice basis | hash family |
@@ -174,11 +174,11 @@ consumer (e.g. Lux's primary-network QuasarCert) MAY combine Corona
 (Ring-LWE) and Pulsar (Module-LWE) as a **Double Lattice** PQ pair so
 a break in one lattice family does not break finality. That layered
 combination is the consumer's design choice and is not part of this
-submission. Pulsar-M stands alone as an MPTC Class N1 + N4 candidate.
+submission. Pulsar stands alone as an MPTC Class N1 + N4 candidate.
 
 ### Where the identity rollup lives
 
-Pulsar-M is *just* the threshold sign + DKG layer. The per-validator
+Pulsar is *just* the threshold sign + DKG layer. The per-validator
 ML-DSA-65 identity attestation that QuasarCert separately carries
 (`MLDSARollup`) is **succinct via STARK / FRI** through the **P3Q**
 backend — Lux's Plonky3 fork with a cSHAKE256 Merkle commitment.

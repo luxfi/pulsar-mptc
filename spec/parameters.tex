@@ -1,16 +1,16 @@
-% Pulsar-M concrete parameter sets — included by pulsar-m.tex §"Concrete parameters"
+% Pulsar concrete parameter sets — included by pulsar.tex §"Concrete parameters"
 
 \subsection*{Parameter sets}
 
 % Three parameter sets, mirroring FIPS 204 ML-DSA's three security levels.
 % Numeric values to be filled in from FIPS 204 §4 once the M-LWE port is
-% finalized; the Pulsar-M parameter table is structurally identical to
+% finalized; the Pulsar parameter table is structurally identical to
 % ML-DSA's because the underlying ring + module shape are inherited.
 
 \begin{center}
 \begin{tabular}{l r r r}
 \hline
-parameter & Pulsar-M-44 & Pulsar-M-65 & Pulsar-M-87 \\
+parameter & Pulsar-44 & Pulsar-65 & Pulsar-87 \\
 \hline
 NIST PQ category               & TBD (Cat 2) & TBD (Cat 3) & TBD (Cat 5) \\
 classical security (bits)      & TBD ($\geq128$) & TBD ($\geq192$) & TBD ($\geq256$) \\
@@ -45,10 +45,10 @@ public key size (bytes)        & 1312       & 1952       & 2592    \\
 
 \textbf{Required parameterization} (NIST IR 8214C §4.5): at least one
 parameter set with classical $\geq 128$ bits, NIST PQ category $\geq 1$,
-statistical $\geq 40$ bits. Pulsar-M-44 satisfies this.
+statistical $\geq 40$ bits. Pulsar-44 satisfies this.
 
 \textbf{Suggested parameterization}: at least one parameter set with
 classical $\geq 192$ bits, NIST PQ category $\geq 3$, statistical
-$\geq 64$ bits. Pulsar-M-65 satisfies this.
+$\geq 64$ bits. Pulsar-65 satisfies this.
 
-Pulsar-M-87 covers the highest NIST PQ category for completeness.
+Pulsar-87 covers the highest NIST PQ category for completeness.

@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// verify_ct.go — cgo bridge exposing pulsarm.Verify to the C dudect
+// verify_ct.go — cgo bridge exposing pulsar.Verify to the C dudect
 // harness in dudect_verify.c.
 //
 // The bridge owns ONE long-lived test fixture (public key + valid
@@ -10,7 +10,7 @@
 // caller-supplied scratch buffer that is fed into Verify. Verify is
 // expected to be constant-time over all of (pk, message, signature),
 // because the underlying FIPS 204 verifier is constant-time by
-// design (FIPS 204 §6.3) and pulsarm.Verify is a thin dispatch on
+// design (FIPS 204 §6.3) and pulsar.Verify is a thin dispatch on
 // top (verify.go — Class N1 manifesto).
 //
 // The harness deliberately calls VerifyCtx with the EXACT same byte
@@ -37,17 +37,17 @@ import (
 	"crypto/rand"
 	"unsafe"
 
-	"github.com/luxfi/pulsar-m/ref/go/pkg/pulsarm"
+	"github.com/luxfi/pulsar/ref/go/pkg/pulsar"
 )
 
 // Long-lived fixture. The dudect main loop calls
 // pulsarm_verify_ct_setup() once at startup, then calls
 // pulsarm_verify_ct() in a tight measurement loop.
 var (
-	fixtureParams *pulsarm.Params
-	fixturePub    *pulsarm.PublicKey
+	fixtureParams *pulsar.Params
+	fixturePub    *pulsar.PublicKey
 	fixtureMsg    []byte
-	fixtureSig    *pulsarm.Signature
+	fixtureSig    *pulsar.Signature
 )
 
 //export pulsarm_verify_ct_setup
@@ -61,19 +61,19 @@ var (
 // — that's intentional: the timing property must hold for ANY valid
 // (pk, msg, sig) triple, not a single hardcoded test vector.
 func pulsarm_verify_ct_setup() C.int {
-	params := pulsarm.MustParamsFor(pulsarm.ModeP65)
-	sk, err := pulsarm.GenerateKey(params, rand.Reader)
+	params := pulsar.MustParamsFor(pulsar.ModeP65)
+	sk, err := pulsar.GenerateKey(params, rand.Reader)
 	if err != nil {
 		return 1
 	}
-	msg := []byte("dudect constant-time smoke message: Pulsar-M Verify class N1")
-	sig, err := pulsarm.Sign(params, sk, msg, nil, true, rand.Reader)
+	msg := []byte("dudect constant-time smoke message: Pulsar Verify class N1")
+	sig, err := pulsar.Sign(params, sk, msg, nil, true, rand.Reader)
 	if err != nil {
 		return 2
 	}
 	// Sanity round-trip: any failure here means the fixture itself
 	// is broken before dudect starts measuring.
-	if err := pulsarm.Verify(params, sk.Pub, msg, sig); err != nil {
+	if err := pulsar.Verify(params, sk.Pub, msg, sig); err != nil {
 		return 3
 	}
 	fixtureParams = params
@@ -103,7 +103,7 @@ func pulsarm_verify_ct_sig_size() C.size_t {
 // (one dudect "class" picks fixed bytes, the other picks random
 // bytes; that classification happens in the C harness). The bridge
 // constructs a *Signature wrapping those bytes and calls
-// pulsarm.Verify; the return value is ignored (Verify returns an
+// pulsar.Verify; the return value is ignored (Verify returns an
 // error for class-B random bytes; that's expected and irrelevant —
 // we measure cycles, not result).
 //
@@ -116,7 +116,7 @@ func pulsarm_verify_ct(data *C.uint8_t) {
 	}
 	n := fixtureParams.SignatureSize
 	sigBytes := unsafe.Slice((*byte)(unsafe.Pointer(data)), n)
-	sig := &pulsarm.Signature{
+	sig := &pulsar.Signature{
 		Mode:  fixtureParams.Mode,
 		Bytes: append([]byte{}, sigBytes...),
 	}
@@ -124,7 +124,7 @@ func pulsarm_verify_ct(data *C.uint8_t) {
 	// cycles regardless of pass/fail. We must not branch on the
 	// return value, or the C harness would see a control-flow
 	// difference that is OUR fault, not Verify's.
-	_ = pulsarm.Verify(fixtureParams, fixturePub, fixtureMsg, sig)
+	_ = pulsar.Verify(fixtureParams, fixturePub, fixtureMsg, sig)
 }
 
 // main is required for `go build -buildmode=c-shared`.

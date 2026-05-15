@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package pulsarm
+package pulsar
 
 // keygen.go — single-party key generation. This is the FIPS 204
 // keygen path; the threshold-N4 distributed counterpart lives in
@@ -24,14 +24,14 @@ import (
 
 // Errors returned by keygen and the surrounding key-handling layer.
 var (
-	ErrShortRand     = errors.New("pulsarm: short read from entropy source")
-	ErrSeedRequired  = errors.New("pulsarm: seed-derived keygen requires 32-byte seed")
-	ErrModeMismatch  = errors.New("pulsarm: mode mismatch")
-	ErrInvalidPubKey = errors.New("pulsarm: invalid public-key length")
-	ErrInvalidPriv   = errors.New("pulsarm: invalid private-key length")
+	ErrShortRand     = errors.New("pulsar: short read from entropy source")
+	ErrSeedRequired  = errors.New("pulsar: seed-derived keygen requires 32-byte seed")
+	ErrModeMismatch  = errors.New("pulsar: mode mismatch")
+	ErrInvalidPubKey = errors.New("pulsar: invalid public-key length")
+	ErrInvalidPriv   = errors.New("pulsar: invalid private-key length")
 )
 
-// GenerateKey produces a fresh single-party Pulsar-M key pair. The
+// GenerateKey produces a fresh single-party Pulsar key pair. The
 // generated key is a FIPS 204 ML-DSA key pair: the public key
 // verifies under unmodified mldsa{44,65,87}.Verify.
 //
@@ -52,7 +52,7 @@ func GenerateKey(params *Params, rng io.Reader) (*PrivateKey, error) {
 	return KeyFromSeed(params, seed)
 }
 
-// KeyFromSeed deterministically derives a Pulsar-M key pair from a
+// KeyFromSeed deterministically derives a Pulsar key pair from a
 // 32-byte seed. This is the canonical seed-based keygen path used by
 // every KAT and by the DKG aggregation step.
 //

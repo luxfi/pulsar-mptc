@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package pulsarm
+package pulsar
 
 // reshare.go — proactive resharing. HJKY97-style: rotate the share
 // distribution from an old committee to a new committee without
@@ -12,12 +12,12 @@ package pulsarm
 // terms are pre-multiplied by the old-committee Lagrange coefficients
 // (so the sum of fresh polynomials evaluates to the master secret at
 // x=0 by construction). Beacon-randomised quorum selection per
-// pulsar-m.tex §4.4 mitigates mobile-adversary corruption-set
+// pulsar.tex §4.4 mitigates mobile-adversary corruption-set
 // gaming.
 //
 // v0.1 instantiation: the reshare quorum is the FIRST k members of
 // the old committee in canonical order, with k = threshold(old).
-// The beacon-randomised selection in pulsar-m.tex §4.4 is implemented
+// The beacon-randomised selection in pulsar.tex §4.4 is implemented
 // as a configurable knob (BeaconQuorum) — pass the beacon bytes and
 // the routine permutes the old committee deterministically before
 // selecting the first k. Without a beacon, the deterministic
@@ -44,11 +44,11 @@ import (
 
 // Errors returned by Reshare.
 var (
-	ErrOldCommitteeEmpty = errors.New("pulsarm: old committee is empty")
-	ErrNewCommitteeEmpty = errors.New("pulsarm: new committee is empty")
-	ErrOldThresholdSmall = errors.New("pulsarm: old committee smaller than old threshold")
-	ErrNewThresholdSmall = errors.New("pulsarm: new committee smaller than new threshold")
-	ErrShareCount        = errors.New("pulsarm: insufficient old-committee shares for reshare")
+	ErrOldCommitteeEmpty = errors.New("pulsar: old committee is empty")
+	ErrNewCommitteeEmpty = errors.New("pulsar: new committee is empty")
+	ErrOldThresholdSmall = errors.New("pulsar: old committee smaller than old threshold")
+	ErrNewThresholdSmall = errors.New("pulsar: new committee smaller than new threshold")
+	ErrShareCount        = errors.New("pulsar: insufficient old-committee shares for reshare")
 )
 
 // ReshareSession holds one party's state for a single reshare
@@ -251,7 +251,7 @@ func (s *ReshareSession) Round1() (*DKGRound1Msg, error) {
 
 	// Shamir-share the contribution at threshold newT to the new committee.
 	keyMaterial := []byte{}
-	keyMaterial = append(keyMaterial, []byte("PULSAR-M-RESHARE-DEALER-V1")...)
+	keyMaterial = append(keyMaterial, []byte("PULSAR-RESHARE-DEALER-V1")...)
 	keyMaterial = append(keyMaterial, s.commitOldCommitteeRoot()...)
 	keyMaterial = append(keyMaterial, s.commitNewCommitteeRoot()...)
 	keyMaterial = append(keyMaterial, blind[:]...)
@@ -279,7 +279,7 @@ func (s *ReshareSession) Round1() (*DKGRound1Msg, error) {
 			append(append(append([]byte{}, blind[:]...),
 				s.MyID[:]...), recipient[:]...),
 			64,
-			"PULSAR-M-RESHARE-ENCAPSEED-V1",
+			"PULSAR-RESHARE-ENCAPSEED-V1",
 		)
 		encapSeed := hashForEncapSeed(newRoot, s.MyID, recipient, encapBlind)
 
@@ -448,7 +448,7 @@ func (s *ReshareSession) Round3(round1 []*DKGRound1Msg, round2 []*DKGRound2Msg) 
 //
 // If beacon is non-nil, the old committee is permuted by sorting
 // under cSHAKE256(committee_root || beacon) — this is the
-// beacon-randomised selection of pulsar-m.tex §4.4. Without a beacon,
+// beacon-randomised selection of pulsar.tex §4.4. Without a beacon,
 // the canonical-order first-k selection is used.
 func selectReshareQuorum(oldSorted []NodeID, oldThreshold int, beacon []byte) []NodeID {
 	if beacon == nil {
@@ -497,7 +497,7 @@ func (s *ReshareSession) reshareQuorumEvalPoints() []uint32 {
 // old committee.
 func (s *ReshareSession) commitOldCommitteeRoot() []byte {
 	parts := make([][]byte, 0, len(s.OldCommittee)+1)
-	parts = append(parts, []byte("PULSAR-M-COMMITTEE-V1"))
+	parts = append(parts, []byte("PULSAR-COMMITTEE-V1"))
 	for _, id := range s.OldCommittee {
 		parts = append(parts, id[:])
 	}
@@ -509,7 +509,7 @@ func (s *ReshareSession) commitOldCommitteeRoot() []byte {
 // new committee.
 func (s *ReshareSession) commitNewCommitteeRoot() []byte {
 	parts := make([][]byte, 0, len(s.NewCommittee)+1)
-	parts = append(parts, []byte("PULSAR-M-COMMITTEE-V1"))
+	parts = append(parts, []byte("PULSAR-COMMITTEE-V1"))
 	for _, id := range s.NewCommittee {
 		parts = append(parts, id[:])
 	}

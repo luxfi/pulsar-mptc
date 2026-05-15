@@ -1,11 +1,11 @@
-// Pulsar-M Round-2 — per-party response after aggregated challenge
+// Pulsar Round-2 — per-party response after aggregated challenge
 //
 // STATUS: scaffolding. The function signature is committed in Jasmin syntax;
 // the body is a `// TODO: jasmin implementation` marker. See
 // ./README.md for the high-assurance-track roadmap.
 //
 // -----------------------------------------------------------------------------
-// Algorithm (mirrors ref/go/pkg/pulsarm/threshold.go ThresholdSigner.Round2)
+// Algorithm (mirrors ref/go/pkg/pulsar/threshold.go ThresholdSigner.Round2)
 // -----------------------------------------------------------------------------
 //
 // Inputs:
@@ -17,13 +17,13 @@
 // Outputs:
 //   response    — Round-2 response message:
 //                   {z_i = y_i + c·share_i, h_i hint vector, abort_evidence?}
-//                 (see spec/pulsar-m.tex §4.4)
+//                 (see spec/pulsar.tex §4.4)
 //
 // Constant-time obligations:
 //   - Time and memory-access patterns independent of `share` and `y_i_state`
 //   - Norm checks on z_i and h_i use libjade's CT-proven `check_norm` routines
 //   - Rejection-sampling outcome (reject vs accept) is treated as PUBLIC under
-//     the Pulsar-M threat model; the count of rejections may leak (this is
+//     the Pulsar threat model; the count of rejections may leak (this is
 //     the same posture as single-party ML-DSA per FIPS 204 §3.2)
 //
 // FIPS 204 alignment:

@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package pulsarm
+package pulsar
 
 // shamir.go — byte-wise Shamir secret sharing over GF(257).
 //
@@ -16,7 +16,7 @@ package pulsarm
 // each share is 32 × uint16 = 64 bytes, regardless of the FIPS 204
 // parameter set. Sharing over GF(8380417) is on the v0.2 path that
 // integrates with the Lagrange-linearity sign mode of
-// pulsar-m.tex §4.2 (where shares must align with R_q^k arithmetic).
+// pulsar.tex §4.2 (where shares must align with R_q^k arithmetic).
 //
 // All arithmetic is constant-time mod p via the small-prime modular
 // inverse table seeded at package init.
@@ -42,12 +42,12 @@ const shareWireSize = SeedSize * 2
 
 // shamirShareErrs.
 var (
-	ErrInvalidThreshold   = errors.New("pulsarm: invalid threshold (n < t or t < 1)")
-	ErrCommitteeTooLarge  = errors.New("pulsarm: committee larger than 256 parties (shamir GF(257))")
-	ErrNotEnoughShares    = errors.New("pulsarm: not enough shares for reconstruction")
-	ErrZeroEvalPoint      = errors.New("pulsarm: evaluation point x=0 is reserved for the secret")
-	ErrDuplicateEvalPoint = errors.New("pulsarm: duplicate evaluation point in shares")
-	ErrShareWireSize      = errors.New("pulsarm: share has wrong wire size")
+	ErrInvalidThreshold   = errors.New("pulsar: invalid threshold (n < t or t < 1)")
+	ErrCommitteeTooLarge  = errors.New("pulsar: committee larger than 256 parties (shamir GF(257))")
+	ErrNotEnoughShares    = errors.New("pulsar: not enough shares for reconstruction")
+	ErrZeroEvalPoint      = errors.New("pulsar: evaluation point x=0 is reserved for the secret")
+	ErrDuplicateEvalPoint = errors.New("pulsar: duplicate evaluation point in shares")
+	ErrShareWireSize      = errors.New("pulsar: share has wrong wire size")
 )
 
 // shamirDealRandom shares a 32-byte secret across n parties with
@@ -70,7 +70,7 @@ func shamirDealRandom(secret [SeedSize]byte, n, t int, coeffStream []byte) ([]sh
 // coefficients per slot are pulled from coeffStream.
 //
 // If coeffStream is shorter than needed, it is stretched via
-// cSHAKE256(coeffStream, tag=PULSAR-M-SEED-SHARE-V1).
+// cSHAKE256(coeffStream, tag=PULSAR-SEED-SHARE-V1).
 //
 // Use this when the secret vector contains values that may equal
 // 256 (the 257-th GF element), e.g. an HJKY97 reshare contribution
@@ -201,7 +201,7 @@ func shamirReconstructGF(shares []shamirShare) ([SeedSize]uint16, error) {
 // ErrInvalidShare is returned by shamirReconstruct when the
 // interpolated constant term overflows byte range, indicating either
 // share tampering or that the original secret was not byte-valued.
-var ErrInvalidShare = errors.New("pulsarm: reconstructed value out of byte range — share tampering suspected")
+var ErrInvalidShare = errors.New("pulsar: reconstructed value out of byte range — share tampering suspected")
 
 // modInvSmall computes the modular inverse of a mod p where p is a
 // small prime. Uses the extended Euclidean algorithm; constant-time

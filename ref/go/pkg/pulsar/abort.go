@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package pulsarm
+package pulsar
 
 // abort.go — identifiable-abort complaints.
 //
@@ -10,7 +10,7 @@ package pulsarm
 // complaints; a quorum of distinct accusers against the same accused
 // is a disqualification event.
 //
-// pulsar-m.tex §4.5 enumerates the complaint taxonomy. This file
+// pulsar.tex §4.5 enumerates the complaint taxonomy. This file
 // gives the canonical wire format and the verification routines that
 // any third party (chain validator, audit observer, slashing module)
 // uses to check a complaint is well-formed.
@@ -22,9 +22,9 @@ import (
 
 // Errors returned by abort-evidence verification.
 var (
-	ErrInvalidComplaint   = errors.New("pulsarm: complaint structure invalid")
-	ErrComplaintSelfAcc   = errors.New("pulsarm: complaint accuser equals accused")
-	ErrComplaintNoSig     = errors.New("pulsarm: complaint missing accuser signature")
+	ErrInvalidComplaint   = errors.New("pulsar: complaint structure invalid")
+	ErrComplaintSelfAcc   = errors.New("pulsar: complaint accuser equals accused")
+	ErrComplaintNoSig     = errors.New("pulsar: complaint missing accuser signature")
 )
 
 // MarshalAbortEvidence serialises an AbortEvidence to its canonical

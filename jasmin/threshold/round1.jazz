@@ -1,11 +1,11 @@
-// Pulsar-M Round-1 — per-party commit message
+// Pulsar Round-1 — per-party commit message
 //
 // STATUS: scaffolding. The function signature is committed in Jasmin syntax;
 // the body is a `// TODO: jasmin implementation` marker. See
 // ./README.md for the high-assurance-track roadmap.
 //
 // -----------------------------------------------------------------------------
-// Algorithm (mirrors ref/go/pkg/pulsarm/threshold.go ThresholdSigner.Round1)
+// Algorithm (mirrors ref/go/pkg/pulsar/threshold.go ThresholdSigner.Round1)
 // -----------------------------------------------------------------------------
 //
 // Inputs:
@@ -22,7 +22,7 @@
 // Outputs:
 //   commit      — Round-1 commit message bytes:
 //                   {y_i_high, w1_i, sender_mac_set, transcript_tau1_i}
-//                 (see spec/pulsar-m.tex §4.3)
+//                 (see spec/pulsar.tex §4.3)
 //   y_i_state   — local state carrying the secret y_i mask to Round-2
 //
 // Constant-time obligations:
@@ -40,7 +40,7 @@
 require "../ml-dsa-65/libjade/src/crypto_sign/dilithium/dilithium3/amd64/ref/params.jinc"
 
 param int PULSARM_SHARE_BYTES   = 4 * 256 * 4;  // l polynomials over R_q, ML-DSA-65: l=5
-param int PULSARM_COMMIT_BYTES  = 1952;         // see spec/pulsar-m.tex §4.3
+param int PULSARM_COMMIT_BYTES  = 1952;         // see spec/pulsar.tex §4.3
 param int PULSARM_Y_STATE_BYTES = 4 * 256 * 4;  // l polynomials
 
 fn round1_commit(

@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package pulsarm
+package pulsar
 
 // dkg.go — distributed key generation. Three rounds:
 //
@@ -24,7 +24,7 @@ package pulsarm
 // the commit bound to nothing the protocol verified (BLOCKERS.md
 // CR-6). Path A drops the commit entirely. Binding comes from
 // Round-2 digest agreement over the ordered envelope set. The
-// v0.2 path replaces this with R_q^k Pedersen per pulsar-m.tex §3.2
+// v0.2 path replaces this with R_q^k Pedersen per pulsar.tex §3.2
 // + §4.1 for stronger PQ-safe binding under M-LWE hardness; that is
 // orthogonal to CR-6 and remains the future work.
 //
@@ -45,15 +45,15 @@ import (
 
 // Errors returned by DKG.
 var (
-	ErrCommitteeEmpty       = errors.New("pulsarm: DKG committee is empty")
-	ErrCommitteeDuplicate   = errors.New("pulsarm: DKG committee contains duplicate node IDs")
-	ErrNotInCommittee       = errors.New("pulsarm: node is not in DKG committee")
-	ErrEnvelopeMissing      = errors.New("pulsarm: round-1 envelope missing for committee member")
-	ErrCommitMismatch       = errors.New("pulsarm: round-1 commit does not match opening at round 3")
-	ErrEquivocation         = errors.New("pulsarm: round-1.5 envelope digest mismatch (equivocation)")
-	ErrTooFewRound1         = errors.New("pulsarm: too few round-1 messages — DKG requires all committee members")
-	ErrTooFewRound2         = errors.New("pulsarm: too few round-2 messages — DKG requires all committee members")
-	ErrDirectoryIncomplete  = errors.New("pulsarm: identity directory missing entry for committee member")
+	ErrCommitteeEmpty       = errors.New("pulsar: DKG committee is empty")
+	ErrCommitteeDuplicate   = errors.New("pulsar: DKG committee contains duplicate node IDs")
+	ErrNotInCommittee       = errors.New("pulsar: node is not in DKG committee")
+	ErrEnvelopeMissing      = errors.New("pulsar: round-1 envelope missing for committee member")
+	ErrCommitMismatch       = errors.New("pulsar: round-1 commit does not match opening at round 3")
+	ErrEquivocation         = errors.New("pulsar: round-1.5 envelope digest mismatch (equivocation)")
+	ErrTooFewRound1         = errors.New("pulsar: too few round-1 messages — DKG requires all committee members")
+	ErrTooFewRound2         = errors.New("pulsar: too few round-2 messages — DKG requires all committee members")
+	ErrDirectoryIncomplete  = errors.New("pulsar: identity directory missing entry for committee member")
 )
 
 // DKGSession holds the per-party state for one DKG ceremony.
@@ -204,7 +204,7 @@ func (s *DKGSession) Round1() (*DKGRound1Msg, error) {
 	// commit-and-open layer.
 	committeeRoot := s.commitCommitteeRoot()
 	keyMaterial := []byte{}
-	keyMaterial = append(keyMaterial, []byte("PULSAR-M-DKG-DEALER-V1")...)
+	keyMaterial = append(keyMaterial, []byte("PULSAR-DKG-DEALER-V1")...)
 	keyMaterial = append(keyMaterial, committeeRoot[:]...)
 	keyMaterial = append(keyMaterial, byte(s.myIndex>>8), byte(s.myIndex))
 	keyMaterial = append(keyMaterial, s.myContribution[:]...)
@@ -234,7 +234,7 @@ func (s *DKGSession) Round1() (*DKGRound1Msg, error) {
 			append(append(append([]byte{}, s.myContribution[:]...),
 				s.MyID[:]...), recipient[:]...),
 			64,
-			"PULSAR-M-DKG-ENCAPSEED-V1",
+			"PULSAR-DKG-ENCAPSEED-V1",
 		)
 		encapSeed := hashForEncapSeed(committeeRoot, s.MyID, recipient, encapBlind)
 
@@ -458,7 +458,7 @@ func (s *DKGSession) computeRound2Digest(ordered []*DKGRound1Msg) [32]byte {
 // sorted committee.
 func (s *DKGSession) commitCommitteeRoot() [32]byte {
 	parts := make([][]byte, 0, len(s.Committee)+1)
-	parts = append(parts, []byte("PULSAR-M-COMMITTEE-V1"))
+	parts = append(parts, []byte("PULSAR-COMMITTEE-V1"))
 	for _, id := range s.Committee {
 		parts = append(parts, id[:])
 	}

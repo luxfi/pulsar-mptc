@@ -13,30 +13,30 @@ tracks claims as contributors disclose them.
 
 ### Pulsar (`luxfi/pulsar`)
 
-Pulsar-M reuses Pulsar's protocol structure. Pulsar's IP posture per
+Pulsar reuses Pulsar's protocol structure. Pulsar's IP posture per
 its README:
 
 - Apache-2.0 licensed.
 - Patent grant per Apache 2.0 §3 from each contributor.
 - No known active patent claims as of repository creation.
 
-This applies to Pulsar-M to the extent that Pulsar-M code or protocol
+This applies to Pulsar to the extent that Pulsar code or protocol
 elements are derivative of Pulsar.
 
 ### Corona (`luxfi/corona`)
 
-Pulsar (and therefore Pulsar-M) is a fork of academic Corona.
+Pulsar (and therefore Pulsar) is a fork of academic Corona.
 Corona (ePrint 2024/1113) authors: Cecilia Boschini, Darya Kaviani,
 Russell W. F. Lai, Giulio Malavolta, Akira Takahashi, Mehdi Tibouchi.
 Corona's open-source repo is Apache-2.0 with no asserted patent
-claims as of mid-2026. Pulsar-M's M-LWE adaptation does not import
+claims as of mid-2026. Pulsar's M-LWE adaptation does not import
 Corona code directly but inherits the protocol structure.
 
 ### ML-DSA / FIPS 204
 
 ML-DSA is a NIST-standardized algorithm. The Dilithium team's IP
 disclosures during NIST PQC standardization are public on the NIST
-PQC website. Pulsar-M targets output interchangeability with FIPS 204
+PQC website. Pulsar targets output interchangeability with FIPS 204
 but does not assert any rights over FIPS 204 itself.
 
 ## Contributor disclosures
@@ -88,4 +88,4 @@ Our final statement, once the spec freezes:
    commitment shape, new aggregation step) trigger an explicit IP
    review with one of the sponsor's IP counsel.
 3. Final statement assembled at freeze, included in
-   `spec/pulsar-m.pdf` Appendix A.
+   `spec/pulsar.pdf` Appendix A.

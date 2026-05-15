@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// combine_ct.go — cgo bridge exposing pulsarm.Combine to the C
+// combine_ct.go — cgo bridge exposing pulsar.Combine to the C
 // dudect harness in dudect_combine.c.
 //
 // The bridge pre-builds a (Round1Message, Round2Message) tape from a
@@ -36,7 +36,7 @@ import (
 	"crypto/rand"
 	"unsafe"
 
-	"github.com/luxfi/pulsar-m/ref/go/pkg/pulsarm"
+	"github.com/luxfi/pulsar/ref/go/pkg/pulsar"
 )
 
 // Long-lived fixture: a real (n=3, t=2) threshold ceremony at
@@ -44,16 +44,16 @@ import (
 // once, then drives pulsarm_combine_ct() with per-sample partial-sig
 // bytes for the target party.
 var (
-	cFixtureParams    *pulsarm.Params
-	cFixturePub       *pulsarm.PublicKey
+	cFixtureParams    *pulsar.Params
+	cFixturePub       *pulsar.PublicKey
 	cFixtureMsg       []byte
 	cFixtureSessionID [16]byte
 	cFixtureAttempt   uint32
-	cFixtureQuorum    []pulsarm.NodeID
+	cFixtureQuorum    []pulsar.NodeID
 	cFixtureThreshold int
-	cFixtureRound1    []*pulsarm.Round1Message
-	cFixtureRound2    []*pulsarm.Round2Message
-	cFixtureShares    []*pulsarm.KeyShare
+	cFixtureRound1    []*pulsar.Round1Message
+	cFixtureRound2    []*pulsar.Round2Message
+	cFixtureShares    []*pulsar.KeyShare
 	// cFixtureTargetIdx is the index in Round2 whose PartialSig bytes
 	// the dudect harness rewrites each sample.
 	cFixtureTargetIdx int
@@ -71,24 +71,24 @@ var (
 // smallest non-trivial threshold ceremony — keeps the dudect run
 // time per sample bounded.
 func pulsarm_combine_ct_setup() C.int {
-	params := pulsarm.MustParamsFor(pulsarm.ModeP65)
+	params := pulsar.MustParamsFor(pulsar.ModeP65)
 	n, t := 3, 2
 
-	committee := make([]pulsarm.NodeID, n)
+	committee := make([]pulsar.NodeID, n)
 	for i := 0; i < n; i++ {
-		committee[i] = pulsarm.NodeID{byte(i + 1)}
+		committee[i] = pulsar.NodeID{byte(i + 1)}
 	}
 
 	// DKG.
-	dkgSessions := make([]*pulsarm.DKGSession, n)
+	dkgSessions := make([]*pulsar.DKGSession, n)
 	for i := 0; i < n; i++ {
-		s, err := pulsarm.NewDKGSession(params, committee, t, committee[i], rand.Reader)
+		s, err := pulsar.NewDKGSession(params, committee, t, committee[i], rand.Reader)
 		if err != nil {
 			return 1
 		}
 		dkgSessions[i] = s
 	}
-	r1 := make([]*pulsarm.DKGRound1Msg, n)
+	r1 := make([]*pulsar.DKGRound1Msg, n)
 	for i, s := range dkgSessions {
 		m, err := s.Round1()
 		if err != nil {
@@ -96,7 +96,7 @@ func pulsarm_combine_ct_setup() C.int {
 		}
 		r1[i] = m
 	}
-	r2 := make([]*pulsarm.DKGRound2Msg, n)
+	r2 := make([]*pulsar.DKGRound2Msg, n)
 	for i, s := range dkgSessions {
 		m, err := s.Round2(r1)
 		if err != nil {
@@ -104,7 +104,7 @@ func pulsarm_combine_ct_setup() C.int {
 		}
 		r2[i] = m
 	}
-	outputs := make([]*pulsarm.DKGOutput, n)
+	outputs := make([]*pulsar.DKGOutput, n)
 	for i, s := range dkgSessions {
 		out, err := s.Round3(r1, r2)
 		if err != nil {
@@ -114,14 +114,14 @@ func pulsarm_combine_ct_setup() C.int {
 	}
 
 	pub := outputs[0].GroupPubkey
-	shares := make([]*pulsarm.KeyShare, n)
+	shares := make([]*pulsar.KeyShare, n)
 	for i := range outputs {
 		shares[i] = outputs[i].SecretShare
 	}
 
 	// Threshold sign.
-	msg := []byte("dudect constant-time smoke: Pulsar-M Combine class N4")
-	quorum := make([]pulsarm.NodeID, t)
+	msg := []byte("dudect constant-time smoke: Pulsar Combine class N4")
+	quorum := make([]pulsar.NodeID, t)
 	for i := 0; i < t; i++ {
 		quorum[i] = shares[i].NodeID
 	}
@@ -130,15 +130,15 @@ func pulsarm_combine_ct_setup() C.int {
 	if _, err := rand.Read(sid[:]); err != nil {
 		return 5
 	}
-	signers := make([]*pulsarm.ThresholdSigner, t)
+	signers := make([]*pulsar.ThresholdSigner, t)
 	for i := 0; i < t; i++ {
-		s, err := pulsarm.NewThresholdSigner(params, sid, 1, quorum, shares[i], msg, rand.Reader)
+		s, err := pulsar.NewThresholdSigner(params, sid, 1, quorum, shares[i], msg, rand.Reader)
 		if err != nil {
 			return 6
 		}
 		signers[i] = s
 	}
-	sr1 := make([]*pulsarm.Round1Message, t)
+	sr1 := make([]*pulsar.Round1Message, t)
 	for i, s := range signers {
 		m, err := s.Round1(msg)
 		if err != nil {
@@ -146,7 +146,7 @@ func pulsarm_combine_ct_setup() C.int {
 		}
 		sr1[i] = m
 	}
-	sr2 := make([]*pulsarm.Round2Message, t)
+	sr2 := make([]*pulsar.Round2Message, t)
 	for i, s := range signers {
 		m, _, err := s.Round2(sr1)
 		if err != nil {
@@ -158,7 +158,7 @@ func pulsarm_combine_ct_setup() C.int {
 	// Sanity: Combine succeeds on the un-mutated tape. Without this
 	// check the dudect run could silently measure the time for an
 	// always-rejecting Combine path.
-	if _, err := pulsarm.Combine(params, pub, msg, nil, false, sid, 1, quorum, t, sr1, sr2, shares); err != nil {
+	if _, err := pulsar.Combine(params, pub, msg, nil, false, sid, 1, quorum, t, sr1, sr2, shares); err != nil {
 		return 9
 	}
 
@@ -207,7 +207,7 @@ func pulsarm_combine_ct(data *C.uint8_t) {
 	// Clone Round2 so the tape stays usable across samples. The
 	// inner PartialSig slice is reallocated per sample so the rest of
 	// the harness can keep the original tape pristine.
-	r2 := make([]*pulsarm.Round2Message, len(cFixtureRound2))
+	r2 := make([]*pulsar.Round2Message, len(cFixtureRound2))
 	for i, m := range cFixtureRound2 {
 		r2[i] = m
 	}
@@ -215,7 +215,7 @@ func pulsarm_combine_ct(data *C.uint8_t) {
 	mutated.PartialSig = append([]byte{}, src...)
 	r2[cFixtureTargetIdx] = &mutated
 
-	_, _ = pulsarm.Combine(
+	_, _ = pulsar.Combine(
 		cFixtureParams,
 		cFixturePub,
 		cFixtureMsg,

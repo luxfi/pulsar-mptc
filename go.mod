@@ -1,4 +1,4 @@
-module github.com/luxfi/pulsar-m
+module github.com/luxfi/pulsar-mptc
 
 go 1.26.3
 

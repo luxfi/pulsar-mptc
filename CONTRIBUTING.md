@@ -1,4 +1,4 @@
-# Contributing to Pulsar-M
+# Contributing to Pulsar
 
 ## What we accept
 
@@ -42,8 +42,8 @@ These reopen post-submission.
 ## Development setup
 
 ```bash
-git clone https://github.com/luxfi/pulsar-m
-cd pulsar-m
+git clone https://github.com/luxfi/pulsar
+cd pulsar
 ./scripts/build.sh
 ./scripts/test.sh
 ```
@@ -51,7 +51,7 @@ cd pulsar-m
 Spec build requires LaTeX (TeX Live 2024+):
 ```bash
 cd spec/
-latexmk -pdf pulsar-m.tex
+latexmk -pdf pulsar.tex
 ```
 
 ## Coding standards (Go reference)

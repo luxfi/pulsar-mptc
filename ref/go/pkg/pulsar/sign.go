@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package pulsarm
+package pulsar
 
 // sign.go — single-party signing. The single-party path is the
 // reference baseline for the threshold path in threshold.go: a
@@ -28,9 +28,9 @@ import (
 
 // Errors returned by signing.
 var (
-	ErrCtxTooLong  = errors.New("pulsarm: context string longer than 255 bytes")
-	ErrSignFailure = errors.New("pulsarm: FIPS 204 signing failed")
-	ErrNilKey      = errors.New("pulsarm: nil key")
+	ErrCtxTooLong  = errors.New("pulsar: context string longer than 255 bytes")
+	ErrSignFailure = errors.New("pulsar: FIPS 204 signing failed")
+	ErrNilKey      = errors.New("pulsar: nil key")
 )
 
 // Sign produces a FIPS 204 ML-DSA signature on message under the

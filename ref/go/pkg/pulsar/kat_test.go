@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package pulsarm
+package pulsar
 
 import (
 	"encoding/hex"
@@ -24,7 +24,7 @@ import (
 
 // vectorsDir resolves to the repository's vectors/ directory.
 func vectorsDir() string {
-	// kat_test.go lives at ref/go/pkg/pulsarm/; the vectors dir is at
+	// kat_test.go lives at ref/go/pkg/pulsar/; the vectors dir is at
 	// the repo root, four levels up.
 	wd, err := os.Getwd()
 	if err != nil {
@@ -233,11 +233,11 @@ func TestKAT_DKG_Replay(t *testing.T) {
 
 func modeFromString(s string) Mode {
 	switch s {
-	case "Pulsar-M-44":
+	case "Pulsar-44":
 		return ModeP44
-	case "Pulsar-M-65":
+	case "Pulsar-65":
 		return ModeP65
-	case "Pulsar-M-87":
+	case "Pulsar-87":
 		return ModeP87
 	default:
 		return ModeUnspecified

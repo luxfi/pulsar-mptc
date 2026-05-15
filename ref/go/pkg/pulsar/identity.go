@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package pulsarm
+package pulsar
 
 // identity.go — long-term party identity + ephemeral per-session
 // per-pair key establishment.
@@ -49,14 +49,14 @@ import (
 
 // Errors returned by identity / session-key operations.
 var (
-	ErrIdentityKeyMissing  = errors.New("pulsarm: identity key missing")
-	ErrSessionKeyMissing   = errors.New("pulsarm: session key missing for peer")
-	ErrIdentityCorrupted   = errors.New("pulsarm: identity key bytes invalid")
-	ErrSessionEncryption   = errors.New("pulsarm: session-key derivation failed")
-	ErrEnvelopeCiphertext  = errors.New("pulsarm: KEM ciphertext is wrong size or invalid")
-	ErrEnvelopeAuthBad     = errors.New("pulsarm: envelope authentication tag invalid")
-	ErrSessionPeerSelf     = errors.New("pulsarm: cannot establish session with self")
-	ErrSessionIdentityPK   = errors.New("pulsarm: peer identity public key invalid")
+	ErrIdentityKeyMissing  = errors.New("pulsar: identity key missing")
+	ErrSessionKeyMissing   = errors.New("pulsar: session key missing for peer")
+	ErrIdentityCorrupted   = errors.New("pulsar: identity key bytes invalid")
+	ErrSessionEncryption   = errors.New("pulsar: session-key derivation failed")
+	ErrEnvelopeCiphertext  = errors.New("pulsar: KEM ciphertext is wrong size or invalid")
+	ErrEnvelopeAuthBad     = errors.New("pulsar: envelope authentication tag invalid")
+	ErrSessionPeerSelf     = errors.New("pulsar: cannot establish session with self")
+	ErrSessionIdentityPK   = errors.New("pulsar: peer identity public key invalid")
 )
 
 // IdentityPublicKey is a party's long-term public identity material:
@@ -142,7 +142,7 @@ func GenerateIdentity(rng io.Reader) (*IdentityKey, error) {
 //   1. Caller (this party, A) encapsulates a fresh shared secret ss_A
 //      to peer's long-term KEM public key. The encapsulation is
 //      DETERMINISTIC, seeded from
-//          HKDF-SHA3-256("PULSAR-M-SESSION-V1" || sid || A || B || transcript)
+//          HKDF-SHA3-256("PULSAR-SESSION-V1" || sid || A || B || transcript)
 //      so two parties agreeing on sid + transcript derive the same
 //      encapsulation seed for KAT reproducibility.
 //   2. Peer (B) does the symmetric thing with roles swapped.
@@ -384,7 +384,7 @@ const envelopeSealedSize = 64 + 32 + 32
 //      Encapsulation seed is derived deterministically by the caller
 //      (DKGSession) so KAT regeneration is byte-stable.
 //   2. Derive an envelope key K_env = HKDF-SHA3-256(ss, salt=dealerID,
-//      info="PULSAR-M-DKG-ENVKEY-V1" || recipientID || committee_root).
+//      info="PULSAR-DKG-ENVKEY-V1" || recipientID || committee_root).
 //   3. Seal (share || contribution || tag) under K_env via XOR with
 //      a cSHAKE256 stream keyed by K_env. The auth tag is
 //      KMAC256(K_env, dealerID || recipientID || share || contribution).
@@ -508,13 +508,13 @@ func deriveEnvelopeKey(ss []byte, dealerID, recipientID NodeID, committeeRoot [3
 }
 
 // Customisation tags for identity / session-key / envelope derivation.
-// These are wire-frozen alongside the other PULSAR-M-*-V1 tags.
+// These are wire-frozen alongside the other PULSAR-*-V1 tags.
 const (
-	sessionEstablishInfo = "PULSAR-M-SESSION-ESTABLISH-V1"
-	sessionKeyInfo       = "PULSAR-M-SESSION-KEY-V1"
-	dkgEnvelopeKeyTag    = "PULSAR-M-DKG-ENVKEY-V1"
-	dkgEnvelopeStreamTag = "PULSAR-M-DKG-ENVSTREAM-V1"
-	dkgEnvelopeAuthTag   = "PULSAR-M-DKG-ENVAUTH-V1"
+	sessionEstablishInfo = "PULSAR-SESSION-ESTABLISH-V1"
+	sessionKeyInfo       = "PULSAR-SESSION-KEY-V1"
+	dkgEnvelopeKeyTag    = "PULSAR-DKG-ENVKEY-V1"
+	dkgEnvelopeStreamTag = "PULSAR-DKG-ENVSTREAM-V1"
+	dkgEnvelopeAuthTag   = "PULSAR-DKG-ENVAUTH-V1"
 )
 
 // IdentityDirectory maps NodeID to the published IdentityPublicKey.

@@ -2,7 +2,7 @@
 // See the file LICENSE for licensing terms.
 
 // genkat is the canonical KAT (Known Answer Test) generator for
-// Pulsar-M. It produces the JSON vector files committed under
+// Pulsar. It produces the JSON vector files committed under
 // vectors/ — keygen, sign, verify, threshold-sign, dkg.
 //
 // Re-running genkat on a clean checkout MUST produce byte-identical
@@ -20,7 +20,7 @@ import (
 	"os"
 	"path/filepath"
 
-	pm "github.com/luxfi/pulsar-m/ref/go/pkg/pulsarm"
+	pm "github.com/luxfi/pulsar/ref/go/pkg/pulsar"
 )
 
 // MasterSeed is the head-of-file 48-byte seed from which every KAT
@@ -88,7 +88,7 @@ func newDetReader(seed []byte) *detReader {
 
 func (r *detReader) Read(p []byte) (int, error) {
 	// We pull blocks of 4096 bytes via SHA-256 chaining for clean
-	// determinism without requiring the pulsarm package's internal
+	// determinism without requiring the pulsar package's internal
 	// cshake256. SHA-256(seed || counter) → 32 bytes per block.
 	for n := 0; n < len(p); {
 		if r.off >= len(r.buf) {
@@ -155,7 +155,7 @@ func main() {
 			var seed [pm.SeedSize]byte
 			_, _ = seedReader.Read(seed[:])
 			sk, _ := pm.KeyFromSeed(params, seed)
-			msg := []byte(fmt.Sprintf("Pulsar-M KAT message %s #%d", mode.String(), i))
+			msg := []byte(fmt.Sprintf("Pulsar KAT message %s #%d", mode.String(), i))
 			sig, err := pm.Sign(params, sk, msg, nil, false, nil)
 			if err != nil {
 				fail(err)
@@ -181,7 +181,7 @@ func main() {
 		var seed [pm.SeedSize]byte
 		_, _ = seedReader.Read(seed[:])
 		sk, _ := pm.KeyFromSeed(params, seed)
-		msg := []byte(fmt.Sprintf("Pulsar-M Verify KAT %s", mode.String()))
+		msg := []byte(fmt.Sprintf("Pulsar Verify KAT %s", mode.String()))
 		sig, _ := pm.Sign(params, sk, msg, nil, false, nil)
 		verifyKATs = append(verifyKATs, VerifyKAT{
 			Mode:      mode.String(),
@@ -214,7 +214,7 @@ func main() {
 			committee := makeKATCommittee(tc.N)
 			identities := makeKATIdentities(committee, mode, tc.N, tc.T)
 			pub, shares, _ := runKATDKG(params, committee, tc.T, mode, identities)
-			msg := []byte(fmt.Sprintf("Pulsar-M Threshold KAT %s n=%d t=%d", mode.String(), tc.N, tc.T))
+			msg := []byte(fmt.Sprintf("Pulsar Threshold KAT %s n=%d t=%d", mode.String(), tc.N, tc.T))
 			quorum := make([]pm.NodeID, tc.T)
 			for i := 0; i < tc.T; i++ {
 				quorum[i] = shares[i].NodeID
@@ -318,7 +318,7 @@ func makeKATIdentities(committee []pm.NodeID, mode pm.Mode, n, threshold int) *k
 	keys := make(map[pm.NodeID]*pm.IdentityKey, len(committee))
 	pubs := make(map[pm.NodeID]*pm.IdentityPublicKey, len(committee))
 	for i, id := range committee {
-		seedTag := append([]byte("PULSAR-M-IDENT-KAT-V1"), []byte{byte(mode), byte(n), byte(threshold), byte(i)}...)
+		seedTag := append([]byte("PULSAR-IDENT-KAT-V1"), []byte{byte(mode), byte(n), byte(threshold), byte(i)}...)
 		rng := newDetReader(seedTag)
 		k, err := pm.GenerateIdentity(rng)
 		if err != nil {
@@ -361,7 +361,7 @@ func runKATDKG(params *pm.Params, committee []pm.NodeID, threshold int, mode pm.
 	sessions := make([]*pm.DKGSession, n)
 	for i := range sessions {
 		// Deterministic per-party seed.
-		seedTag := append([]byte("PULSAR-M-DKG-KAT-V1"), []byte{byte(mode), byte(n), byte(threshold), byte(i)}...)
+		seedTag := append([]byte("PULSAR-DKG-KAT-V1"), []byte{byte(mode), byte(n), byte(threshold), byte(i)}...)
 		rng := newDetReader(seedTag)
 		s, _ := pm.NewDKGSession(params, committee, threshold, committee[i], identities.keys[committee[i]], identities.dir, rng)
 		sessions[i] = s

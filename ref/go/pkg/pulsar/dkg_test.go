@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package pulsarm
+package pulsar
 
 import (
 	"bytes"
@@ -261,7 +261,7 @@ func (r *detReader) Read(p []byte) (int, error) {
 		if r.off >= len(r.buf) {
 			// Generate a new chunk.
 			input := append(append([]byte{}, r.seed...), byte(r.off>>16), byte(r.off>>8), byte(r.off))
-			r.buf = cshake256(input, 4096, "PULSAR-M-TESTRAND-V1")
+			r.buf = cshake256(input, 4096, "PULSAR-TESTRAND-V1")
 			r.off = 0
 		}
 		copied := copy(p[n:], r.buf[r.off:])
