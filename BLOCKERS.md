@@ -27,6 +27,7 @@ agent's verdict on each algorithmic claim:
 | EUF-CMA under adaptive corruption | **UNSUPPORTED** | Spec MUST be honest: static-corruption only in v0.1. Adaptive variant (Game ADAPT) is the deferred theorem. |
 | Constant-time Verify | WEAK | Assertion not measurement. Add `dudect` to CI before claiming CT. |
 | Z-Chain Groth16 → P3Q migration | WEAK | `QuasarCert.MLDSAProof` currently holds raw per-validator sigs with length prefixes — NOT a Groth16 proof. BN254 quantum-exposure is theoretical only because BN254 isn't actually in use. Either implement Groth16 rollup behind the doc claim, or update doc to reflect per-validator-sig reality, then wire P3Q. |
+| Spec ↔ Go-reference protocol drift | **OPEN** | spec/pulsar-m.tex (and `jasmin/threshold/*.jazz`) define `D_i = cSHAKE(pack_w1(w_i), τ_1)` and a Lagrange-linearity Round-2/Combine flow. `ref/go/pkg/pulsar/threshold.go` implements a reveal-and-aggregate protocol with `D_i = cSHAKE(mask || masked || τ_1)` and reconstructs the secret seed in aggregator memory (the v0.1 trust-model caveat above). Pick one before the submission tag: align the Go reference to the spec (and re-run KAT vectors), or weaken the spec to the v0.1 reveal-and-aggregate flow. The Jasmin sources currently track the spec; if v0.1 wins, they need a rewrite. |
 
 ## Production go-live blockers (13 CRITICAL — all CLOSED)
 
