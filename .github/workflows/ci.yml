@@ -48,13 +48,69 @@ jobs:
             texlive-fonts-extra texlive-science latexmk \
             cm-super
 
-      - name: Build pulsar-m.pdf
+      - name: Build pulsar.pdf
         working-directory: spec
-        run: latexmk -pdf -interaction=nonstopmode -halt-on-error pulsar-m.tex
+        run: latexmk -pdf -interaction=nonstopmode -halt-on-error pulsar.tex
 
       - name: Upload PDF artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pulsar-m-pdf
-          path: spec/pulsar-m.pdf
+          name: pulsar-pdf
+          path: spec/pulsar.pdf
           if-no-files-found: error
+
+  high-assurance:
+    name: Jasmin type-check + EasyCrypt admit budget + EC compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache opam + tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.opam
+          key: opam-jasmin-easycrypt-${{ runner.os }}-v2
+
+      - name: Install system deps (OCaml + Why3 SMT)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            opam ocaml-nox m4 pkg-config libgmp-dev libpcre3-dev \
+            z3 alt-ergo zlib1g-dev
+
+      - name: opam init (idempotent)
+        run: |
+          if [ ! -d ~/.opam ]; then
+            opam init --bare --disable-sandboxing --yes
+          fi
+          opam update -y || true
+
+      - name: opam switch jasmin (idempotent)
+        run: |
+          if ! opam switch list --short | grep -q '^jasmin$' ; then
+            opam switch create jasmin 4.14.2 --yes
+          fi
+          eval $(opam env --switch=jasmin)
+          opam install jasmin --yes
+
+      - name: Install EasyCrypt (source build)
+        run: |
+          eval $(opam env --switch=jasmin)
+          if ! command -v easycrypt >/dev/null 2>&1; then
+            git clone --depth 1 https://github.com/EasyCrypt/easycrypt.git /tmp/easycrypt-src
+            cd /tmp/easycrypt-src && opam install . --yes
+          fi
+
+      - name: Configure why3 / EasyCrypt
+        run: |
+          eval $(opam env --switch=jasmin)
+          easycrypt why3config || true
+
+      - name: Fetch libjade (pinned commit)
+        run: bash jasmin/ml-dsa-65/fetch.sh
+
+      - name: Run high-assurance gate
+        run: |
+          eval $(opam env --switch=jasmin)
+          bash scripts/check-high-assurance.sh
