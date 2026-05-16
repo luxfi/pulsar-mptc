@@ -57,11 +57,33 @@ section ClassN4.
 
 declare module R <: Pulsar_Reshare.
 
-(* Main theorem: the public key is invariant across reshare. The
-   universally-bound arguments are suffixed `_pre` so the hoare-triple
-   precondition can actually constrain the procedure's parameters
-   against the caller's intended inputs (the original phrasing
-   `c_old = c_old` was a self-shadowing tautology). *)
+(* Shamir-zero re-randomisation: R.reshare produces a fresh sharing of
+   the SAME secret. The new share set, Lagrange-reconstructed at any
+   quorum q_new, yields the same value as the original shares
+   Lagrange-reconstructed at any quorum q_old. This is the
+   *cryptographic-reduction* content N4 needs.
+
+   For an arbitrary `declare module R <: Pulsar_Reshare`, this is NOT
+   provable — a malicious R can emit garbage shares. The property is
+   therefore stated as a section-local `declare axiom`: a refinement
+   obligation that becomes a *proof obligation about the concrete R*
+   when a Jasmin/Go-extracted implementation is plugged in. The
+   honest-R case is discharged by the Shamir-secret-sharing-of-zero
+   algebraic identity (Lean: `Crypto.Threshold.Lagrange
+   .threshold_reconstructs_secret`). *)
+declare axiom reshare_preserves_secret
+      (c_old_pre c_new_pre : committee_t)
+      (shares_old_pre : share_t list) (q_old q_new : int list) :
+    hoare [ R.reshare :
+              c_old = c_old_pre /\ shares_old = shares_old_pre
+                /\ c_new = c_new_pre
+            ==>
+              reconstruct q_new res.`1 = reconstruct q_old shares_old_pre ].
+
+(* Main theorem: the public key is invariant across reshare. Closed
+   by the Shamir-zero re-randomisation axiom + congruence under the
+   `derive_pk` operator. (Function congruence is implicit in EasyCrypt
+   — if x = y then f x = f y.) *)
 lemma pulsar_n4_pk_preservation
       (c_old_pre c_new_pre : committee_t)
       (shares_old_pre : share_t list) (q_old q_new : int list) :
@@ -72,15 +94,8 @@ lemma pulsar_n4_pk_preservation
               derive_pk (reconstruct q_new res.`1)
               = derive_pk (reconstruct q_old shares_old_pre) ].
 proof.
-  (* The cryptographic-reduction core remains an `admit` --- closing it
-     requires (i) the Shamir-zero re-randomisation property
-     (reshare = fresh sharing of the same secret) and (ii) R_q-linearity
-     of derive_pk = A·s + e. Both are out-of-scope for the EasyCrypt
-     functional layer; they live in the Lean theory at
-     `Crypto.Threshold.Lagrange.threshold_reconstructs_secret`. This
-     admit is the *only* remaining proof obligation in N4, after the
-     shadowing fix above made the precondition meaningful. *)
-  admit.
+  conseq (reshare_preserves_secret c_old_pre c_new_pre
+            shares_old_pre q_old q_new) => /#.
 qed.
 
 (* Auxiliary lemma: the reshare transcript binds the committee.
