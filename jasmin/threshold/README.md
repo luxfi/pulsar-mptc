@@ -6,33 +6,38 @@ sources in `../ml-dsa-65/libjade/` (fetched on demand, see
 `../ml-dsa-65/README.md`); the threshold layer here implements the
 per-party computations that combine into a FIPS 204-valid signature.
 
-## Status — stubs
+## Status
 
-Every `.jazz` file in this directory is a **stub**. The function
-signature is committed in Jasmin syntax; the body is a `// TODO:
-jasmin implementation` marker with a comment block describing the
-algorithm. Implementing the threshold layer in Jasmin is a non-trivial
-effort tracked in this repository
-release point.
+All three `.jazz` files carry real algorithm bodies, not stubs. The
+high-assurance track now ships:
 
-What is in this repository:
+| File | Lines | Algorithm |
+|---|---|---|
+| `round1.jazz` | 397 | Round-1 commit (D_i = cSHAKE(pack_w1(w1_i), τ_1) + sender-MAC slots) |
+| `round2.jazz` | 626 | Round-2 response (peer-MAC verify, c̃ = SHAKE(μ ‖ pack_w1(ŵ)), z_i = y_i + c·λ_i·s_i, r_i = c·λ_i·u_i, τ_2 binding) |
+| `combine.jazz` | 416 | Aggregate (z = Σ z_j, c·s_2 = Σ r_j, MakeHint, R₁..R₄ rejection, FIPS 204 pack(c̃, z, h)) |
 
-- The interface contract between threshold-layer Jasmin and the
-  single-party libjade kernel (signature shapes, secret-dependent
-  arguments, constant-time obligations).
-- The EasyCrypt theory shell that discharges the Class N1
-  reduction once the Jasmin implementations land (see
-  `../../proofs/easycrypt/PulsarM_N1.ec`).
+Each routine calls into the pinned `libjade/oldsrc-should-delete/
+crypto_sign/dilithium/dilithium3/amd64/ref/` primitives (`fft_vec`,
+`ifft_to_mont_vecl`, `mult_scalar_vec`, `polyveck_make_hint`,
+`checknorm_vecl`, `checknorm_veck`, `challenge`, `poly_ntt`, `pack_z`,
+`unpack_z`, `pack_w1`, `unpack_w1`, `polyveck_caddq`, `decompose_vec`)
+plus the shared `../lib/` helpers (`lagrange_coefficient_mont`,
+`polyvecl_scalar_mont`, `kmac256_*`, `cshake256_*`, `absorb_*`).
 
-This is honest and standard for an MPTC this repository. NIST
-reviewers see:
+What's still open in the high-assurance track:
 
-1. The single-party verified baseline (libjade, real and machine-
-   checked).
-2. The interface the threshold layer will plug into (this directory).
-3. The Class N1 reduction skeleton (`../../proofs/easycrypt/`).
-
-The full proof closure is in this repository.
+- The `jasminc` compile gate is *not* exercised in this repository's
+  CI (compiler is not installed on the developer machines that produce
+  the submission tag). The sources are syntactically hand-reviewed
+  against the libjade reference; final assembly emission and the
+  constant-time leakage analysis are intended to run in the NIST
+  reviewer environment.
+- The EasyCrypt N1 reduction (`../../proofs/easycrypt/PulsarM_N1.ec`)
+  still has admits on the cryptographic-reduction core — the
+  algebraic Lagrange identity is hoisted as an axiom and the 6-step
+  z / w₁ / c̃ / hint aggregation chain is stated but not mechanised.
+  Closing this is independent of the Jasmin layer landing.
 
 ## Files
 
