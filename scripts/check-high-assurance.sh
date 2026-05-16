@@ -95,30 +95,29 @@ EC_FILES=(
 # Admit budget — the count of `admit.` source lines across the EC
 # tree. Hard-pinned so a regression (new admit appearing without
 # closing an existing one) fails CI even when easycrypt itself is not
-# installed locally. The current 3 admit lines break down as:
+# installed locally. The current 2 admit lines break down as:
 #   * Pulsar_N1.ec:~450 — core 6-step byte-equality reduction
-#   * Pulsar_N1.ec:~484 — inside a (* ... *) commented-out lemma; the
-#                          surrounding block is parked code, not a live
-#                          proof obligation; the line is counted by
-#                          this grep because the gate is intentionally
-#                          comment-unaware (cheap + conservative)
-#   * Pulsar_N4.ec:~83  — pk-preservation across reshare (main lemma)
+#                          (research-grade reduction; needs libjade
+#                          `MLDSA65_Functional` to land upstream)
+#   * Pulsar_N4.ec:~83  — pk-preservation across reshare main lemma
+#                          (research-grade; needs Shamir-zero
+#                          re-randomisation + R_q-linearity of
+#                          derive_pk, both per spec/pulsar.tex §4.5)
 #
-# Closed this stretch (with EasyCrypt installed and running):
-#   - N4 committee-binding aux: `proc true; auto.` (postcondition is
-#     a vacuous `true` placeholder).
-#   - CT Round-1 + Round-2 leakage equivalence: converted from
-#     `lemma ... admit.` to `declare axiom`. The leakage property is
-#     concrete-implementation-dependent (any abstract M1/M2 with
-#     secret-dependent leakage refutes it), so stating it as an
-#     axiom over the section-local module is the correct shape;
-#     proof closure happens Jasmin-side via jasminc `-checkCT` when
-#     a concrete extraction is plugged in.
+# Closed history:
+#   - N1 verifier-compat corollary: deleted (was inside `(* ... *)`;
+#     direct consequence of byte-equality, no need to restate).
+#   - N4 committee-binding aux: discharged via `proc true; auto.`
+#     (postcondition is a vacuous `true` placeholder).
+#   - CT Round-1 + Round-2 leakage equivalence: restated as
+#     `declare axiom` over section-local M1/M2 — the lemma shape
+#     was wrong (leakage equivalence is impl-dependent, not a
+#     theorem about abstract module). Discharged Jasmin-side via
+#     `jasminc -checkCT` when concrete extraction is plugged in.
 #
-# Net actionable admits: 2 (N1:484 is in a commented-out section).
-# Closing one requires removing the corresponding `admit.` AND
-# decrementing this budget.
-ADMIT_BUDGET=3
+# Closing one of the remaining 2 requires removing the corresponding
+# `admit.` AND decrementing this budget.
+ADMIT_BUDGET=2
 ADMIT_COUNT=0
 for f in "${EC_FILES[@]}"; do
     if [[ -f "$f" ]]; then

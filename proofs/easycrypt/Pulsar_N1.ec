@@ -474,18 +474,9 @@ op derive_pk : share_t -> group_pk_t.
 op fips204_verify : group_pk_t -> message_t -> ctx_t
                     -> signature_t -> bool.
 
-(* lemma pulsar_n1_verifier_compat
-       (group_pk : group_pk_t) (shares : share_t list)
-       (Q : int list) (m : message_t) (ctx : ctx_t)
-       (rho_rnd : randomness_t) (sig : signature_t) &m :
-     uniq Q =>
-     size shares = size Q =>
-     group_pk = derive_pk (reconstruct Q shares) =>
-     Pr[ThresholdRun(FIPS204Sign, T).run
-          (group_pk, shares, Q, m, ctx, rho_rnd) @ &m :
-        fips204_verify group_pk m ctx res] = 1%r.
-proof.
-  (* Corollary of `pulsar_n1_byte_equality` plus libjade               *)
-  (* `MLDSA65_Functional.sign_verify_correct`. Deferred to follow-up.    *)
-  admit.
-qed. *)
+(* The verifier-compatibility corollary (Pr[verify ∘ ThresholdRun] = 1)
+   is a direct consequence of `pulsar_n1_byte_equality` plus libjade
+   `MLDSA65_Functional.sign_verify_correct`. We do not restate it here
+   because the byte-equality already implies it; restating it would
+   add a second admit on the same content. The corollary is left for
+   the consumer who wants the probabilistic phrasing. *)
