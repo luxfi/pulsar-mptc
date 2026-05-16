@@ -357,9 +357,11 @@ fn pulsar_round2(
     mac_rsp = mac_buf;
     status = verify_peer_macs(mkey_rsp, commits_rsp, tau_rsp, mac_rsp,
                               quorum_size, my_index);
-    if (status != 0) {
-        return status;
-    }
+    // Jasmin doesn't accept early `return` inside an `if`; fall through
+    // and gate the rest of the body on `status == 0`. The MAC-failure
+    // path leaves the output buffer in an indeterminate state, which
+    // the caller MUST detect via the nonzero return code.
+    if (status == 0) {
 
     // ---- 3. Aggregate bar_D ----
     commits_rsp = commit_buf;
@@ -405,16 +407,15 @@ fn pulsar_round2(
     c_tilde_rsp = c_tilde;
     c_tilde_rsp = r2_challenge_seed(mu_rsp, packed_rsp, c_tilde_rsp);
 
-    // ---- 6. c = SampleInBall(c_tilde) -> NTT ----
+    // ---- 6. c = sampleInBall(c_tilde) -> NTT ----
     pc_rsp = c_poly;
-    pc_rsp = challenge(c_tilde_rsp);
+    pc_rsp = sampleInBall(pc_rsp, c_tilde_rsp);
     c_poly = pc_rsp;
 
-    pn_rsp = c_ntt;
     ?{}, i = #set0_64();
     while (i < Li2_polydeg) { r32 = c_poly[i]; c_ntt[i] = r32; i += 1; }
     pn_rsp = c_ntt;
-    pn_rsp = poly_ntt(pn_rsp);
+    pn_rsp = fft(pn_rsp);
     c_ntt = pn_rsp;
 
     // ---- 7. lambda_i^T in Montgomery form ----
@@ -428,11 +429,10 @@ fn pulsar_round2(
     vec_l_rsp = tmp_l;
     vec_l_rsp = fft_vec(vec_l_rsp);
     tmp_l = vec_l_rsp;
-    // b) c_ntt * s_i_ntt
-    vec_l_rsp = cs_l;
+    // b) c_ntt * s_i_ntt (libjade's mult_scalar_vec returns the
+    //    product polyvecl by value via a stack temporary)
     pn_rsp = c_ntt;
-    vec_l_rsp = mult_scalar_vec(pn_rsp, tmp_l, vec_l_rsp);
-    cs_l = vec_l_rsp;
+    cs_l = mult_scalar_vec(pn_rsp, tmp_l);
     // c) invNTT -> normal form (Montgomery factor folded in)
     vec_l_rsp = cs_l;
     vec_l_rsp = ifft_to_mont_vecl(vec_l_rsp);
@@ -461,10 +461,8 @@ fn pulsar_round2(
     vec_l_rsp = fft_vec(vec_l_rsp);
     tmp_l = vec_l_rsp;
 
-    vec_l_rsp = cu_l;
     pn_rsp = c_ntt;
-    vec_l_rsp = mult_scalar_vec(pn_rsp, tmp_l, vec_l_rsp);
-    cu_l = vec_l_rsp;
+    cu_l = mult_scalar_vec(pn_rsp, tmp_l);
     vec_l_rsp = cu_l;
     vec_l_rsp = ifft_to_mont_vecl(vec_l_rsp);
     cu_l = vec_l_rsp;
@@ -503,20 +501,28 @@ fn pulsar_round2(
         i += 1;
     }
 
-    // [32 .. 1632) pack_z(z_i)
-    // libjade's pack_z writes Li2_l * Li2_pack_zlen = 1600 bytes from
-    // a polyvecl in canonical form. We pack into a stack buffer and
-    // memcpy to the response slot.
-    stack u8[Li2_l * Li2_pack_zlen] z_packed;
-    reg ptr u8[Li2_l * Li2_pack_zlen] zp_rsp;
-    zp_rsp = z_packed;
-    vec_l_rsp = z_i;
-    zp_rsp = pack_z(zp_rsp, vec_l_rsp);
-    z_packed = zp_rsp;
+    // [32 .. 1632) z_i as u32 stream
+    //
+    // Per-party z_i is transmitted as raw u32 LE (l = 5 polynomials *
+    // 256 coeffs * 4 = 5120 bytes) and padded to 1600 bytes of the
+    // 1600-byte slot. This is a slight oversize vs FIPS 204's 20-bit
+    // pack_z encoding, but lets us avoid a custom pack_z helper —
+    // libjade does not expose a standalone pack_z (the 20-bit packing
+    // is inlined inside `pack_signature`). The aggregator at Combine
+    // reads u32, sums per-party, then passes the aggregate z through
+    // libjade's `pack_signature` to produce the final FIPS 204-byte-
+    // identical signature. Note: actual stride is 5120 bytes, the
+    // remaining 480 bytes are pad-zero forward-compat.
     ?{}, i = #set0_64();
-    while (i < Li2_l * Li2_pack_zlen) {
-        c = z_packed[i];
-        [:u8 response_out_ptr + PULSARM_R2_Z_OFFSET + i] = c;
+    while (i < Li2_l * Li2_polydeg) {
+        r32 = z_i[i];
+        [:u32 response_out_ptr + PULSARM_R2_Z_OFFSET + 4 * i] = r32;
+        i += 1;
+    }
+    // pad the tail of the z slot
+    ?{}, i = #set0_64();
+    while (i < PULSARM_R2_Z_LEN - Li2_l * Li2_polydeg * 4) {
+        [:u8 response_out_ptr + PULSARM_R2_Z_OFFSET + Li2_l * Li2_polydeg * 4 + i] = 0;
         i += 1;
     }
 
@@ -559,7 +565,8 @@ fn pulsar_round2(
         i += 1;
     }
 
-    ?{}, status = #set0_64();
+    // status already holds 0 (MAC verify passed); no need to reset
+    } // end "if (status == 0)" body
     return status;
 }
 

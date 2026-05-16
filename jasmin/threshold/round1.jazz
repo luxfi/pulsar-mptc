@@ -140,21 +140,30 @@ fn round1_tau1_digest(
 // my_node_id, pk_seed, mu) required to actually compute Round-1.
 // The CT discipline is preserved over (share, blind, randomness).
 //
-// Returns 0 on success. The output buffers commit_out_ptr and
-// y_state_out_ptr are filled in place.
+// Returns 0 on success. The output buffer is laid out as
+// [PULSARM_COMMIT_BYTES commit][PULSARM_Y_STATE_BYTES y_state] starting
+// at `outputs_ptr`. Public inputs are packed into a single 144-byte
+// blob at `public_inputs_ptr` with layout [sid:16][my_node_id:32]
+// [pk_seed:32][mu:64]. Secrets stay as separate pointers so the
+// caller does not have to memcpy them.
+//
+// Six register parameters total, fitting the x86_64 SysV ABI.
 export fn pulsar_round1_commit(
     reg u64 share_ptr,
     reg u64 blind_ptr,
     reg u64 randomness_ptr,
-    reg u64 sid_ptr,
+    reg u64 public_inputs_ptr,
     reg u32 attempt,
-    reg u64 my_node_id_ptr,
-    reg u64 pk_seed_ptr,
-    reg u64 mu_ptr,
-    reg u64 commit_out_ptr,
-    reg u64 y_state_out_ptr)
+    reg u64 outputs_ptr)
     -> reg u64
 {
+    // Derived output pointers within outputs_ptr.
+    reg u64 commit_out_ptr;
+    reg u64 y_state_out_ptr;
+    commit_out_ptr = outputs_ptr;
+    y_state_out_ptr = outputs_ptr;
+    y_state_out_ptr += PULSARM_COMMIT_BYTES;
+
     // Stack workspace
     stack u8[16] sid;
     stack u8[32] node_id;
@@ -188,16 +197,17 @@ export fn pulsar_round1_commit(
     reg ptr u8[Li2_pack_w1len] w1_rsp;
 
     // ---- 1. Copy inputs into stack workspace ----
+    // Public inputs blob layout: [sid:16][node_id:32][pk_seed:32][mu:64]
     ?{}, i = #set0_64();
-    while (i < 16) { c = [:u8 sid_ptr + i];      sid[i] = c;        i += 1; }
+    while (i < 16) { c = [:u8 public_inputs_ptr + i];       sid[i] = c;        i += 1; }
     ?{}, i = #set0_64();
-    while (i < 32) { c = [:u8 my_node_id_ptr+i]; node_id[i] = c;    i += 1; }
+    while (i < 32) { c = [:u8 public_inputs_ptr + 16 + i];  node_id[i] = c;    i += 1; }
     ?{}, i = #set0_64();
-    while (i < 32) { c = [:u8 pk_seed_ptr + i];  pk_seed[i] = c;    i += 1; }
+    while (i < 32) { c = [:u8 public_inputs_ptr + 48 + i];  pk_seed[i] = c;    i += 1; }
     ?{}, i = #set0_64();
-    while (i < 64) { c = [:u8 mu_ptr + i];       mu[i] = c;         i += 1; }
+    while (i < 64) { c = [:u8 public_inputs_ptr + 80 + i];  mu[i] = c;         i += 1; }
     ?{}, i = #set0_64();
-    while (i < 32) { c = [:u8 randomness_ptr+i]; randomness[i] = c; i += 1; }
+    while (i < 32) { c = [:u8 randomness_ptr + i];          randomness[i] = c; i += 1; }
 
     // ---- 2. Derive rho_prime_i via KMAC(K, tau_1, "PULSAR-SIGN-PRNG-V1") ----
     randomness_rsp = randomness;
