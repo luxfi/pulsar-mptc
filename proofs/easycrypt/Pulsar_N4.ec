@@ -1,9 +1,11 @@
 (* -------------------------------------------------------------------- *)
 (* Pulsar — Class N4 public-key preservation across reshare           *)
 (* -------------------------------------------------------------------- *)
-(* STATUS: THEORY SHELL. The top-level lemma is stated; the proof body  *)
-(* is `admit` with a TODO marker. See ./README.md for the high-          *)
-(* assurance-track roadmap.                                              *)
+(* STATUS: THEORY SHELL. The top-level lemma is stated with a meaningful *)
+(* precondition (shadowing-bug fix landed); the proof body remains       *)
+(* `admit` pending the reshare cryptographic reduction. The auxiliary    *)
+(* binding-invariant lemma is a placeholder with postcondition `true`    *)
+(* (also `admit`). See ./README.md for the high-assurance-track roadmap. *)
 (* -------------------------------------------------------------------- *)
 (* Claim:                                                                *)
 (*   The Pulsar proactive-resharing protocol (Reshare in              *)
@@ -55,29 +57,50 @@ section ClassN4.
 
 declare module R <: PulsarM_Reshare.
 
-(* Main theorem: the public key is invariant across reshare. *)
+(* Main theorem: the public key is invariant across reshare. The
+   universally-bound arguments are suffixed `_pre` so the hoare-triple
+   precondition can actually constrain the procedure's parameters
+   against the caller's intended inputs (the original phrasing
+   `c_old = c_old` was a self-shadowing tautology). *)
 lemma pulsar_m_n4_pk_preservation
-      (c_old c_new : committee_t)
-      (shares_old : share_t list) (q_old q_new : int list) :
+      (c_old_pre c_new_pre : committee_t)
+      (shares_old_pre : share_t list) (q_old q_new : int list) :
     hoare [ R.reshare :
-              c_old = c_old /\ shares_old = shares_old /\ c_new = c_new
+              c_old = c_old_pre /\ shares_old = shares_old_pre
+                /\ c_new = c_new_pre
             ==>
               derive_pk (reconstruct q_new res.`1)
-              = derive_pk (reconstruct q_old shares_old) ].
+              = derive_pk (reconstruct q_old shares_old_pre) ].
 proof.
-  (* TODO: prove this once Jasmin extraction is wired *)
+  (* The cryptographic-reduction core remains an `admit` --- closing it
+     requires (i) the Shamir-zero re-randomisation property
+     (reshare = fresh sharing of the same secret) and (ii) R_q-linearity
+     of derive_pk = A·s + e. Both are out-of-scope for the EasyCrypt
+     functional layer; they live in the Lean theory at
+     `Crypto.Threshold.Lagrange.threshold_reconstructs_secret`. This
+     admit is the *only* remaining proof obligation in N4, after the
+     shadowing fix above made the precondition meaningful. *)
   admit.
 qed.
 
-(* Auxiliary lemma: the reshare transcript binds the OLD committee root *)
-(* so a malicious dealer cannot substitute the committee roster.         *)
+(* Auxiliary lemma: the reshare transcript binds the committee.
+
+   The postcondition is a placeholder (literally `true`), which makes
+   the lemma vacuously true.  We retain the `admit` here rather than
+   attempting a tactic discharge for an abstract-module hoare triple
+   without a local EasyCrypt to verify the tactic invocation; the real
+   work is restating the postcondition as the committee-root binding
+   invariant (spec/pulsar-m.tex §4.5, enforced by the Pedersen DKG
+   transcript). When that happens, the lemma's body becomes the
+   reduction proper. *)
 lemma pulsar_m_n4_transcript_binds_committee
-      (c_old c_new : committee_t) (shares_old : share_t list) :
+      (c_old_pre c_new_pre : committee_t)
+      (shares_old_pre : share_t list) :
     hoare [ R.reshare :
-              c_old = c_old /\ shares_old = shares_old /\ c_new = c_new
-            ==> true (* TODO: state the binding invariant *) ].
+              c_old = c_old_pre /\ shares_old = shares_old_pre
+                /\ c_new = c_new_pre
+            ==> true (* TODO: state the committee-root binding *) ].
 proof.
-  (* TODO: prove this once Jasmin extraction is wired *)
   admit.
 qed.
 
