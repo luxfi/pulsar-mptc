@@ -245,9 +245,23 @@ module type MLDSA65_Sign = {
 
 (* Functional correspondence with FIPS 204 / circl / libjade-extracted *)
 (* implementations. This is the SINGLE point at which the EasyCrypt    *)
-(* theory trusts the upstream libjade Dilithium3 functional theorem.   *)
-(* When the libjade `MLDSA65_Functional` theory lands, this axiom is   *)
-(* replaced by a lemma `... by apply MLDSA65_Functional.sign_spec`.    *)
+(* theory trusts a Dilithium3 functional theorem.                       *)
+(*                                                                      *)
+(* Note on upstream state (verified 2026-05): libjade ships Jasmin     *)
+(* sources for Dilithium but NO EasyCrypt mechanization of its         *)
+(* functional spec — only SHAKE / Curve25519 / Poly1305 have EC        *)
+(* proofs upstream. Closing this axiom requires either:                *)
+(*                                                                      *)
+(*   (a) Vendoring an in-house `MLDSA65_Functional.ec` into            *)
+(*       `proofs/easycrypt/lemmas/` — substantial expert work but no    *)
+(*       external dep (FIPS 204 §3.2-3.5 is fully specified).          *)
+(*   (b) Waiting on Formosa-Crypto upstream to add a Dilithium EC      *)
+(*       mechanization (no public roadmap).                            *)
+(*                                                                      *)
+(* See `~/work/lux/threshold/study/pulsar.md` for the broader gap      *)
+(* discussion. We do NOT fork libjade; the dependency is on the        *)
+(* Jasmin sources (which ARE upstream) and on the EC theorem we'd      *)
+(* write ourselves OR cite once it's mechanized somewhere.             *)
 module FIPS204Sign : MLDSA65_Sign = {
   proc sign(sk : share_t, m : message_t, ctx : ctx_t,
             rho_rnd : randomness_t) : signature_t = {
