@@ -40,11 +40,11 @@ release tarball reproduces deterministically.
 | libjade artifact | Pulsar role |
 |---|---|
 | `src/crypto_sign/dilithium/dilithium3/amd64/{ref,avx2}/` | Single-party ML-DSA-65 keygen / sign / verify (the FIPS 204 baseline) |
-| `proof/crypto_sign/dilithium/dilithium3/` | EasyCrypt functional + CT theories — imported by `proofs/easycrypt/PulsarM_N1.ec` |
+| `proof/crypto_sign/dilithium/dilithium3/` | EasyCrypt functional + CT theories — imported by `proofs/easycrypt/Pulsar_N1.ec` |
 
 Pulsar's threshold layer (`../threshold/`) wraps these as the
 single-party kernel; the Class N1 reduction in
-`../../proofs/easycrypt/PulsarM_N1.ec` discharges the byte-equality
+`../../proofs/easycrypt/Pulsar_N1.ec` discharges the byte-equality
 claim by routing through libjade's functional theorem for ML-DSA-65.
 
 ## What we do NOT use

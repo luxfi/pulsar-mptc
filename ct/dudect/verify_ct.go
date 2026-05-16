@@ -20,7 +20,7 @@
 //
 // Build:
 //   GOWORK=off go build -buildmode=c-shared \
-//       -o libpulsarm_verify.dylib ./verify_ct.go
+//       -o libpulsar_verify.dylib ./verify_ct.go
 //
 // On Linux the output extension is .so; the Makefile selects the right
 // one for the host platform.
@@ -41,8 +41,8 @@ import (
 )
 
 // Long-lived fixture. The dudect main loop calls
-// pulsarm_verify_ct_setup() once at startup, then calls
-// pulsarm_verify_ct() in a tight measurement loop.
+// pulsar_verify_ct_setup() once at startup, then calls
+// pulsar_verify_ct() in a tight measurement loop.
 var (
 	fixtureParams *pulsar.Params
 	fixturePub    *pulsar.PublicKey
@@ -50,17 +50,17 @@ var (
 	fixtureSig    *pulsar.Signature
 )
 
-//export pulsarm_verify_ct_setup
+//export pulsar_verify_ct_setup
 //
 // Initialise the long-lived fixture. Returns 0 on success, non-zero
-// on failure. Must be called once before pulsarm_verify_ct.
+// on failure. Must be called once before pulsar_verify_ct.
 //
 // We use ModeP65 (the Lux consensus production target, see
 // params.go). The fixture pk/signature are freshly generated under
 // crypto/rand so the dudect run is not deterministic across launches
 // — that's intentional: the timing property must hold for ANY valid
 // (pk, msg, sig) triple, not a single hardcoded test vector.
-func pulsarm_verify_ct_setup() C.int {
+func pulsar_verify_ct_setup() C.int {
 	params := pulsar.MustParamsFor(pulsar.ModeP65)
 	sk, err := pulsar.GenerateKey(params, rand.Reader)
 	if err != nil {
@@ -83,19 +83,19 @@ func pulsarm_verify_ct_setup() C.int {
 	return 0
 }
 
-//export pulsarm_verify_ct_sig_size
+//export pulsar_verify_ct_sig_size
 //
 // Returns the FIPS 204 signature size for the configured mode. The
 // C harness uses this to size its per-sample scratch buffer to the
 // exact wire width Verify expects.
-func pulsarm_verify_ct_sig_size() C.size_t {
+func pulsar_verify_ct_sig_size() C.size_t {
 	if fixtureParams == nil {
 		return 0
 	}
 	return C.size_t(fixtureParams.SignatureSize)
 }
 
-//export pulsarm_verify_ct
+//export pulsar_verify_ct
 //
 // One dudect measurement sample.
 //
@@ -110,7 +110,7 @@ func pulsarm_verify_ct_sig_size() C.size_t {
 // The function MUST be branchless on data — any data-dependent
 // branch we introduce here pollutes the measurement before Verify
 // even starts. We only copy data into a fresh slice and dispatch.
-func pulsarm_verify_ct(data *C.uint8_t) {
+func pulsar_verify_ct(data *C.uint8_t) {
 	if fixtureParams == nil {
 		return
 	}

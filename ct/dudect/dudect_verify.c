@@ -24,10 +24,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Exported by libpulsarm_verify (verify_ct.go). */
-extern int    pulsarm_verify_ct_setup(void);
-extern size_t pulsarm_verify_ct_sig_size(void);
-extern void   pulsarm_verify_ct(uint8_t *data);
+/* Exported by libpulsar_verify (verify_ct.go). */
+extern int    pulsar_verify_ct_setup(void);
+extern size_t pulsar_verify_ct_sig_size(void);
+extern void   pulsar_verify_ct(uint8_t *data);
 
 /* Per-sample input width. Filled in main() after setup. */
 static size_t g_chunk_size = 0;
@@ -63,7 +63,7 @@ void prepare_inputs(dudect_config_t *cfg, uint8_t *input_data, uint8_t *classes)
  * observed.
  */
 uint8_t do_one_computation(uint8_t *data) {
-    pulsarm_verify_ct(data);
+    pulsar_verify_ct(data);
     uint8_t acc = 0;
     for (size_t i = 0; i < g_chunk_size; i++) acc ^= data[i];
     return acc;
@@ -73,14 +73,14 @@ int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
-    int rc = pulsarm_verify_ct_setup();
+    int rc = pulsar_verify_ct_setup();
     if (rc != 0) {
-        fprintf(stderr, "pulsarm_verify_ct_setup failed: rc=%d\n", rc);
+        fprintf(stderr, "pulsar_verify_ct_setup failed: rc=%d\n", rc);
         return 1;
     }
-    g_chunk_size = pulsarm_verify_ct_sig_size();
+    g_chunk_size = pulsar_verify_ct_sig_size();
     if (g_chunk_size == 0) {
-        fprintf(stderr, "pulsarm_verify_ct_sig_size returned 0\n");
+        fprintf(stderr, "pulsar_verify_ct_sig_size returned 0\n");
         return 1;
     }
 

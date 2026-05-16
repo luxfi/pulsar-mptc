@@ -9,7 +9,7 @@
 (*   2. A FIPS 204 dispatch axiom that models circl's mldsa{44,65,87}.  *)
 (*      Sign as the single trusted base. This is the same axiom that    *)
 (*      Crypto.Pulsar.Verify (Lean) names                              *)
-(*      `pulsar_m_verify_is_fips_dispatch`.                             *)
+(*      `pulsar_verify_is_fips_dispatch`.                             *)
 (*   3. A reconstruction lemma `reconstruct_of_share` that is           *)
 (*      DISCHARGED (no admit): Lagrange interpolation is the left       *)
 (*      inverse of polynomial evaluation at distinct non-zero points    *)
@@ -24,7 +24,7 @@
 (*      Jasmin Combine to `CombineAbs` is the section-local declared    *)
 (*      axiom `combine_body_axiom` -- discharged Jasmin-side once       *)
 (*      `jasmin/threshold/combine.jazz` is filled out.                  *)
-(*   5. The top-level `pulsar_m_n1_byte_equality` THEOREM REMAINS       *)
+(*   5. The top-level `pulsar_n1_byte_equality` THEOREM REMAINS       *)
 (*      `admit`: closing it requires mechanizing Module-LWE rejection-  *)
 (*      sampling against libjade's MLDSA65_Functional theory, which is  *)
 (*      the upstream Formosa-Crypto in this repository (see               *)
@@ -33,7 +33,7 @@
 (*                                                                      *)
 (* Admit accounting                                                     *)
 (* ----------------                                                     *)
-(*   Pre-edit:  1 admit (`pulsar_m_n1_byte_equality`).                  *)
+(*   Pre-edit:  1 admit (`pulsar_n1_byte_equality`).                  *)
 (*   Post-edit: 1 admit (same theorem -- the cryptographic reduction    *)
 (*              against MLDSA65_Functional remains open). 0 admits on   *)
 (*              the three discharged sub-lemmas:                        *)
@@ -185,7 +185,7 @@ axiom lagrange_inverse_eval (s : share_t) (Q : int list) :
 (* deferred to a follow-up commit that imports `algebra/Ring.ec` and    *)
 (* equips share_t with a `+` operator. It is not needed for the         *)
 (* `reconstruct_of_share` discharged below; only the cryptographic      *)
-(* reduction in `pulsar_m_n1_byte_equality` uses it. Tracked alongside  *)
+(* reduction in `pulsar_n1_byte_equality` uses it. Tracked alongside  *)
 (* the remaining admit.                                                 *)
 
 (* -------------------------------------------------------------------- *)
@@ -424,7 +424,7 @@ module SinglePartyRun = {
 (*   mldsa`. This requires care with side conditions on quorum         *)
 (*   uniqueness and share-list length, which is why we leave it for a  *)
 (*   follow-up commit that exercises the full libjade hand-off chain.  *)
-lemma pulsar_m_n1_byte_equality :
+lemma pulsar_n1_byte_equality :
   equiv [ ThresholdRun.run ~ SinglePartyRun.run :
             ={group_pk, shares, quorum, m, ctx, rnd}
             /\ uniq quorum{1}
@@ -457,10 +457,10 @@ end section ClassN1.
 (* produced by an honest quorum.                                        *)
 (* -------------------------------------------------------------------- *)
 (* This is exactly the Lean axiom                                       *)
-(*   Crypto.Pulsar.Verify.pulsar_m_output_interchangeable              *)
+(*   Crypto.Pulsar.Verify.pulsar_output_interchangeable              *)
 (* lifted to EasyCrypt's probabilistic Hoare setting. Stated as a       *)
 (* commented future obligation -- the body is a direct corollary of    *)
-(* `pulsar_m_n1_byte_equality` plus FIPS 204 verifier correctness on    *)
+(* `pulsar_n1_byte_equality` plus FIPS 204 verifier correctness on    *)
 (* outputs produced by FIPS 204 Sign (standard libjade theorem).        *)
 (* -------------------------------------------------------------------- *)
 
@@ -468,7 +468,7 @@ op derive_pk : share_t -> group_pk_t.
 op fips204_verify : group_pk_t -> message_t -> ctx_t
                     -> signature_t -> bool.
 
-(* lemma pulsar_m_n1_verifier_compat
+(* lemma pulsar_n1_verifier_compat
        (group_pk : group_pk_t) (shares : share_t list)
        (Q : int list) (m : message_t) (ctx : ctx_t)
        (rnd : randomness_t) (sig : signature_t) &m :
@@ -479,7 +479,7 @@ op fips204_verify : group_pk_t -> message_t -> ctx_t
           (group_pk, shares, Q, m, ctx, rnd) @ &m :
         fips204_verify group_pk m ctx res] = 1%r.
 proof.
-  (* Corollary of `pulsar_m_n1_byte_equality` plus libjade               *)
+  (* Corollary of `pulsar_n1_byte_equality` plus libjade               *)
   (* `MLDSA65_Functional.sign_verify_correct`. Deferred to follow-up.    *)
   admit.
 qed. *)

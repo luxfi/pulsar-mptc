@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pulsar-M KAT regeneration.
+# Pulsar KAT regeneration.
 #
 # Regenerates vectors/{keygen,sign,verify,threshold-sign,dkg}.json from
 # the reference implementation. Re-running on a clean checkout MUST

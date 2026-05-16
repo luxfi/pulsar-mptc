@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pulsar-M test suite runner.
+# Pulsar test suite runner.
 #
 # Runs unit tests, KAT validation (when available), and the no-secret-logs
 # linter. Designed to be the CI gate alongside scripts/build.sh.

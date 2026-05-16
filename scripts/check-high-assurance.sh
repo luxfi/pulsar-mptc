@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pulsar-M high-assurance track checker.
+# Pulsar high-assurance track checker.
 #
 # Compiles the Jasmin sources under jasmin/ and runs `easycrypt check`
 # on the theories under proofs/easycrypt/. Skip-friendly: if the tools
@@ -20,7 +20,7 @@ have_ec=0
 command -v jasminc  >/dev/null 2>&1 && have_jasmin=1
 command -v easycrypt >/dev/null 2>&1 && have_ec=1
 
-echo "==> Pulsar-M high-assurance track"
+echo "==> Pulsar high-assurance track"
 echo "    jasmin/   $JASMIN_ROOT"
 echo "    easycrypt $EC_ROOT"
 echo "    dudect    $CT_ROOT"
@@ -89,7 +89,7 @@ echo
 EC_FILES=(
     "$EC_ROOT/Pulsar_N1.ec"
     "$EC_ROOT/Pulsar_N4.ec"
-    "$EC_ROOT/lemmas/PulsarM_CT.ec"
+    "$EC_ROOT/lemmas/Pulsar_CT.ec"
 )
 
 # Admit budget — the count of `admit.` source lines across the EC
@@ -105,8 +105,8 @@ EC_FILES=(
 #   * Pulsar_N4.ec:83   — pk-preservation across reshare (main lemma)
 #   * Pulsar_N4.ec:104  — committee-binding aux (postcondition is
 #                          placeholder `true` pending real binding)
-#   * lemmas/PulsarM_CT.ec:75   — Round-1 constant-time obligation
-#   * lemmas/PulsarM_CT.ec:106  — Round-2 constant-time obligation
+#   * lemmas/Pulsar_CT.ec:75   — Round-1 constant-time obligation
+#   * lemmas/Pulsar_CT.ec:106  — Round-2 constant-time obligation
 #
 # Net actionable admits: 5 (N1:484 is in a commented-out section).
 # Closing one requires removing the corresponding `admit.` AND

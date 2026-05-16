@@ -33,7 +33,7 @@ What's still open in the high-assurance track:
   against the libjade reference; final assembly emission and the
   constant-time leakage analysis are intended to run in the NIST
   reviewer environment.
-- The EasyCrypt N1 reduction (`../../proofs/easycrypt/PulsarM_N1.ec`)
+- The EasyCrypt N1 reduction (`../../proofs/easycrypt/Pulsar_N1.ec`)
   still has admits on the cryptographic-reduction core — the
   algebraic Lagrange identity is hoisted as an axiom and the 6-step
   z / w₁ / c̃ / hint aggregation chain is stated but not mechanised.
@@ -59,7 +59,7 @@ dependent input:
 | `combine` | aggregated `z`, `h` | Memory access independent of high-bit decomposition outcomes (norm checks already constant-time in libjade single-party path) |
 
 These obligations are stated formally in
-`../../proofs/easycrypt/lemmas/PulsarM_CT.ec` and discharged through
+`../../proofs/easycrypt/lemmas/Pulsar_CT.ec` and discharged through
 the leakage-model framework of Barthe, Grégoire, Laporte (CSF 2018).
 
 ## How to compile

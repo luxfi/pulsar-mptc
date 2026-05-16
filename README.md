@@ -99,7 +99,7 @@ pulsar/
 ├── proofs/easycrypt/         high-assurance EasyCrypt theories (theory shells; reduction core remains `admit`)
 │   ├── Pulsar_N1.ec          Class N1 byte-equality reduction
 │   ├── Pulsar_N4.ec          Class N4 public-key preservation
-│   └── lemmas/PulsarM_CT.ec   constant-time obligations
+│   └── lemmas/Pulsar_CT.ec   constant-time obligations
 ├── scripts/                  build / test / bench / gen_vectors / sbom / check-high-assurance
 └── go.mod
 ```
@@ -134,7 +134,7 @@ The reproducibility property is the load-bearing CI invariant.
 | Symbolic / Lean proofs | `~/work/lux/proofs/lean/Crypto/Pulsar/` (3 files, **zero `sorry`**) | mechanized |
 | Constant-time analysis | `ct/dudect/` | harness present; results TBD |
 | Jasmin high-assurance | `jasmin/{ml-dsa-65,threshold,lib}/` | libjade pinned at 9426b32; round1 + round2 + combine implemented (~2,600 lines threshold + lib) |
-| EasyCrypt theories | `proofs/easycrypt/Pulsar_{N1,N4}.ec` + `lemmas/PulsarM_CT.ec` | theory shells; N1 reduction core remains `admit` (needs EasyCrypt expert) |
+| EasyCrypt theories | `proofs/easycrypt/Pulsar_{N1,N4}.ec` + `lemmas/Pulsar_CT.ec` | theory shells; N1 reduction core remains `admit` (needs EasyCrypt expert) |
 | Report on Experimental Evaluation | `bench/results/REPORT.md` | TBD |
 | Patent posture | `docs/patent-notes-draft.md` | drafted |
 | License | `LICENSE` (Apache-2.0) | ✓ |

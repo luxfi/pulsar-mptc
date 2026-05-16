@@ -48,21 +48,21 @@ type reshare_transcript_t.
 op derive_pk : share_t -> group_pk_t.
 op reconstruct : int list -> share_t list -> share_t.
 
-module type PulsarM_Reshare = {
+module type Pulsar_Reshare = {
   proc reshare(c_old : committee_t, shares_old : share_t list,
                c_new : committee_t) : share_t list * reshare_transcript_t
 }.
 
 section ClassN4.
 
-declare module R <: PulsarM_Reshare.
+declare module R <: Pulsar_Reshare.
 
 (* Main theorem: the public key is invariant across reshare. The
    universally-bound arguments are suffixed `_pre` so the hoare-triple
    precondition can actually constrain the procedure's parameters
    against the caller's intended inputs (the original phrasing
    `c_old = c_old` was a self-shadowing tautology). *)
-lemma pulsar_m_n4_pk_preservation
+lemma pulsar_n4_pk_preservation
       (c_old_pre c_new_pre : committee_t)
       (shares_old_pre : share_t list) (q_old q_new : int list) :
     hoare [ R.reshare :
@@ -90,10 +90,10 @@ qed.
    attempting a tactic discharge for an abstract-module hoare triple
    without a local EasyCrypt to verify the tactic invocation; the real
    work is restating the postcondition as the committee-root binding
-   invariant (spec/pulsar-m.tex §4.5, enforced by the Pedersen DKG
+   invariant (spec/pulsar.tex §4.5, enforced by the Pedersen DKG
    transcript). When that happens, the lemma's body becomes the
    reduction proper. *)
-lemma pulsar_m_n4_transcript_binds_committee
+lemma pulsar_n4_transcript_binds_committee
       (c_old_pre c_new_pre : committee_t)
       (shares_old_pre : share_t list) :
     hoare [ R.reshare :

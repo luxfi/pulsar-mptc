@@ -33,17 +33,17 @@ and reviewable today.
 
 | File | Theorem |
 |---|---|
-| `PulsarM_N1.ec` | **Class N1**: byte-equality of Pulsar threshold output to single-party FIPS 204 ML-DSA-65 output under honest quorum |
-| `PulsarM_N4.ec` | **Class N4**: public-key preservation across Pulsar proactive resharing (committee rotation) |
-| `lemmas/PulsarM_CT.ec` | **Constant-time**: every Jasmin threshold-layer routine that touches secret share material is CT under the Barthe-Grégoire-Laporte leakage model |
+| `Pulsar_N1.ec` | **Class N1**: byte-equality of Pulsar threshold output to single-party FIPS 204 ML-DSA-65 output under honest quorum |
+| `Pulsar_N4.ec` | **Class N4**: public-key preservation across Pulsar proactive resharing (committee rotation) |
+| `lemmas/Pulsar_CT.ec` | **Constant-time**: every Jasmin threshold-layer routine that touches secret share material is CT under the Barthe-Grégoire-Laporte leakage model |
 
 ## Conventions
 
 - `admit` markers are paired with `(* TODO: prove this once Jasmin
   extraction is wired *)` comments. Every `admit` in this tree is one
   of these — none are silent.
-- Theory names match libjade's naming convention (`PulsarM_<Class>`
-  for top-level reductions, `lemmas/PulsarM_<Topic>` for supporting
+- Theory names match libjade's naming convention (`Pulsar_<Class>`
+  for top-level reductions, `lemmas/Pulsar_<Topic>` for supporting
   lemmas).
 - The libjade ML-DSA-65 import path is `MLDSA65_Functional` and
   `MLDSA65_CT`, matching the libjade theory names in

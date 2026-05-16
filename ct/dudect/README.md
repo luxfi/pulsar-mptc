@@ -56,13 +56,13 @@ target is constant time. We achieve this with a thin cgo bridge:
 
 ```
 +-------------------+        +-----------------------+        +----------+
-|  dudect_verify.c  |  --->  |  libpulsarm_verify.*  |  --->  |  pulsar |
+|  dudect_verify.c  |  --->  |  libpulsar_verify.*  |  --->  |  pulsar |
 |  (C main loop)    |  cgo   |  (verify_ct.go bridge)|  Go    |  .Verify |
 +-------------------+        +-----------------------+        +----------+
 ```
 
 The bridge holds a fixture (pk + valid signature on a fixed message)
-built once at startup. `pulsarm_verify_ct(data)` copies `data` into a
+built once at startup. `pulsar_verify_ct(data)` copies `data` into a
 fresh `*Signature` and calls `pulsar.Verify(params, pk, msg, sig)`
 — the result is discarded; dudect measures cycles around the call.
 

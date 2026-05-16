@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pulsar-M reproducible build.
+# Pulsar reproducible build.
 #
 # Builds the Go reference implementation and the LaTeX spec PDF. Exits
 # non-zero on any failure. Designed to be the CI gate.
@@ -26,7 +26,7 @@ fi
 
 echo "==> Spec PDF build"
 if command -v latexmk >/dev/null 2>&1; then
-    ( cd spec && latexmk -pdf -interaction=nonstopmode -file-line-error pulsar-m.tex )
+    ( cd spec && latexmk -pdf -interaction=nonstopmode -file-line-error pulsar.tex )
 else
     echo "    [warn] latexmk not found. Install MacTeX (macOS) or TeX Live."
     echo "    macOS: brew install --cask mactex  (then re-run this script)"

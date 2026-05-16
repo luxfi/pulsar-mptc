@@ -19,10 +19,10 @@
 //
 // Build (Linux):
 //   GOWORK=off go build -buildmode=c-shared \
-//       -o libpulsarm_combine.so ./combine_ct.go
+//       -o libpulsar_combine.so ./combine_ct.go
 // Build (macOS):
 //   GOWORK=off go build -buildmode=c-shared \
-//       -o libpulsarm_combine.dylib ./combine_ct.go
+//       -o libpulsar_combine.dylib ./combine_ct.go
 
 package main
 
@@ -40,8 +40,8 @@ import (
 )
 
 // Long-lived fixture: a real (n=3, t=2) threshold ceremony at
-// ModeP65. The dudect main loop calls pulsarm_combine_ct_setup()
-// once, then drives pulsarm_combine_ct() with per-sample partial-sig
+// ModeP65. The dudect main loop calls pulsar_combine_ct_setup()
+// once, then drives pulsar_combine_ct() with per-sample partial-sig
 // bytes for the target party.
 var (
 	cFixtureParams    *pulsar.Params
@@ -62,7 +62,7 @@ var (
 	cFixtureR2BufLen int
 )
 
-//export pulsarm_combine_ct_setup
+//export pulsar_combine_ct_setup
 //
 // Build a real threshold ceremony fixture once. Returns 0 on
 // success, non-zero on failure.
@@ -70,7 +70,7 @@ var (
 // Topology: n=3 parties, t=2 threshold, ModeP65. This is the
 // smallest non-trivial threshold ceremony — keeps the dudect run
 // time per sample bounded.
-func pulsarm_combine_ct_setup() C.int {
+func pulsar_combine_ct_setup() C.int {
 	params := pulsar.MustParamsFor(pulsar.ModeP65)
 	n, t := 3, 2
 
@@ -177,15 +177,15 @@ func pulsarm_combine_ct_setup() C.int {
 	return 0
 }
 
-//export pulsarm_combine_ct_partial_size
+//export pulsar_combine_ct_partial_size
 //
 // Returns the PartialSig byte length. The C harness sizes its
 // per-sample buffer to this width.
-func pulsarm_combine_ct_partial_size() C.size_t {
+func pulsar_combine_ct_partial_size() C.size_t {
 	return C.size_t(cFixtureR2BufLen)
 }
 
-//export pulsarm_combine_ct
+//export pulsar_combine_ct
 //
 // One dudect measurement sample.
 //
@@ -197,7 +197,7 @@ func pulsarm_combine_ct_partial_size() C.size_t {
 //
 // IMPORTANT: this function must NOT branch on the rewrite payload.
 // The mutation is a pure copy.
-func pulsarm_combine_ct(data *C.uint8_t) {
+func pulsar_combine_ct(data *C.uint8_t) {
 	if cFixtureParams == nil {
 		return
 	}

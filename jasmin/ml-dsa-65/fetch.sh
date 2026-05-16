@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fetch libjade at the pinned commit used by Pulsar-M's high-assurance track.
+# Fetch libjade at the pinned commit used by Pulsar's high-assurance track.
 #
 # We do not vendor libjade into this repository - see ./README.md for the
 # fetch-on-demand rationale. This script reproduces the libjade tree on
@@ -11,7 +11,7 @@ set -euo pipefail
 LIBJADE_REPO="https://github.com/formosa-crypto/libjade.git"
 
 # Pinned at submission-tag time. Update at the same time as the
-# Pulsar-M submission tag so the artifact chain stays reproducible.
+# Pulsar submission tag so the artifact chain stays reproducible.
 #
 # 9426b32 (2025-12-09) "Dilithium: remove suspicious annotations" is the
 # last commit before the libjade dilithium tree restructure that breaks

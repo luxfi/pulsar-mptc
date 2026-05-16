@@ -122,7 +122,7 @@ pulsar-mptc/
 ├── proofs/easycrypt/        # high-assurance EasyCrypt theories (theory shells)
 │   ├── Pulsar_N1.ec        #   Class N1 byte-equality reduction
 │   ├── Pulsar_N4.ec        #   Class N4 public-key preservation
-│   └── lemmas/PulsarM_CT.ec #   constant-time obligations
+│   └── lemmas/Pulsar_CT.ec #   constant-time obligations
 ├── scripts/                 # build / test / bench / gen_vectors / SBOM / check-high-assurance
 └── docs/                    # design notes + decision-record archive
 ```
@@ -170,7 +170,7 @@ this repository tag:
 | Pulsar Combine (Jasmin) | **Implemented** (416 lines) — `Sigma z_j`, `c.s_2` aggregation, `polyveck_make_hint`, R1..R4 rejection (`checknorm_vecl/veck`), FIPS 204 `pack(c_tilde, z, h)` | `jasmin/threshold/combine.jazz` |
 | Class N1 byte-equality (EasyCrypt) | **Theory shell** — lemma stated, 6-step reduction core remains `admit` (requires EasyCrypt + libjade Dilithium expert) | `proofs/easycrypt/Pulsar_N1.ec` |
 | Class N4 public-key preservation (EasyCrypt) | **Theory shell** — lemma stated, proof body `admit` | `proofs/easycrypt/Pulsar_N4.ec` |
-| Constant-time obligations (EasyCrypt) | **Theory shell** — lemmas stated, proof bodies `admit` | `proofs/easycrypt/lemmas/PulsarM_CT.ec` |
+| Constant-time obligations (EasyCrypt) | **Theory shell** — lemmas stated, proof bodies `admit` | `proofs/easycrypt/lemmas/Pulsar_CT.ec` |
 | Build wiring | Complete (skip-friendly when `jasminc` / `easycrypt` are absent) | `scripts/check-high-assurance.sh` |
 
 Jasmin sources call into the pinned libjade Dilithium reference

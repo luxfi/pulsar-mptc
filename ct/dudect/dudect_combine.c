@@ -17,9 +17,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern int    pulsarm_combine_ct_setup(void);
-extern size_t pulsarm_combine_ct_partial_size(void);
-extern void   pulsarm_combine_ct(uint8_t *data);
+extern int    pulsar_combine_ct_setup(void);
+extern size_t pulsar_combine_ct_partial_size(void);
+extern void   pulsar_combine_ct(uint8_t *data);
 
 static size_t g_chunk_size = 0;
 
@@ -34,7 +34,7 @@ void prepare_inputs(dudect_config_t *cfg, uint8_t *input_data, uint8_t *classes)
 }
 
 uint8_t do_one_computation(uint8_t *data) {
-    pulsarm_combine_ct(data);
+    pulsar_combine_ct(data);
     uint8_t acc = 0;
     for (size_t i = 0; i < g_chunk_size; i++) acc ^= data[i];
     return acc;
@@ -44,14 +44,14 @@ int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
-    int rc = pulsarm_combine_ct_setup();
+    int rc = pulsar_combine_ct_setup();
     if (rc != 0) {
-        fprintf(stderr, "pulsarm_combine_ct_setup failed: rc=%d\n", rc);
+        fprintf(stderr, "pulsar_combine_ct_setup failed: rc=%d\n", rc);
         return 1;
     }
-    g_chunk_size = pulsarm_combine_ct_partial_size();
+    g_chunk_size = pulsar_combine_ct_partial_size();
     if (g_chunk_size == 0) {
-        fprintf(stderr, "pulsarm_combine_ct_partial_size returned 0\n");
+        fprintf(stderr, "pulsar_combine_ct_partial_size returned 0\n");
         return 1;
     }
 

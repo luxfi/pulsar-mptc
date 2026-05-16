@@ -1,6 +1,6 @@
-# Pulsar-M constant-time analysis harness — dudect bridge.
+# Pulsar constant-time analysis harness — dudect bridge.
 #
-# Builds the cgo shim libraries (libpulsarm_verify, libpulsarm_combine)
+# Builds the cgo shim libraries (libpulsar_verify, libpulsar_combine)
 # and links the C dudect harnesses against them.
 #
 # Prereqs (run once):
@@ -69,28 +69,28 @@ all: verify combine
 
 # Build the cgo shim into a host-platform shared library, then link
 # the C harness against it. The Go build emits both the .{dylib,so}
-# and a generated header (libpulsarm_verify.h) that we ignore — the
+# and a generated header (libpulsar_verify.h) that we ignore — the
 # C harness uses its own extern declarations because they're the
 # same three symbols every time and editing two files instead of one
 # is simpler than chasing cgo's header generation rules.
 
-libpulsarm_verify.$(SHLIB_EXT): verify_ct.go check-dudect
+libpulsar_verify.$(SHLIB_EXT): verify_ct.go check-dudect
 	$(GOENV) $(GO) build -buildmode=c-shared \
-		-o libpulsarm_verify.$(SHLIB_EXT) \
+		-o libpulsar_verify.$(SHLIB_EXT) \
 		./verify_ct.go
 
-libpulsarm_combine.$(SHLIB_EXT): combine_ct.go check-dudect
+libpulsar_combine.$(SHLIB_EXT): combine_ct.go check-dudect
 	$(GOENV) $(GO) build -buildmode=c-shared \
-		-o libpulsarm_combine.$(SHLIB_EXT) \
+		-o libpulsar_combine.$(SHLIB_EXT) \
 		./combine_ct.go
 
-dudect_verify: dudect_verify.c libpulsarm_verify.$(SHLIB_EXT) $(DUDECT_HDR)
+dudect_verify: dudect_verify.c libpulsar_verify.$(SHLIB_EXT) $(DUDECT_HDR)
 	$(CC) $(CFLAGS) -o dudect_verify dudect_verify.c \
-		-L. -lpulsarm_verify $(LDFLAGS) $(LDLIBS) $(RPATH_FLAG)
+		-L. -lpulsar_verify $(LDFLAGS) $(LDLIBS) $(RPATH_FLAG)
 
-dudect_combine: dudect_combine.c libpulsarm_combine.$(SHLIB_EXT) $(DUDECT_HDR)
+dudect_combine: dudect_combine.c libpulsar_combine.$(SHLIB_EXT) $(DUDECT_HDR)
 	$(CC) $(CFLAGS) -o dudect_combine dudect_combine.c \
-		-L. -lpulsarm_combine $(LDFLAGS) $(LDLIBS) $(RPATH_FLAG)
+		-L. -lpulsar_combine $(LDFLAGS) $(LDLIBS) $(RPATH_FLAG)
 
 verify: dudect_verify
 combine: dudect_combine
@@ -103,5 +103,5 @@ check-dudect:
 
 clean:
 	rm -f dudect_verify dudect_combine
-	rm -f libpulsarm_verify.$(SHLIB_EXT) libpulsarm_verify.h
-	rm -f libpulsarm_combine.$(SHLIB_EXT) libpulsarm_combine.h
+	rm -f libpulsar_verify.$(SHLIB_EXT) libpulsar_verify.h
+	rm -f libpulsar_combine.$(SHLIB_EXT) libpulsar_combine.h
