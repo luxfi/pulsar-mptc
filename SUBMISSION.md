@@ -134,7 +134,7 @@ The N1 claim is asserted at four levels of evidence:
 | Evidence | Where |
 |---|---|
 | Algorithmic argument | `spec/pulsar.tex` §6, Theorem 6.1 |
-| Symbolic / Lean proof | `proofs/lean/Crypto/Pulsar_M/OutputInterchange.lean` (out-of-repo, separate audit artifact) |
+| Symbolic / Lean proof | `proofs/lean/Crypto/Pulsar/OutputInterchange.lean` (out-of-repo, separate audit artifact) |
 | Test harness | `test/interoperability/` runs every KAT through 3 independent verifiers |
 | Cross-implementation KATs | `vectors/sign.json` shares vectors with FIPS 204 reference |
 
@@ -147,7 +147,7 @@ identity persists while the secret-share custodians rotate.
 | Evidence | Where |
 |---|---|
 | Algorithmic argument | `spec/pulsar.tex` §4.5 (Reshare protocol) |
-| Symbolic / Lean proof | `proofs/lean/Crypto/Pulsar_M/Shamir.lean` (Shamir + ring extension) |
+| Symbolic / Lean proof | `proofs/lean/Crypto/Pulsar/Shamir.lean` (Shamir + ring extension) |
 | Test harness | `vectors/transcripts/n*-t*-reshare.jsonl` carry pre/post-reshare public keys + verify both verify under unmodified ML-DSA |
 
 ## High-assurance track (Jasmin + EasyCrypt)

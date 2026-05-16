@@ -131,7 +131,7 @@ The reproducibility property is the load-bearing CI invariant.
 | Reference Implementation | `ref/go/pkg/pulsar/` (89.7% coverage) | shipped |
 | KAT vectors | `vectors/{dkg,keygen,sign,threshold-sign,verify}.json` | deterministic from seed |
 | Class N1 E2E interop | `test/interoperability/` (19/19 subtests vs cloudflare/circl) | passing |
-| Symbolic / Lean proofs | `~/work/lux/proofs/lean/Crypto/Pulsar_M/` (3 files, **zero `sorry`**) | mechanized |
+| Symbolic / Lean proofs | `~/work/lux/proofs/lean/Crypto/Pulsar/` (3 files, **zero `sorry`**) | mechanized |
 | Constant-time analysis | `ct/dudect/` | harness present; results TBD |
 | Jasmin high-assurance | `jasmin/{ml-dsa-65,threshold,lib}/` | libjade pinned at 9426b32; round1 + round2 + combine implemented (~2,600 lines threshold + lib) |
 | EasyCrypt theories | `proofs/easycrypt/Pulsar_{N1,N4}.ec` + `lemmas/PulsarM_CT.ec` | theory shells; N1 reduction core remains `admit` (needs EasyCrypt expert) |
