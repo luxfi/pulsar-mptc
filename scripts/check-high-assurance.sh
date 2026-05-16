@@ -131,20 +131,33 @@ if [[ $have_ec -eq 0 ]]; then
     echo "    [skip] easycrypt not on PATH; admit-count budget enforced statically"
     echo "           install (source build): https://github.com/EasyCrypt/easycrypt"
 else
-    echo "==> easycrypt found ($(easycrypt --version 2>&1 | head -1))"
+    EC_HASH=$(easycrypt config 2>&1 | grep "git-hash" | head -1)
+    echo "==> easycrypt found ($EC_HASH)"
+    EC_FAIL=0
     for f in "${EC_FILES[@]}"; do
         if [[ ! -f "$f" ]]; then
             echo "    [warn] missing: $f"
             continue
         fi
-        echo "    [check] $f"
-        # admit-bearing theories still type-check; that's by design at
-        # initial-submission stage. easycrypt returns 0 if the file
-        # parses + type-checks even with `admit` in proof bodies.
-        easycrypt "$f" || {
-            echo "    [info] $f: easycrypt could not close the file (expected — uses admit)"
-        }
+        # `easycrypt compile` parses + type-checks the file
+        # (including discharging non-admit lemmas via Why3+SMT).
+        # admit-bearing theories still type-check successfully —
+        # they're cited security assumptions, not proof gaps.
+        # Critical errors are reported via `[critical]` to stderr;
+        # we grep for them rather than relying on the exit code
+        # (which can be 0 even with a `[critical]` parse error).
+        if easycrypt compile "$f" 2>&1 | grep -q '\[critical\]' ; then
+            echo "    [FAIL] $f — see easycrypt output above"
+            EC_FAIL=1
+        else
+            echo "    [ok]   $f compiles"
+        fi
     done
+    if [[ $EC_FAIL -ne 0 ]]; then
+        echo
+        echo "    EasyCrypt compile gate FAILED — see errors above."
+        exit 2
+    fi
 fi
 
 echo

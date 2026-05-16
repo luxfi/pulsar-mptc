@@ -38,7 +38,7 @@
 (*     post-hoc roster substitution.                                     *)
 (* -------------------------------------------------------------------- *)
 
-require import AllCore List Int IntDiv Distr DBool DInt SmtMap.
+require import AllCore List Int IntDiv Distr DBool DInterval SmtMap.
 
 type group_pk_t.
 type share_t.

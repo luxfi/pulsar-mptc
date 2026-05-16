@@ -40,7 +40,7 @@ type y_state_t.
 
 (* Each threshold-layer routine, lifted to also return its leakage. *)
 module type CTRound1 = {
-  proc round1_commit(sess : session_t, share : share_t, rnd : randomness_t)
+  proc round1_commit(sess : session_t, share : share_t, r : randomness_t)
     : round1_msg_t * y_state_t * leakage_t
 }.
 
@@ -63,11 +63,11 @@ declare module M1 <: CTRound1.
 lemma round1_commit_constant_time
       (sess : session_t)
       (share1 share2 : share_t)
-      (rnd1 rnd2 : randomness_t) :
+      (r1 r2 : randomness_t) :
     equiv [ M1.round1_commit ~ M1.round1_commit :
               ={sess}
               /\ share{1} = share1 /\ share{2} = share2
-              /\ rnd{1} = rnd1 /\ rnd{2} = rnd2
+              /\ r{1} = r1 /\ r{2} = r2
             ==>
               res{1}.`3 = res{2}.`3 ].
 proof.

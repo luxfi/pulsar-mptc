@@ -94,7 +94,7 @@
 (*   axiom block below should be replaced by a `require import`.        *)
 (* -------------------------------------------------------------------- *)
 
-require import AllCore List Int IntDiv Distr DBool DInt SmtMap.
+require import AllCore List Int IntDiv Distr DBool DInterval SmtMap.
 
 (* -------------------------------------------------------------------- *)
 (* libjade ML-DSA-65 single-party functional theorem (placeholder).     *)
@@ -173,7 +173,7 @@ op poly_eval : share_t -> int -> share_t.
 (* `shamir_correct_at_target` (`axiom` there pending Mathlib lifting). *)
 axiom lagrange_inverse_eval (s : share_t) (Q : int list) :
   uniq Q =>
-  size Q >= 1 =>
+  1 <= size Q =>
   reconstruct Q (List.map (poly_eval s) Q) = s.
 
 (* R_q-linearity of `reconstruct` (FUTURE WORK).                       *)
@@ -200,7 +200,7 @@ axiom lagrange_inverse_eval (s : share_t) (Q : int list) :
 
 lemma reconstruct_of_share (s : share_t) (Q : int list) :
     uniq Q =>
-    size Q >= 1 =>
+    1 <= size Q =>
     reconstruct Q (List.map (poly_eval s) Q) = s.
 proof.
   (* Direct application of the Lagrange identity at X = 0. The         *)
@@ -217,8 +217,8 @@ qed.
 (* This is a genuine downstream consequence -- discharged here.         *)
 lemma reconstruct_quorum_invariant
       (s : share_t) (Q1 Q2 : int list) :
-    uniq Q1 => size Q1 >= 1 =>
-    uniq Q2 => size Q2 >= 1 =>
+    uniq Q1 => 1 <= size Q1 =>
+    uniq Q2 => 1 <= size Q2 =>
     reconstruct Q1 (List.map (poly_eval s) Q1) =
     reconstruct Q2 (List.map (poly_eval s) Q2).
 proof.
@@ -232,7 +232,7 @@ qed.
 (* The functional spec axiom: there exists a deterministic operator    *)
 (* `mldsa_sign_op` such that any FIPS 204 conformant Sign implementation *)
 (* (including circl's mldsa65.SignTo and the libjade-extracted version) *)
-(* produces exactly `mldsa_sign_op(sk, m, ctx, rnd)`.                   *)
+(* produces exactly `mldsa_sign_op(sk, m, ctx, rho_rnd)`.                   *)
 (* -------------------------------------------------------------------- *)
 
 op mldsa_sign_op : share_t -> message_t -> ctx_t -> randomness_t
@@ -240,7 +240,7 @@ op mldsa_sign_op : share_t -> message_t -> ctx_t -> randomness_t
 
 module type MLDSA65_Sign = {
   proc sign(sk : share_t, m : message_t, ctx : ctx_t,
-            rnd : randomness_t) : signature_t
+            rho_rnd : randomness_t) : signature_t
 }.
 
 (* Functional correspondence with FIPS 204 / circl / libjade-extracted *)
@@ -250,8 +250,8 @@ module type MLDSA65_Sign = {
 (* replaced by a lemma `... by apply MLDSA65_Functional.sign_spec`.    *)
 module FIPS204Sign : MLDSA65_Sign = {
   proc sign(sk : share_t, m : message_t, ctx : ctx_t,
-            rnd : randomness_t) : signature_t = {
-    return mldsa_sign_op sk m ctx rnd;
+            rho_rnd : randomness_t) : signature_t = {
+    return mldsa_sign_op sk m ctx rho_rnd;
   }
 }.
 
@@ -267,14 +267,14 @@ axiom mldsa_sign_axiom :
 
 module type Pulsar_Threshold = {
   proc round1(sess : session_t, share : share_t,
-              rnd : randomness_t) : round1_t
+              rho_rnd : randomness_t) : round1_t
   proc round2(sess : session_t, share : share_t,
               round1_aggregate : round1_t list,
               c_tilde : message_t) : round2_t
   proc combine(group_pk : group_pk_t, m : message_t, ctx : ctx_t,
                quorum : int list,
                shares : share_t list,
-               rnd : randomness_t,
+               rho_rnd : randomness_t,
                r1s : round1_t list, r2s : round2_t list) : signature_t
 }.
 
@@ -295,12 +295,12 @@ module CombineAbs = {
   proc combine(group_pk : group_pk_t, m : message_t, ctx : ctx_t,
                quorum : int list,
                shares : share_t list,
-               rnd : randomness_t,
+               rho_rnd : randomness_t,
                r1s : round1_t list, r2s : round2_t list) : signature_t = {
     var sk_group : share_t;
     var sig : signature_t;
     sk_group <- reconstruct quorum shares;
-    sig <@ FIPS204Sign.sign(sk_group, m, ctx, rnd);
+    sig <@ FIPS204Sign.sign(sk_group, m, ctx, rho_rnd);
     return sig;
   }
 }.
@@ -316,7 +316,7 @@ module CombineAbs = {
 (* -------------------------------------------------------------------- *)
 (* The abstract dispatch step composes cleanly: under the Combine       *)
 (* refinement, every signature produced equals                          *)
-(*   mldsa_sign_op (reconstruct Q shares) m ctx rnd                     *)
+(*   mldsa_sign_op (reconstruct Q shares) m ctx rho_rnd                     *)
 (* by inlining FIPS204Sign.sign and applying `mldsa_sign_axiom`.        *)
 (* -------------------------------------------------------------------- *)
 
@@ -331,7 +331,7 @@ lemma combine_dispatches_to_mldsa
 proof.
   (* The body of `CombineAbs.combine` is:                               *)
   (*   sk_group <- reconstruct quorum shares                            *)
-  (*   sig      <@ FIPS204Sign.sign(sk_group, m, ctx, rnd)              *)
+  (*   sig      <@ FIPS204Sign.sign(sk_group, m, ctx, rho_rnd)              *)
   (*   return sig                                                       *)
   (* and `FIPS204Sign.sign` returns the pure operator `mldsa_sign_op`.  *)
   (* So this is a deterministic Hoare assertion closed by `byphoare`    *)
@@ -339,7 +339,7 @@ proof.
   (* procedure parameters' names.                                       *)
   byphoare (_:
        group_pk = gpk0 /\ m = m0 /\ ctx = ctx0 /\ quorum = Q0
-    /\ shares = shs0 /\ rnd = rr0 /\ r1s = r1s0 /\ r2s = r2s0
+    /\ shares = shs0 /\ rho_rnd = rr0 /\ r1s = r1s0 /\ r2s = r2s0
     ==> _) => //.
   proc; inline FIPS204Sign.sign; wp; skip => /#.
 qed.
@@ -369,11 +369,15 @@ declare axiom S_functional_spec :
   equiv [ S.sign ~ FIPS204Sign.sign :
             ={arg} ==> ={res} ].
 
-(* The honest-quorum Pulsar execution, as a single procedure. *)
-module ThresholdRun = {
+(* The honest-quorum Pulsar execution, as a single procedure.
+   Parameterised by `T` to comply with EasyCrypt's module-system
+   rule that concrete modules cannot depend on a section-local
+   `declare module`. Inside section ClassN1 we instantiate with the
+   declared `T`. *)
+module ThresholdRun (T : Pulsar_Threshold) = {
   proc run(group_pk : group_pk_t, shares : share_t list,
            quorum : int list, m : message_t, ctx : ctx_t,
-           rnd : randomness_t) : signature_t = {
+           rho_rnd : randomness_t) : signature_t = {
     var r1s : round1_t list;
     var c_tilde : message_t;
     var r2s : round2_t list;
@@ -383,21 +387,23 @@ module ThresholdRun = {
     r1s <- [];
     r2s <- [];
     c_tilde <- witness;
-    sig <@ T.combine(group_pk, m, ctx, quorum, shares, rnd, r1s, r2s);
+    sig <@ T.combine(group_pk, m, ctx, quorum, shares, rho_rnd, r1s, r2s);
     return sig;
   }
 }.
 
 (* The single-party FIPS 204 execution, parameterised by the
-   Shamir-reconstructed secret. *)
-module SinglePartyRun = {
+   Shamir-reconstructed secret. Same parameterisation rule as
+   ThresholdRun above: `S` is `declare module` in the section, so
+   the concrete `SinglePartyRun` must take it as a functor param. *)
+module SinglePartyRun (S : MLDSA65_Sign) = {
   proc run(group_pk : group_pk_t, shares : share_t list,
            quorum : int list, m : message_t, ctx : ctx_t,
-           rnd : randomness_t) : signature_t = {
+           rho_rnd : randomness_t) : signature_t = {
     var sk_group : share_t;
     var sig : signature_t;
     sk_group <- reconstruct quorum shares;
-    sig <@ S.sign(sk_group, m, ctx, rnd);
+    sig <@ S.sign(sk_group, m, ctx, rho_rnd);
     return sig;
   }
 }.
@@ -408,13 +414,13 @@ module SinglePartyRun = {
 (*   - Use `combine_body_axiom` (section-local) to refine `T.combine`  *)
 (*     to `CombineAbs.combine`.                                        *)
 (*   - Use `combine_dispatches_to_mldsa` to rewrite the threshold side *)
-(*     to `mldsa_sign_op (reconstruct Q shares) m ctx rnd`.            *)
+(*     to `mldsa_sign_op (reconstruct Q shares) m ctx rho_rnd`.            *)
 (*   - Use `S_functional_spec` (section-local) to refine `S.sign` to   *)
 (*     `FIPS204Sign.sign`, then `mldsa_sign_axiom` to expose           *)
 (*     `mldsa_sign_op` on the single-party side.                       *)
 (*   - The two sides are then literally equal: `byequiv` closes via    *)
 (*     `wp; skip; smt()` once both have been rewritten to the operator *)
-(*     `mldsa_sign_op (reconstruct quorum shares) m ctx rnd`.          *)
+(*     `mldsa_sign_op (reconstruct quorum shares) m ctx rho_rnd`.          *)
 (*                                                                     *)
 (* What blocks this NOW:                                               *)
 (*   The section-local axioms above (`combine_body_axiom`,             *)
@@ -425,8 +431,8 @@ module SinglePartyRun = {
 (*   uniqueness and share-list length, which is why we leave it for a  *)
 (*   follow-up commit that exercises the full libjade hand-off chain.  *)
 lemma pulsar_n1_byte_equality :
-  equiv [ ThresholdRun.run ~ SinglePartyRun.run :
-            ={group_pk, shares, quorum, m, ctx, rnd}
+  equiv [ ThresholdRun(T).run ~ SinglePartyRun(S).run :
+            ={group_pk, shares, quorum, m, ctx, rho_rnd}
             /\ uniq quorum{1}
             /\ size shares{1} = size quorum{1}
         ==> ={res} ].
@@ -471,12 +477,12 @@ op fips204_verify : group_pk_t -> message_t -> ctx_t
 (* lemma pulsar_n1_verifier_compat
        (group_pk : group_pk_t) (shares : share_t list)
        (Q : int list) (m : message_t) (ctx : ctx_t)
-       (rnd : randomness_t) (sig : signature_t) &m :
+       (rho_rnd : randomness_t) (sig : signature_t) &m :
      uniq Q =>
      size shares = size Q =>
      group_pk = derive_pk (reconstruct Q shares) =>
      Pr[ThresholdRun(FIPS204Sign, T).run
-          (group_pk, shares, Q, m, ctx, rnd) @ &m :
+          (group_pk, shares, Q, m, ctx, rho_rnd) @ &m :
         fips204_verify group_pk m ctx res] = 1%r.
 proof.
   (* Corollary of `pulsar_n1_byte_equality` plus libjade               *)
