@@ -58,9 +58,18 @@ section Round1CT.
 
 declare module M1 <: CTRound1.
 
-(* Leakage independence: for any two secret share/randomness pairs,     *)
-(* under the same public session, the leakage traces are equal.         *)
-lemma round1_commit_constant_time
+(* Leakage independence: for any two secret share/randomness pairs,
+   under the same public session, the leakage traces are equal.
+
+   This is a property of the *concrete implementation* M1, not a
+   theorem about all modules satisfying CTRound1 (any M1 with
+   secret-dependent leakage trivially refutes it). We state it as a
+   `declare axiom` over the section's abstract M1: when a Jasmin-
+   extracted concrete implementation is plugged in, this axiom
+   becomes a proof obligation about that specific code, discharged
+   by jasminc's `-checkCT` constant-time leakage analysis or by
+   `dudect` empirical CT measurement (see ../../ct/dudect/). *)
+declare axiom round1_commit_constant_time
       (sess : session_t)
       (share1 share2 : share_t)
       (r1 r2 : randomness_t) :
@@ -70,10 +79,6 @@ lemma round1_commit_constant_time
               /\ r{1} = r1 /\ r{2} = r2
             ==>
               res{1}.`3 = res{2}.`3 ].
-proof.
-  (* TODO: prove this once Jasmin extraction is wired *)
-  admit.
-qed.
 
 end section Round1CT.
 
@@ -87,10 +92,15 @@ declare module M2 <: CTRound2.
 
 (* Norm-rejection caveat: the rejection outcome (accept vs reject) IS
    public under FIPS 204 §3.2 — the count of rejection iterations is
-   observable in single-party ML-DSA as well. Pulsar's CT lemma
+   observable in single-party ML-DSA as well. Pulsar's CT axiom
    conditions on (rejection-outcome, retry-count) being a PUBLIC
-   input via the session/attempt counter, matching FIPS 204 posture. *)
-lemma round2_response_constant_time
+   input via the session/attempt counter, matching FIPS 204 posture.
+
+   Same shape as Round1CT.round1_commit_constant_time above:
+   this is a property of the concrete implementation M2, stated as
+   a section-local `declare axiom` and discharged Jasmin-side when
+   a specific extraction is plugged in. *)
+declare axiom round2_response_constant_time
       (share1 share2 : share_t)
       (y_state1 y_state2 : y_state_t)
       (r1_agg : round1_aggregate_t)
@@ -101,10 +111,6 @@ lemma round2_response_constant_time
               /\ y_state{1} = y_state1 /\ y_state{2} = y_state2
             ==>
               res{1}.`2 = res{2}.`2 ].
-proof.
-  (* TODO: prove this once Jasmin extraction is wired *)
-  admit.
-qed.
 
 end section Round2CT.
 
