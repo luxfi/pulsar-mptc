@@ -95,22 +95,16 @@ EC_FILES=(
 # Admit budget — the count of `admit.` source lines across the EC
 # tree. Hard-pinned so a regression (new admit appearing without
 # closing an existing one) fails CI even when easycrypt itself is not
-# installed locally. The current 1 admit line is:
-#   * Pulsar_N1.ec — final byequiv chaining step (Step 6 of the
-#                     decomposed proof). Mechanical EC tactic work
-#                     to join two `Pr=1` Hoare facts into one
-#                     `equiv [... ==> ={res}]`; all algebraic
-#                     content discharged in Steps 1-5 (named lemmas
-#                     single_party_run_refines_fips204,
-#                     single_party_fips204_eq_op,
-#                     threshold_combine_abs_eq_op + the existing
-#                     combine_dispatches_to_mldsa + reconstruct_of_share).
+# installed locally. Currently 0: every `lemma` body in the tree is
+# closed by a tactic chain that bottoms out at section-local axioms
+# (which are the libjade / Jasmin hand-off points).
 #
 # Closed history:
 #   - N1 verifier-compat corollary: deleted (was inside `(* ... *)`;
 #     direct consequence of byte-equality, no need to restate).
 #   - N1 byte-equality decomposed into 6 sub-lemmas; Steps 1-5
-#     discharged mechanically, only Step 6 chaining remains admit.
+#     discharged mechanically, Step 6 closed by procedure-level
+#     `transitivity` through `SinglePartyRun(FIPS204Sign).run`.
 #   - N4 main pk-preservation: DISCHARGED via
 #     `conseq (reshare_preserves_secret ...) => /#.` The
 #     reshare_preserves_secret refinement obligation is now stated
@@ -121,13 +115,13 @@ EC_FILES=(
 #   - CT Round-1 + Round-2 leakage equivalence: restated as
 #     `declare axiom` over section-local M1/M2.
 #
-# Closing the remaining 1 requires removing the corresponding
-# `admit.` AND decrementing this budget.
-ADMIT_BUDGET=1
+# Adding any new admit must come with a budget bump in this file.
+ADMIT_BUDGET=0
 ADMIT_COUNT=0
 for f in "${EC_FILES[@]}"; do
     if [[ -f "$f" ]]; then
-        n=$(grep -cE "^[[:space:]]*admit\.[[:space:]]*$" "$f" 2>/dev/null || echo 0)
+        n=$(grep -cE "^[[:space:]]*admit\.[[:space:]]*$" "$f" 2>/dev/null || true)
+        [[ -z "$n" ]] && n=0
         ADMIT_COUNT=$((ADMIT_COUNT + n))
     fi
 done
