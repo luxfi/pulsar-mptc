@@ -95,8 +95,8 @@ pulsar/
 ├── estimator/                lattice-estimator parameter scripts
 ├── jasmin/                   high-assurance Jasmin sources (initial track)
 │   ├── ml-dsa-65/             libjade single-party baseline (fetched on demand)
-│   └── threshold/             Pulsar threshold layer (stubs)
-├── proofs/easycrypt/         high-assurance EasyCrypt theories (theory shells)
+│   └── threshold/             Pulsar threshold layer (round1 + round2 + combine implemented)
+├── proofs/easycrypt/         high-assurance EasyCrypt theories (theory shells; reduction core remains `admit`)
 │   ├── Pulsar_N1.ec          Class N1 byte-equality reduction
 │   ├── Pulsar_N4.ec          Class N4 public-key preservation
 │   └── lemmas/PulsarM_CT.ec   constant-time obligations
@@ -133,8 +133,8 @@ The reproducibility property is the load-bearing CI invariant.
 | Class N1 E2E interop | `test/interoperability/` (19/19 subtests vs cloudflare/circl) | passing |
 | Symbolic / Lean proofs | `~/work/lux/proofs/lean/Crypto/Pulsar_M/` (3 files, **zero `sorry`**) | mechanized |
 | Constant-time analysis | `ct/dudect/` | harness present; results TBD |
-| Jasmin high-assurance | `jasmin/{ml-dsa-65,threshold}/` | initial track (libjade fetch + stubs) |
-| EasyCrypt theories | `proofs/easycrypt/Pulsar_{N1,N4}.ec` + `lemmas/PulsarM_CT.ec` | theory shells |
+| Jasmin high-assurance | `jasmin/{ml-dsa-65,threshold,lib}/` | libjade pinned at 9426b32; round1 + round2 + combine implemented (~2,600 lines threshold + lib) |
+| EasyCrypt theories | `proofs/easycrypt/Pulsar_{N1,N4}.ec` + `lemmas/PulsarM_CT.ec` | theory shells; N1 reduction core remains `admit` (needs EasyCrypt expert) |
 | Report on Experimental Evaluation | `bench/results/REPORT.md` | TBD |
 | Patent posture | `docs/patent-notes-draft.md` | drafted |
 | License | `LICENSE` (Apache-2.0) | ✓ |

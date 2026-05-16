@@ -164,37 +164,41 @@ this repository tag:
 
 | Artifact | Status | Location |
 |---|---|---|
-| libjade ML-DSA-65 single-party baseline (Jasmin + EasyCrypt) | Verified upstream; fetched on demand | `jasmin/ml-dsa-65/fetch.sh` |
-| Pulsar Round-1 commit (Jasmin) | **Stub** — signature committed, body is `// TODO` | `jasmin/threshold/round1.jazz` |
-| Pulsar Round-2 response (Jasmin) | **Stub** — signature committed, body is `// TODO` | `jasmin/threshold/round2.jazz` |
-| Pulsar Combine (Jasmin) | **Stub** — signature committed, body is `// TODO` | `jasmin/threshold/combine.jazz` |
-| Class N1 byte-equality (EasyCrypt) | **Theory shell** — lemma stated, proof body `admit` | `proofs/easycrypt/Pulsar_N1.ec` |
+| libjade ML-DSA-65 single-party baseline (Jasmin + EasyCrypt) | Verified upstream; pinned at commit 9426b32, fetched on demand | `jasmin/ml-dsa-65/fetch.sh` |
+| Pulsar Round-1 commit (Jasmin) | **Implemented** (397 lines) — real KMAC256/cSHAKE flow + libjade `expandMask` / `expandA` / `mult_mat_vec` / `decompose_vec` / `pack_w1` | `jasmin/threshold/round1.jazz` |
+| Pulsar Round-2 response (Jasmin) | **Implemented** (626 lines) — peer-MAC verify, `lagrange_coefficient_mont`, `c.lambda.s_i` via NTT, `tau_2` transcript bind, response packing | `jasmin/threshold/round2.jazz` |
+| Pulsar Combine (Jasmin) | **Implemented** (416 lines) — `Sigma z_j`, `c.s_2` aggregation, `polyveck_make_hint`, R1..R4 rejection (`checknorm_vecl/veck`), FIPS 204 `pack(c_tilde, z, h)` | `jasmin/threshold/combine.jazz` |
+| Class N1 byte-equality (EasyCrypt) | **Theory shell** — lemma stated, 6-step reduction core remains `admit` (requires EasyCrypt + libjade Dilithium expert) | `proofs/easycrypt/Pulsar_N1.ec` |
 | Class N4 public-key preservation (EasyCrypt) | **Theory shell** — lemma stated, proof body `admit` | `proofs/easycrypt/Pulsar_N4.ec` |
 | Constant-time obligations (EasyCrypt) | **Theory shell** — lemmas stated, proof bodies `admit` | `proofs/easycrypt/lemmas/PulsarM_CT.ec` |
-| Build wiring | Complete (skip-friendly) | `scripts/check-high-assurance.sh` |
+| Build wiring | Complete (skip-friendly when `jasminc` / `easycrypt` are absent) | `scripts/check-high-assurance.sh` |
 
-Every `admit` in the EasyCrypt tree is paired with a `(* TODO: prove
-this once Jasmin extraction is wired *)` comment. Every `.jazz` stub
-has its function signature in Jasmin syntax and a body that is a
-single `// TODO: jasmin implementation` marker block. No fake proofs;
-no fake implementations.
+Jasmin sources call into the pinned libjade Dilithium reference
+primitives plus shared `jasmin/lib/` helpers (1,159 lines:
+`lagrange_coefficient_mont`, `polyvecl_scalar_mont`, `polyveck_scalar_mont`,
+`kmac256_init_R1MAC`, `kmac256_finalize_32`, `ct_eq_32`, the cSHAKE256
+prelude/finalise/absorb family, KMAC-domain-separation tags). Total
+threshold-layer Jasmin (excluding vendored libjade): 2,598 lines.
+
+Every remaining `admit` in the EasyCrypt tree is documented in
+`proofs/easycrypt/README.md` with its dependency surface (libjade
+`MLDSA65_Functional`, Shamir IT-resilience axiom). No `admit` in
+EasyCrypt corresponds to an unimplemented Jasmin body; the
+correspondence has flipped — the Jasmin implementation is what the
+EasyCrypt reduction needs to *refine*, not vice-versa.
 
 What this gives the NIST reviewer at submission time:
 
 1. The libjade single-party verified baseline as the kernel under
    Pulsar's threshold layer — real, machine-checked, citable.
-2. The exposed obligation surface for the Pulsar-specific work:
-   which Jasmin routines need implementing, which CT lemmas need
-   proving, and how the Class N1 reduction composes with libjade's
-   functional theorem.
-3. A skip-friendly check script (`scripts/check-high-assurance.sh`)
-   that exits 0 on machines without `jasminc`/`easycrypt` and runs
-   the tools when they are present.
+2. Real Jasmin sources for all three threshold-layer routines that
+   call into the pinned libjade kernel via documented require paths.
+3. The Class N1 reduction skeleton in EasyCrypt that the Jasmin
+   sources are intended to refine.
 
-Closing the `admit`s + filling the `.jazz` bodies is non-trivial work
-tracked across MPTC submission rounds. The initial track exists so
-the high-assurance posture is reviewable today, not deferred to "the
-next submission".
+What remains in the high-assurance track is the EasyCrypt admits and
+the `jasminc` CI gate — both tracked independently of the Jasmin
+sources landing.
 
 ## What this submission does NOT claim
 

@@ -160,8 +160,11 @@ crypto-engineers + outside cryptographer audit before merge.
   19/19 Class N1 interop subtests pass.
 - Lean mechanization of OutputInterchange + Unforgeability + Shamir
   (zero `sorry`).
-- Jasmin + EasyCrypt high-assurance scaffold (theory shells +
-  libjade integration roadmap).
+- Jasmin high-assurance sources: libjade pinned at commit 9426b32,
+  round1 + round2 + combine implemented (~2,600 lines threshold +
+  lib). EasyCrypt theory shells stand alongside; closing the N1
+  reduction core is independent expert work tracked in
+  `proofs/easycrypt/README.md`.
 
 ## What ships *as production-PQ now* (CR-{1..13} closure)
 
