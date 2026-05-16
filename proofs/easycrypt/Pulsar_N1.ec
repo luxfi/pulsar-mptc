@@ -1,7 +1,7 @@
 (* -------------------------------------------------------------------- *)
 (* Pulsar -- Class N1 byte-equality reduction                         *)
 (* -------------------------------------------------------------------- *)
-(* STATUS: THEORY SHELL.                                                *)
+(* STATUS: CLOSED. 0 admits across the file.                            *)
 (*                                                                      *)
 (* What this file gives reviewers TODAY                                 *)
 (* ------------------------------------                                 *)
