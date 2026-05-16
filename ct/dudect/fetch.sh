@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fetch dudect at the pinned commit used by Pulsar-M's constant-time
+# Fetch dudect at the pinned commit used by Pulsar's constant-time
 # track.
 #
 # dudect (https://github.com/oreparaz/dudect) is a single-header
@@ -7,7 +7,7 @@
 # repository — this script reproduces it on demand.
 #
 # Pinned hash at submission-tag time. Update at the same time as the
-# Pulsar-M submission tag so the artifact chain stays reproducible.
+# Pulsar submission tag so the artifact chain stays reproducible.
 
 set -euo pipefail
 
