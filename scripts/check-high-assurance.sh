@@ -86,17 +86,52 @@ echo
 # EasyCrypt
 # -----------------------------------------------------------------------------
 
+EC_FILES=(
+    "$EC_ROOT/Pulsar_N1.ec"
+    "$EC_ROOT/Pulsar_N4.ec"
+    "$EC_ROOT/lemmas/PulsarM_CT.ec"
+)
+
+# Admit budget — the count of `admit.` source lines across the EC
+# tree. Hard-pinned so a regression (new admit appearing without
+# closing an existing one) fails CI even when easycrypt itself is not
+# installed locally. The current 6 admit lines break down as:
+#   * Pulsar_N1.ec:450  — core 6-step byte-equality reduction
+#   * Pulsar_N1.ec:484  — inside a (* ... *) commented-out lemma; the
+#                          surrounding block is parked code, not a live
+#                          proof obligation; the line is counted by
+#                          this grep because the gate is intentionally
+#                          comment-unaware (cheap + conservative)
+#   * Pulsar_N4.ec:83   — pk-preservation across reshare (main lemma)
+#   * Pulsar_N4.ec:104  — committee-binding aux (postcondition is
+#                          placeholder `true` pending real binding)
+#   * lemmas/PulsarM_CT.ec:75   — Round-1 constant-time obligation
+#   * lemmas/PulsarM_CT.ec:106  — Round-2 constant-time obligation
+#
+# Net actionable admits: 5 (N1:484 is in a commented-out section).
+# Closing one requires removing the corresponding `admit.` AND
+# decrementing this budget.
+ADMIT_BUDGET=6
+ADMIT_COUNT=0
+for f in "${EC_FILES[@]}"; do
+    if [[ -f "$f" ]]; then
+        n=$(grep -cE "^[[:space:]]*admit\.[[:space:]]*$" "$f" 2>/dev/null || echo 0)
+        ADMIT_COUNT=$((ADMIT_COUNT + n))
+    fi
+done
+echo "==> EasyCrypt admit budget: $ADMIT_COUNT / $ADMIT_BUDGET"
+if [[ $ADMIT_COUNT -gt $ADMIT_BUDGET ]]; then
+    echo "    [FAIL] admit count exceeds budget — a new admit was added"
+    echo "           without closing an existing one. Either close one"
+    echo "           or update ADMIT_BUDGET in this script (and BLOCKERS.md)."
+    exit 2
+fi
+
 if [[ $have_ec -eq 0 ]]; then
-    echo "    [skip] easycrypt not on PATH"
-    echo "           install: opam install easycrypt"
-    echo "           upstream: https://github.com/EasyCrypt/easycrypt"
+    echo "    [skip] easycrypt not on PATH; admit-count budget enforced statically"
+    echo "           install (source build): https://github.com/EasyCrypt/easycrypt"
 else
     echo "==> easycrypt found ($(easycrypt --version 2>&1 | head -1))"
-    EC_FILES=(
-        "$EC_ROOT/Pulsar_N1.ec"
-        "$EC_ROOT/Pulsar_N4.ec"
-        "$EC_ROOT/lemmas/PulsarM_CT.ec"
-    )
     for f in "${EC_FILES[@]}"; do
         if [[ ! -f "$f" ]]; then
             echo "    [warn] missing: $f"
