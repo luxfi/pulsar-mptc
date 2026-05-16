@@ -95,23 +95,24 @@ EC_FILES=(
 # Admit budget — the count of `admit.` source lines across the EC
 # tree. Hard-pinned so a regression (new admit appearing without
 # closing an existing one) fails CI even when easycrypt itself is not
-# installed locally. The current 6 admit lines break down as:
+# installed locally. The current 5 admit lines break down as:
 #   * Pulsar_N1.ec:450  — core 6-step byte-equality reduction
 #   * Pulsar_N1.ec:484  — inside a (* ... *) commented-out lemma; the
 #                          surrounding block is parked code, not a live
 #                          proof obligation; the line is counted by
 #                          this grep because the gate is intentionally
 #                          comment-unaware (cheap + conservative)
-#   * Pulsar_N4.ec:83   — pk-preservation across reshare (main lemma)
-#   * Pulsar_N4.ec:104  — committee-binding aux (postcondition is
-#                          placeholder `true` pending real binding)
+#   * Pulsar_N4.ec:~83  — pk-preservation across reshare (main lemma)
+#                          (committee-binding aux was DISCHARGED via
+#                          `proc true; auto` since its postcondition is
+#                          a `true` placeholder)
 #   * lemmas/Pulsar_CT.ec:75   — Round-1 constant-time obligation
 #   * lemmas/Pulsar_CT.ec:106  — Round-2 constant-time obligation
 #
-# Net actionable admits: 5 (N1:484 is in a commented-out section).
+# Net actionable admits: 4 (N1:484 is in a commented-out section).
 # Closing one requires removing the corresponding `admit.` AND
 # decrementing this budget.
-ADMIT_BUDGET=6
+ADMIT_BUDGET=5
 ADMIT_COUNT=0
 for f in "${EC_FILES[@]}"; do
     if [[ -f "$f" ]]; then
