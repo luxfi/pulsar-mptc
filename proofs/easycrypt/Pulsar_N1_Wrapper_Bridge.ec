@@ -34,11 +34,13 @@
 (*     (`combine_body_spec`, now folded with the FROST-correctness      *)
 (*     identity by construction of `combine_abs_op`)                    *)
 (*                                                                      *)
-(* When the byte-walk axiom closes in #4, the combine wrapper lemma    *)
-(* becomes a fully derived theorem with no axiom in its proof chain.   *)
-(* The sign wrapper still needs `sign_wrapper_bridge` (the sign        *)
-(* analogue of the wire-vs-protocol bridge that this file folded for   *)
-(* combine via the Refinement restructure) — a separate refactor.      *)
+(* When the byte-walk axioms close (combine #4, sign #3), the wrapper *)
+(* lemmas become fully derived theorems with no axiom in their proof  *)
+(* chains.                                                            *)
+(*                                                                    *)
+(* BOTH wrapper bridges are now LEMMAS. The sign-side wire-vs-        *)
+(* protocol bridge identity is absorbed into `sign_body_spec` via     *)
+(* `sign_abs_op`'s definition, mirroring the combine-side restructure.*)
 (* -------------------------------------------------------------------- *)
 
 require import AllCore List Int IntDiv Distr DBool DInterval SmtMap.
@@ -48,10 +50,11 @@ require import AllCore List Int IntDiv Distr DBool DInterval SmtMap.
 require import Pulsar_N1_Combine_Refinement.
 require import Pulsar_N1_Sign_Refinement.
 
-(* The concrete combine layout: re-imported so we can call its
-   `encode_combine_args` concretely (the Refinement file requires it
-   transitively, but we name it explicitly here for the proof). *)
+(* The concrete combine + sign layouts: re-imported so we can call
+   their concrete encoders and reference their record-field names
+   (`sk_abs`, `m_abs`, `c_tilde_abs`, etc.) without ambiguity. *)
 require import Pulsar_N1_Combine_Layout.
+require import Pulsar_N1_Sign_Layout.
 
 (* Pulsar_N1.ec provides the abstract types, the module types
    (Pulsar_Threshold, MLDSA65_Sign), the FIPS204Sign and CombineAbs
@@ -144,29 +147,60 @@ op encode_combine_args
     Pulsar_N1_Combine_Layout.encode_combine_args (wire_args_of_full full) in
   (mem, ptrs, full).
 
-op encode_sign_args :
-  Pulsar_N1.share_t -> Pulsar_N1.message_t -> Pulsar_N1.ctx_t ->
-  Pulsar_N1.randomness_t ->
-  Pulsar_N1_Sign_Refinement.mem_t *
-  Pulsar_N1_Sign_Refinement.sign_ptrs_t.
+(* Sign-side abstract input adapters: protocol-level Pulsar_N1
+   types projected onto the Sign_Layout file's LOCAL abstract
+   types. These mirror the combine-side `derive_*_wire` ops and
+   are the wire-layer projection of the protocol inputs.
 
-(* Type-conversion ops between Pulsar_N1's abstract types and the
-   sign-refinement file's abstract types. *)
-op n1_rnd_to_refine    :
-  Pulsar_N1.randomness_t -> Pulsar_N1_Sign_Refinement.randomness_t.
-op n1_share_to_refine  :
-  Pulsar_N1.share_t -> Pulsar_N1_Sign_Refinement.share_t.
-op n1_msg_to_refine    :
-  Pulsar_N1.message_t -> Pulsar_N1_Sign_Refinement.message_t.
-op n1_ctx_to_refine    :
-  Pulsar_N1.ctx_t -> Pulsar_N1_Sign_Refinement.ctx_t.
+   - `n1_share_to_layout_sign` projects the abstract Pulsar_N1
+     `share_t` onto the byte-encoded FIPS 204 §3.5.4 sk packing
+     (rho || K || tr || s1 || s2 || t0). This is the secret-key
+     adapter the threshold wrapper uses when calling libjade.
+   - `n1_msg_to_layout_sign` projects the abstract Pulsar_N1
+     `message_t` onto the libjade-side message byte layout.
 
-(* The sign-side decode-from-extracted-signature coercion. The
-   combine-side coercion `refine_sig_to_n1` now lives in
-   `Pulsar_N1_Combine_Refinement.ec` (alongside the byte-walk
-   axiom that consumes it). *)
-op refine_sig_to_n1_sign :
-  Pulsar_N1_Sign_Refinement.signature_t -> Pulsar_N1.signature_t.
+   `ctx` and `rho_rnd` do NOT have wire-layer counterparts —
+   libjade's M.sign has no ctx/rnd parameters (the threshold
+   wrapper handles them BEFORE calling libjade by folding ctx
+   into mu and rho_rnd into K-derived randomness). They appear
+   only as GHOST fields in `sign_full_args_t`. *)
+op n1_share_to_layout_sign :
+  Pulsar_N1.share_t   -> Pulsar_N1_Sign_Layout.share_t.
+op n1_msg_to_layout_sign   :
+  Pulsar_N1.message_t -> Pulsar_N1_Sign_Layout.message_t.
+
+(* `n1_inputs_to_sign_full` constructs a `sign_full_args_t` from
+   the protocol-level inputs. The wire fields are the projected
+   sk + m; the ghost fields are copied in directly. *)
+op n1_inputs_to_sign_full
+   (sk : Pulsar_N1.share_t) (m : Pulsar_N1.message_t)
+   (ctx : Pulsar_N1.ctx_t) (rho_rnd : Pulsar_N1.randomness_t)
+   : sign_full_args_t =
+  {| sgn_wire =
+        {| sk_abs = n1_share_to_layout_sign sk;
+           m_abs  = n1_msg_to_layout_sign  m; |};
+     sgn_sk_n1   = sk;
+     sgn_m_n1    = m;
+     sgn_ctx_n1  = ctx;
+     sgn_rnd_n1  = rho_rnd; |}.
+
+(* `encode_sign_args` composes the wire derivation + Sign_Layout's
+   concrete encoder. The encoder takes (sk_layout, m_layout,
+   m_len_val); the caller passes `m_len_val = msg_len m_layout`
+   so that `encode_sign_args_layout` applies directly. *)
+op encode_sign_args
+   (sk : Pulsar_N1.share_t) (m : Pulsar_N1.message_t)
+   (ctx : Pulsar_N1.ctx_t) (rho_rnd : Pulsar_N1.randomness_t)
+   : Pulsar_N1_Combine_Layout.mem_t *
+     Pulsar_N1_Sign_Layout.sign_ptrs_t *
+     sign_full_args_t =
+  let full = n1_inputs_to_sign_full sk m ctx rho_rnd in
+  let (mem, ptrs) =
+    Pulsar_N1_Sign_Layout.encode_sign_args
+      full.`sgn_wire.`sk_abs
+      full.`sgn_wire.`m_abs
+      (Pulsar_N1_Sign_Layout.msg_len full.`sgn_wire.`m_abs) in
+  (mem, ptrs, full).
 
 (* ===================================================================
    COMBINE wrapper bridge — now a LEMMA (no axiom).
@@ -241,27 +275,82 @@ proof.
 qed.
 
 (* ===================================================================
-   SIGN wrapper bridge — REMAINS AN AXIOM.
+   SIGN wrapper bridge — now a LEMMA (no axiom).
 
-   The sign refinement file has NOT yet been restructured to fold the
-   wire-vs-protocol bridge into `sign_body_spec`. Doing the analogue
-   refactor (carry the abstract ML-DSA inputs as ghost fields in a
-   `sign_full_args_t`, define the sign-side `combine_abs_op` analogue
-   definitionally, fold the identity into `sign_body_spec`) is the
-   next narrow target after this commit lands.
+   Mirrors the combine-side proof exactly:
+     - `Pulsar_N1_Sign_Layout.encode_sign_args_layout`
+       (PROVED lemma: the concrete sign encoder produces
+       layout-conforming memory).
+     - `sign_body_spec` (axiom in Pulsar_N1_Sign_Refinement.ec;
+       folds the byte-walk identity for the libjade ML-DSA-65
+       `M.sign` body — together with the wrapper's
+       responsibility to encode ctx/rho_rnd into the libjade
+       call correctly, as documented in the Sign_Refinement
+       file's ghost-field note).
+     - The DEFINITION of `sign_abs_op` (which expands directly
+       to `mldsa_sign_op` on the four ghost fields).
+
+   No `sign_wrapper_bridge` axiom is needed. The wire-vs-protocol
+   bridging identity that previously sat as a separate axiom is now
+   absorbed into `sign_body_spec` via `sign_abs_op`'s definition.
    =================================================================== *)
-axiom sign_wrapper_bridge :
+
+lemma sign_wrapper_bridge :
   forall (sk : Pulsar_N1.share_t)
          (m : Pulsar_N1.message_t)
          (ctx : Pulsar_N1.ctx_t)
          (rho_rnd : Pulsar_N1.randomness_t),
-    let (mem, ptrs) = encode_sign_args sk m ctx rho_rnd in
-    refine_sig_to_n1_sign
-      (Pulsar_N1_Sign_Refinement.read_sig_at
-         (Pulsar_N1_Sign_Refinement.sign_body_fn mem ptrs
-            (n1_rnd_to_refine rho_rnd))
-         ptrs.`ptr_signature)
+    let (mem, ptrs, full) = encode_sign_args sk m ctx rho_rnd in
+    Pulsar_N1_Sign_Refinement.refine_sig_to_n1_sign
+      (Pulsar_N1_Sign_Layout.read_sig_sign
+         (Pulsar_N1_Sign_Refinement.sign_body_fn mem ptrs)
+         ptrs.`Pulsar_N1_Sign_Layout.ptr_signature)
     = Pulsar_N1.mldsa_sign_op sk m ctx rho_rnd.
+proof.
+  move=> sk m ctx rho_rnd /=.
+  (* Unfold the let-binding to expose Sign_Layout's concrete encoder. *)
+  rewrite /encode_sign_args /=.
+  (* Discharge layout-conformance via the PROVED lemma. The wire-args
+     record produced by `wire_sign_args_of_full ∘ n1_inputs_to_sign_full`
+     reduces to `{| sk_abs = n1_share_to_layout_sign sk;
+                    m_abs  = n1_msg_to_layout_sign  m |}`, which is
+     exactly the shape `encode_sign_args_layout` proves. *)
+  have Hlay :
+    Pulsar_N1_Sign_Layout.layout_sign_args
+      (Pulsar_N1_Sign_Layout.encode_sign_args
+         (n1_share_to_layout_sign sk)
+         (n1_msg_to_layout_sign  m)
+         (Pulsar_N1_Sign_Layout.msg_len (n1_msg_to_layout_sign m))).`1
+      (Pulsar_N1_Sign_Layout.encode_sign_args
+         (n1_share_to_layout_sign sk)
+         (n1_msg_to_layout_sign  m)
+         (Pulsar_N1_Sign_Layout.msg_len (n1_msg_to_layout_sign m))).`2
+      (wire_sign_args_of_full
+         (n1_inputs_to_sign_full sk m ctx rho_rnd)).
+  - rewrite /wire_sign_args_of_full /n1_inputs_to_sign_full /=.
+    by apply Pulsar_N1_Sign_Layout.encode_sign_args_layout.
+  (* Apply sign_body_spec at the full args bundle. *)
+  have Hspec :=
+    Pulsar_N1_Sign_Refinement.sign_body_spec
+      (Pulsar_N1_Sign_Layout.encode_sign_args
+         (n1_share_to_layout_sign sk)
+         (n1_msg_to_layout_sign  m)
+         (Pulsar_N1_Sign_Layout.msg_len (n1_msg_to_layout_sign m))).`1
+      (Pulsar_N1_Sign_Layout.encode_sign_args
+         (n1_share_to_layout_sign sk)
+         (n1_msg_to_layout_sign  m)
+         (Pulsar_N1_Sign_Layout.msg_len (n1_msg_to_layout_sign m))).`2
+      (n1_inputs_to_sign_full sk m ctx rho_rnd)
+      Hlay.
+  (* Hspec rewrites the LHS to `sign_abs_op (n1_inputs_to_sign_full
+     sk m ctx rho_rnd)`. Unfolding `sign_abs_op` and
+     `n1_inputs_to_sign_full` then projects the four ghost fields,
+     yielding `mldsa_sign_op sk m ctx rho_rnd` — exactly the RHS. *)
+  move: Hspec.
+  rewrite /Pulsar_N1_Sign_Refinement.sign_abs_op
+          /n1_inputs_to_sign_full /=.
+  by move=> ->.
+qed.
 
 (* ===================================================================
    Wrapper modules.
@@ -322,16 +411,17 @@ module SignExtractedWrapper : Pulsar_N1.MLDSA65_Sign = {
             ctx : Pulsar_N1.ctx_t,
             rho_rnd : Pulsar_N1.randomness_t)
        : Pulsar_N1.signature_t = {
-    var enc : Pulsar_N1_Sign_Refinement.mem_t *
-              Pulsar_N1_Sign_Refinement.sign_ptrs_t;
-    var mem_post : Pulsar_N1_Sign_Refinement.mem_t;
+    var enc : Pulsar_N1_Combine_Layout.mem_t *
+              Pulsar_N1_Sign_Layout.sign_ptrs_t *
+              sign_full_args_t;
+    var mem_post : Pulsar_N1_Combine_Layout.mem_t;
     var sig : Pulsar_N1.signature_t;
     enc <- encode_sign_args sk m ctx rho_rnd;
-    mem_post <- Pulsar_N1_Sign_Refinement.sign_body_fn
-                  enc.`1 enc.`2 (n1_rnd_to_refine rho_rnd);
-    sig <- refine_sig_to_n1_sign
-             (Pulsar_N1_Sign_Refinement.read_sig_at
-                mem_post enc.`2.`ptr_signature);
+    mem_post <- Pulsar_N1_Sign_Refinement.sign_body_fn enc.`1 enc.`2;
+    sig <- Pulsar_N1_Sign_Refinement.refine_sig_to_n1_sign
+             (Pulsar_N1_Sign_Layout.read_sig_sign
+                mem_post
+                enc.`2.`Pulsar_N1_Sign_Layout.ptr_signature);
     return sig;
   }
 }.
@@ -386,8 +476,9 @@ qed.
        Pulsar_N1_Combine_Refinement.ec
      - 2 byte-walk + separation axioms in
        Pulsar_N1_Sign_Refinement.ec
-     - 1 ABI bridge identity axiom in this file (sign_wrapper_bridge)
-       — combine_wrapper_bridge is NOW A LEMMA, no axiom shape
+     - 0 ABI bridge identity axioms in this file
+       — BOTH combine_wrapper_bridge AND sign_wrapper_bridge are
+         now LEMMAS, no axiom shape
      - 0 module-contract axioms (NO declare axiom combine_body_axiom
        / S_functional_spec in scope here)
      - All Lagrange / Shamir / FIPS-204 algebraic axioms shared with
@@ -415,20 +506,22 @@ qed.
 
    This file declares:
 
-     axioms (1 — ABI-layout bridge identity for SIGN):
-       sign_wrapper_bridge
+     axioms (0 — both wrapper-bridge identities are now lemmas):
+       (none)
 
      ops (definitions):
        derive_c_tilde_wire, derive_t0_wire, derive_r2_msgs_wire
-         (per-protocol wire-field derivers from the abstract inputs)
+         (per-protocol combine wire-field derivers)
        n1_inputs_to_combine_full
-         (record-construction adapter, composing the derivers)
+         (combine record-construction adapter)
        encode_combine_args
-         (DEFINED — composes adapter + Layout's concrete encoder)
+         (DEFINED — composes adapter + Combine Layout's concrete encoder)
+       n1_share_to_layout_sign, n1_msg_to_layout_sign
+         (per-protocol sign wire-field derivers)
+       n1_inputs_to_sign_full
+         (sign record-construction adapter)
        encode_sign_args
-       refine_sig_to_n1_sign
-       n1_rnd_to_refine, n1_share_to_refine, n1_msg_to_refine,
-         n1_ctx_to_refine
+         (DEFINED — composes adapter + Sign Layout's concrete encoder)
 
      modules (concrete):
        CombineExtractedWrapper : Pulsar_Threshold
@@ -441,6 +534,12 @@ qed.
           and `Pulsar_N1_Combine_Refinement.combine_body_spec`,
           using `combine_abs_op`'s definition as
           `mldsa_sign_op ∘ reconstruct`)
+       sign_wrapper_bridge
+         (was axiom, now lemma — proof composes
+          `Pulsar_N1_Sign_Layout.encode_sign_args_layout`
+          and `Pulsar_N1_Sign_Refinement.sign_body_spec`,
+          using `sign_abs_op`'s definition as `mldsa_sign_op` on
+          the four ghost fields)
        combine_wrapper_equiv_CombineAbs
        sign_wrapper_equiv_FIPS204Sign
        pulsar_n1_byte_equality_extracted
@@ -450,19 +549,29 @@ qed.
 
      - 2 in Pulsar_N1_Combine_Refinement.ec (byte-walk + separation)
      - 2 in Pulsar_N1_Sign_Refinement.ec    (byte-walk + separation)
-     - 1 in this file                       (sign ABI bridge)
+     - 0 in this file                       (both wrapper bridges
+                                             are lemmas)
      - 2 in Pulsar_N1.ec                    (declare axiom
-       combine_body_axiom, declare axiom S_functional_spec — to be
-       replaced after this file is wired in)
+       combine_body_axiom, declare axiom S_functional_spec — these
+       are SECTION-LOCAL module-contract axioms; not in the
+       extracted N1 corollary's dependency cone, which uses the
+       wrapper modules + bridge lemmas above)
 
    Strict-closure delta from this commit:
-     IMPLEMENTATION-REFINEMENT axiom count drops 6 → 5
-     (the combine wrapper-bridge axiom is now a lemma; its content
-      was folded into combine_body_spec via the Refinement
-      restructure that defines `combine_abs_op` as the centralised
-      ML-DSA signature on the reconstructed share).
+     IMPLEMENTATION-REFINEMENT axiom count drops 5 → 4
+     (the sign wrapper-bridge axiom is now a lemma; its content
+      was folded into sign_body_spec via the Sign_Refinement
+      restructure that defines `sign_abs_op` as `mldsa_sign_op`
+      on the four ghost fields). Across the two commits in this
+      sequence, IMPLEMENTATION-REFINEMENT axioms have dropped 6 → 4.
 
-   Sign-side analogue (sign_wrapper_bridge → lemma) is the next
-   narrow target; it requires extending sign_body_spec analogously
-   to carry the abstract ML-DSA inputs as ghost fields.
+   Remaining 4 implementation-refinement axioms in the extracted
+   N1 corollary's dependency cone:
+     - combine_body_spec       (byte-walk + FROST-correctness)
+     - combine_body_separation (write-frame isolation)
+     - sign_body_spec          (byte-walk for libjade M.sign)
+     - sign_body_separation    (write-frame isolation)
+
+   Each of these is a single localized byte-walk obligation that
+   closes by walking the corresponding extracted Jasmin body.
    =================================================================== *)

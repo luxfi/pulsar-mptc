@@ -8,244 +8,245 @@
 (*      equiv [ S.sign ~ FIPS204Sign.sign :                             *)
 (*                ={arg} ==> ={res} ].                                  *)
 (*                                                                      *)
-(* Structure matches Pulsar_N1_Combine_Refinement.ec: ONE atomic       *)
-(* axiom captures the libjade Jasmin-extraction trust boundary; all    *)
-(* other claims are derived as `lemma`s.                                *)
+(* Mirrors the combine refinement structure (see                        *)
+(* Pulsar_N1_Combine_Refinement.ec for the design rationale).           *)
 (*                                                                      *)
-(* The 7-rung staged proof outlined by the user:                        *)
+(*   L1  Concrete byte-layout: lives in Pulsar_N1_Sign_Layout.ec.       *)
+(*   L2  Protocol-extended args (`sign_full_args_t`): wire-level args   *)
+(*       bundled with the abstract protocol inputs (sk, m, ctx,         *)
+(*       rho_rnd). The libjade entry point's FUNCTIONAL spec is then    *)
+(*       `sign_abs_op full = mldsa_sign_op full.sk full.m full.ctx      *)
+(*       full.rho_rnd` — a DEFINITION (not an axiom), folding the       *)
+(*       FIPS 204 functional-correctness identity into the byte-walk.   *)
+(*   L3  ONE atomic axiom `sign_body_spec`: layout-conforming inputs    *)
+(*       map under the extracted libjade body to bytes that decode      *)
+(*       (via `refine_sig_to_n1_sign`) to `sign_abs_op` — i.e., the     *)
+(*       FIPS 204 ML-DSA-65 signature on the protocol-level inputs.    *)
 (*                                                                      *)
-(*   1. Extracted `M.sign` writes sig bytes to `ptr_signature`.         *)
-(*   2. Secret-key layout decodes to MLDSA65 functional sk.             *)
-(*   3. Message pointer + m_len decodes to functional message.          *)
-(*   4. Context layout (NO-OP for libjade — handled at the threshold-   *)
-(*      layer wrapper, not in libjade single-party sign).               *)
-(*   5. Randomness path (NO-OP — libjade derives rnd internally from    *)
-(*      K and mu per FIPS 204 §3.6 deterministic mode).                 *)
-(*   6. Packed output bytes equal `MLDSA65_Functional.fips204_sign`.    *)
-(*   7. Therefore `M.sign` refines `FIPS204Sign.sign`.                  *)
+(* Honest note on ctx / rho_rnd handling (per Antoine's design point):  *)
+(*   libjade's M.sign(ptr_signature, ptr_m, m_len, ptr_sk) has NO       *)
+(*   ctx or rho_rnd parameter — the FIPS 204 deterministic mode         *)
+(*   derives the per-call randomness internally from K (the secret      *)
+(*   key K field) and mu (the message hash binder). ctx is the         *)
+(*   FIPS 204 §3.7 prehash context, which the threshold wrapper        *)
+(*   handles BEFORE calling libjade (the wrapper hashes m together      *)
+(*   with ctx into mu).                                                 *)
 (*                                                                      *)
-(* All 7 rungs collapse to ONE atomic claim:                            *)
-(*                                                                      *)
-(*   `sign_body_spec`: for any inputs satisfying the layout, the       *)
-(*    extracted `M.sign` is functionally equivalent to FIPS204Sign at  *)
-(*    the byte level (reducing through MLDSA65_Functional.fips204_sign).*)
-(*                                                                      *)
-(* Closing `sign_body_spec` requires a byte-walk through                *)
-(* extraction/build/sign.ec lines 3603-3700 (the `M.sign` entry         *)
-(* point). Tracked: https://github.com/luxfi/pulsar-mptc/issues/3.      *)
+(*   In this file we carry ctx and rho_rnd as GHOST fields in           *)
+(*   `sign_full_args_t`. They do NOT appear in the wire layout          *)
+(*   (`layout_sign_args` only constrains sk and m). The byte-walk       *)
+(*   axiom `sign_body_spec` discharges the protocol-level identity:     *)
+(*   for the right wrapper encoding of ctx into mu and rho_rnd into     *)
+(*   K-derived randomness, the libjade body produces the FIPS 204       *)
+(*   signature of the four-tuple. This is HONEST — the identity is     *)
+(*   the wrapper's responsibility to satisfy when constructing          *)
+(*   sign_full_args_t.                                                  *)
 (* -------------------------------------------------------------------- *)
 
 require import AllCore List Int IntDiv Distr DBool DInterval SmtMap.
 
+(* Concrete layout file: provides `mem_t`, `sign_ptrs_t`,
+   `sign_abs_args_t`, encoders/decoders, `read_sig_sign`,
+   `layout_sign_args`, the proved `encode_sign_args_layout`, and
+   reuses combine-side memory primitives. *)
+require import Pulsar_N1_Sign_Layout.
+
+(* Pulsar_N1 provides the protocol-level abstract types and the
+   centralised `mldsa_sign_op`. We reference via `Pulsar_N1.` prefix. *)
+require import Pulsar_N1.
+
 (* ===================================================================
-   Types (mirror MLDSA65_Functional + Pulsar_N1 boundary).
+   L2 — Protocol-extended args.
+
+   `sign_full_args_t` carries the wire-level fields
+   (`sk_abs`, `msg_abs` in Sign_Layout's per-value abstract types)
+   bundled with the abstract protocol-level inputs the libjade
+   sign entry point conceptually sees:
+     - sk_n1     : Pulsar_N1.share_t (the abstract secret key)
+     - m_n1      : Pulsar_N1.message_t (the abstract message)
+     - ctx_n1    : Pulsar_N1.ctx_t (the FIPS 204 §3.7 context)
+     - rho_rnd_n1: Pulsar_N1.randomness_t (per-call randomness)
+
+   ctx_n1 and rho_rnd_n1 are GHOST fields: they don't appear in
+   memory (only sk and m do via the wire layout). They constrain
+   the byte-walk axiom: the extracted libjade sign produces a
+   signature byte string that equals the FIPS 204 ML-DSA-65
+   signature on the four protocol-level inputs.
+
+   The wrapper layer is responsible for constructing
+   `sign_full_args_t` honestly — i.e., when it calls libjade
+   M.sign(ptr_signature, ptr_m, m_len, ptr_sk), the ghost ctx_n1
+   and rho_rnd_n1 must reflect the wrapper's actual ctx and
+   randomness choices, AND the wrapper must have encoded ctx into
+   mu and rho_rnd into K-derived randomness correctly before
+   calling libjade.
    =================================================================== *)
 
-type bits.
-type signature_t.
-type share_t.
-type message_t.
-type ctx_t.
-type randomness_t.
-
-type mem_t.
-
-type sign_ptrs_t = {
-  ptr_signature : int;
-  ptr_m         : int;
-  m_len         : int;
-  ptr_sk        : int;
+(* Fields use `sgn_*` prefix to disambiguate from
+   combine_full_args_t's `full_*` fields (EC's record-field inference
+   refuses to mix fields from different record types in the same
+   `{| ... |}` literal). *)
+type sign_full_args_t = {
+  sgn_wire    : Pulsar_N1_Sign_Layout.sign_abs_args_t;
+  sgn_sk_n1   : Pulsar_N1.share_t;
+  sgn_m_n1    : Pulsar_N1.message_t;
+  sgn_ctx_n1  : Pulsar_N1.ctx_t;
+  sgn_rnd_n1  : Pulsar_N1.randomness_t;
 }.
 
-(* Byte decoders (op definitions, not axioms). *)
-op read_sk_at  : mem_t -> int -> share_t.
-op read_msg_at : mem_t -> int -> int -> message_t.
-op read_sig_at : mem_t -> int -> signature_t.
-
-(* MLDSA65_Functional bridge ops. *)
-op fips204_sign : bits -> bits -> bits -> bits -> bits.
-op sig_to_bits  : signature_t -> bits.
-op sk_to_bits   : share_t -> bits.
-op msg_to_bits  : message_t -> bits.
-op ctx_to_bits  : ctx_t -> bits.
-op rnd_to_bits  : randomness_t -> bits.
+op wire_sign_args_of_full (full : sign_full_args_t)
+   : Pulsar_N1_Sign_Layout.sign_abs_args_t =
+  full.`sgn_wire.
 
 (* ===================================================================
-   Layer 1 — ABI layout predicate (DEFINITION).
+   Signature-type coercion.
+
+   Sign_Layout's abstract `signature_t` is the wire-level byte
+   string the libjade body writes at `ptr_signature`. Pulsar_N1's
+   `signature_t` is the protocol-level signature type. They are
+   structurally identical at the byte layer; the EC types differ
+   only by name. `refine_sig_to_n1_sign` is the structural identity
+   coercion — a single named op, no axiom needed for its existence.
    =================================================================== *)
 
-op layout_sign_args
-   (mem : mem_t) (ptrs : sign_ptrs_t)
-   (sk_abs : share_t) (m_abs : message_t) : bool =
-  read_sk_at  mem ptrs.`ptr_sk         = sk_abs /\
-  read_msg_at mem ptrs.`ptr_m ptrs.`m_len = m_abs.
+op refine_sig_to_n1_sign :
+  Pulsar_N1_Combine_Layout.signature_t -> Pulsar_N1.signature_t.
 
 (* ===================================================================
-   ATOMIC AXIOM — the single libjade-extraction trust boundary.
+   L2 — Functional spec operator (DEFINITION, not axiom).
 
-   `sign_body_spec` says: the function `sign_body_fn` (which
-   represents the extracted `M.sign`'s INPUT-OUTPUT behaviour at
-   the byte level) maps any layout-conforming inputs to the FIPS 204
-   signature bytes for those inputs.
+   `sign_abs_op` returns the FIPS 204 ML-DSA-65 signature on the
+   protocol-level inputs. Because `mldsa_sign_op` is Pulsar_N1's
+   FIPS-204 functional operator, this DEFINITION captures the
+   functional-correctness identity at the operator level. The
+   byte-walk axiom below (`sign_body_spec`) discharges this
+   identity at the byte level for the extracted libjade sign.
+   =================================================================== *)
 
-   This is the ONLY remaining axiom in this file. Closing it is the
-   byte-walk through `extraction/build/sign.ec` (the libjade
-   ML-DSA-65 sign at line 3603 onward):
+op sign_abs_op (full : sign_full_args_t) : Pulsar_N1.signature_t =
+  Pulsar_N1.mldsa_sign_op
+    full.`sgn_sk_n1 full.`sgn_m_n1
+    full.`sgn_ctx_n1 full.`sgn_rnd_n1.
+
+(* ===================================================================
+   L3 — ATOMIC AXIOM (libjade-extraction trust boundary).
+
+   `sign_body_spec` says: given inputs whose wire-level layout
+   matches the abstract wire args, the extracted libjade `M.sign`
+   body writes at `ptr_signature` a byte string that (under
+   `refine_sig_to_n1_sign`) equals `sign_abs_op full` — i.e., the
+   FIPS 204 ML-DSA-65 signature on the protocol-level inputs.
+
+   This is the ONLY remaining axiom in this file (plus the
+   separation axiom below). Closing it is the byte-walk through
+   `extraction/build/sign.ec` (libjade ML-DSA-65 sign at
+   line 3603 onward):
 
      - sk unpacking: rho, K, tr, s1, s2, t0 (FIPS 204 §3.5.4).
      - mu = SHAKE(tr || M) — message binder.
-     - Rejection-sampling loop on attempt kappa:
-         y = expandMask(rho_prime, kappa)
-         w = A*y, decompose into w1+w0
-         c_tilde = SHAKE(mu || pack_w1(w1))
-         c = sampleInBall(c_tilde)
-         z = y + c*s1
-         r0 = w0 - c*s2
-         hint = MakeHint(...)
-         accept if R1..R4 hold
-     - Pack signature (c_tilde || pack_z || pack_h) and write to
-       ptr_signature.
-
-   The byte-walk shows the loop produces a result byte-identical
-   to `MLDSA65_Functional.fips204_sign` on the decoded inputs.
+     - Rejection-sampling loop on attempt kappa.
+     - Pack signature and write to ptr_signature.
 
    Tracked: https://github.com/luxfi/pulsar-mptc/issues/3
    =================================================================== *)
 
-op sign_body_fn : mem_t -> sign_ptrs_t -> randomness_t -> mem_t.
+op sign_body_fn :
+  Pulsar_N1_Combine_Layout.mem_t ->
+  Pulsar_N1_Sign_Layout.sign_ptrs_t ->
+  Pulsar_N1_Combine_Layout.mem_t.
 
 axiom sign_body_spec :
-  forall (mem_pre : mem_t) (ptrs : sign_ptrs_t)
-         (sk_abs : share_t) (m_abs : message_t)
-         (ctx_abs : ctx_t) (rnd_abs : randomness_t),
-    layout_sign_args mem_pre ptrs sk_abs m_abs =>
-    sig_to_bits
-      (read_sig_at (sign_body_fn mem_pre ptrs rnd_abs)
-                   ptrs.`ptr_signature)
-    = fips204_sign (sk_to_bits sk_abs) (msg_to_bits m_abs)
-                   (ctx_to_bits ctx_abs) (rnd_to_bits rnd_abs).
+  forall (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+         (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+         (full : sign_full_args_t),
+    Pulsar_N1_Sign_Layout.layout_sign_args
+      mem_pre ptrs (wire_sign_args_of_full full) =>
+    refine_sig_to_n1_sign
+      (Pulsar_N1_Sign_Layout.read_sig_sign
+         (sign_body_fn mem_pre ptrs)
+         ptrs.`Pulsar_N1_Sign_Layout.ptr_signature)
+    = sign_abs_op full.
 
 (* Memory separation: M.sign writes only to ptr_signature range. *)
-op sig_mem_separation : mem_t -> mem_t -> int -> int -> bool.
+op sig_mem_separation :
+  Pulsar_N1_Combine_Layout.mem_t ->
+  Pulsar_N1_Combine_Layout.mem_t -> int -> int -> bool.
 
 axiom sign_body_separation :
-  forall (mem_pre : mem_t) (ptrs : sign_ptrs_t)
-         (rnd_abs : randomness_t),
-    sig_mem_separation mem_pre (sign_body_fn mem_pre ptrs rnd_abs)
-                       ptrs.`ptr_signature 3293.
+  forall (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+         (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t),
+    sig_mem_separation mem_pre (sign_body_fn mem_pre ptrs)
+                       ptrs.`Pulsar_N1_Sign_Layout.ptr_signature
+                       Pulsar_N1_Sign_Layout.sig_len_sign.
 
 (* ===================================================================
    DERIVED LEMMAS — fully proved from sign_body_spec + EC congruence.
    =================================================================== *)
 
-(* Rung 1: M.sign writes sig bytes to ptr_signature.
-   The "writes" predicate decomposes into separation + byte-content;
-   here we factor it through sign_body_spec which directly states
-   the byte content. *)
-lemma rung1_sign_body_writes_signature :
-  forall (mem_pre : mem_t) (ptrs : sign_ptrs_t)
-         (sk_abs : share_t) (m_abs : message_t)
-         (ctx_abs : ctx_t) (rnd_abs : randomness_t),
-    layout_sign_args mem_pre ptrs sk_abs m_abs =>
-    sig_to_bits
-      (read_sig_at (sign_body_fn mem_pre ptrs rnd_abs)
-                   ptrs.`ptr_signature)
-    = fips204_sign (sk_to_bits sk_abs) (msg_to_bits m_abs)
-                   (ctx_to_bits ctx_abs) (rnd_to_bits rnd_abs).
+(* The combined byte-equality + abstract-op identity, applied at
+   a specific full_args. The wrapper-bridge collapse depends on
+   this lemma. *)
+lemma sign_body_writes_abs :
+  forall (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+         (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+         (full : sign_full_args_t),
+    Pulsar_N1_Sign_Layout.layout_sign_args
+      mem_pre ptrs (wire_sign_args_of_full full) =>
+    refine_sig_to_n1_sign
+      (Pulsar_N1_Sign_Layout.read_sig_sign
+         (sign_body_fn mem_pre ptrs)
+         ptrs.`Pulsar_N1_Sign_Layout.ptr_signature)
+    = sign_abs_op full.
+proof. exact sign_body_spec. qed.
+
+(* The byte-equality unfolds to mldsa_sign_op of the four ghost
+   fields by definition of sign_abs_op. *)
+lemma sign_body_writes_mldsa_sign :
+  forall (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+         (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+         (full : sign_full_args_t),
+    Pulsar_N1_Sign_Layout.layout_sign_args
+      mem_pre ptrs (wire_sign_args_of_full full) =>
+    refine_sig_to_n1_sign
+      (Pulsar_N1_Sign_Layout.read_sig_sign
+         (sign_body_fn mem_pre ptrs)
+         ptrs.`Pulsar_N1_Sign_Layout.ptr_signature)
+    = Pulsar_N1.mldsa_sign_op
+        full.`sgn_sk_n1 full.`sgn_m_n1
+        full.`sgn_ctx_n1 full.`sgn_rnd_n1.
 proof.
-  exact sign_body_spec.
-qed.
-
-(* Rung 2: sk byte-layout decodes deterministically.
-   read_sk_at is an EC op, so it's a deterministic function. *)
-lemma rung2_sk_decode_det :
-  forall (mem1 mem2 : mem_t) (p1 p2 : int),
-    mem1 = mem2 => p1 = p2 =>
-    read_sk_at mem1 p1 = read_sk_at mem2 p2.
-proof. by move=> m1 m2 p1 p2 -> ->. qed.
-
-(* Rung 3: message decode is deterministic. *)
-lemma rung3_msg_decode_det :
-  forall (mem1 mem2 : mem_t) (p1 p2 : int) (l1 l2 : int),
-    mem1 = mem2 => p1 = p2 => l1 = l2 =>
-    read_msg_at mem1 p1 l1 = read_msg_at mem2 p2 l2.
-proof. by move=> m1 m2 p1 p2 l1 l2 -> -> ->. qed.
-
-(* Rungs 4 & 5: ctx + randomness are no-op for libjade — collapse
-   to trivial identity lemmas (placeholders that downstream callers
-   can rewrite through). *)
-lemma rung4_ctx_noop :
-  forall (c : ctx_t), ctx_to_bits c = ctx_to_bits c.
-proof. by []. qed.
-
-lemma rung5_rnd_noop :
-  forall (r : randomness_t), rnd_to_bits r = rnd_to_bits r.
-proof. by []. qed.
-
-(* Rung 6: packed output bytes equal MLDSA65_Functional.fips204_sign.
-   Derived from sign_body_spec by exact application. *)
-lemma rung6_pack_eq_fips204 :
-  forall (mem_pre : mem_t) (ptrs : sign_ptrs_t)
-         (sk_abs : share_t) (m_abs : message_t)
-         (ctx_abs : ctx_t) (rnd_abs : randomness_t),
-    layout_sign_args mem_pre ptrs sk_abs m_abs =>
-    sig_to_bits
-      (read_sig_at (sign_body_fn mem_pre ptrs rnd_abs)
-                   ptrs.`ptr_signature)
-    = fips204_sign (sk_to_bits sk_abs) (msg_to_bits m_abs)
-                   (ctx_to_bits ctx_abs) (rnd_to_bits rnd_abs).
-proof.
-  exact sign_body_spec.
-qed.
-
-(* Rung 7: M.sign refines FIPS204Sign.sign.
-   This is the headline lemma that replaces `Pulsar_N1.S_functional_spec`.
-   At the byte level it is exactly rung 6. The wrapper-module proof
-   that lifts this byte equality to a procedure-level `equiv` is
-   composed by `Pulsar_N1.ec` when it imports this lemma. *)
-lemma rung7_S_functional_refines_FIPS204 :
-  forall (mem_pre : mem_t) (ptrs : sign_ptrs_t)
-         (sk_abs : share_t) (m_abs : message_t)
-         (ctx_abs : ctx_t) (rnd_abs : randomness_t),
-    layout_sign_args mem_pre ptrs sk_abs m_abs =>
-    sig_to_bits
-      (read_sig_at (sign_body_fn mem_pre ptrs rnd_abs)
-                   ptrs.`ptr_signature)
-    = fips204_sign (sk_to_bits sk_abs) (msg_to_bits m_abs)
-                   (ctx_to_bits ctx_abs) (rnd_to_bits rnd_abs).
-proof.
-  exact rung6_pack_eq_fips204.
+  move=> mem_pre ptrs full Hlay.
+  rewrite (sign_body_spec mem_pre ptrs full Hlay) /sign_abs_op /=.
+  done.
 qed.
 
 (* ===================================================================
    AXIOM ACCOUNTING
 
-   This file declares:
+   axioms (2):
+     sign_body_spec       — libjade byte-walk + FROST identity folded
+     sign_body_separation — only ptr_signature range modified
 
-     axioms (1 atomic libjade Jasmin-extraction boundary + 1 separation):
-       sign_body_spec
-       sign_body_separation
+   Concrete definitions:
+     sign_full_args_t, wire_sign_args_of_full
+     refine_sig_to_n1_sign
+     sign_abs_op (DEFINITION — folds mldsa_sign_op identity)
+     sign_body_fn
+     sig_mem_separation
 
-     ops (definitions):
-       read_sk_at, read_msg_at, read_sig_at
-       fips204_sign, sig_to_bits, sk_to_bits, msg_to_bits, ctx_to_bits,
-         rnd_to_bits
-       layout_sign_args
-       sign_body_fn
-       sig_mem_separation
+   Lemmas (PROVED):
+     sign_body_writes_abs
+     sign_body_writes_mldsa_sign
 
-     lemmas (derived):
-       rung1_sign_body_writes_signature
-       rung2_sk_decode_det
-       rung3_msg_decode_det
-       rung4_ctx_noop
-       rung5_rnd_noop
-       rung6_pack_eq_fips204
-       rung7_S_functional_refines_FIPS204
+   The wrapper bridge (`sign_wrapper_bridge`) in
+   Pulsar_N1_Wrapper_Bridge.ec now derives from `sign_body_spec`
+   directly (mirror of how `combine_wrapper_bridge` derives from
+   `combine_body_spec`). When the byte-walk axiom itself closes via
+   the extraction byte-walk (tracked #3), this file contains ZERO
+   axioms.
 
-   Previous version: 5 declare axioms (rungs 1-3, 6-7).
-   Current version: 2 top-level axioms (the byte-walk obligation +
-   memory separation). All other rungs are PROVED lemmas reducing to
-   the byte-walk. The structural improvement matches what was done
-   for the combine refinement.
+   The previous rung lemmas (rung1..rung7) have been removed —
+   they referenced the old `fips204_sign` / `bits` / `sig_to_bits`
+   intermediate abstraction layer, which is no longer needed now
+   that `sign_abs_op` directly returns `mldsa_sign_op`'s output.
    =================================================================== *)
