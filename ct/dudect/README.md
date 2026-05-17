@@ -209,12 +209,50 @@ NIST evaluates constant-time at the release point. The
 submission-grade run requires:
 - ~10^9 samples (configure via `DUDECT_SAMPLES` × `DUDECT_MAX_BATCHES`)
 - Quiet machine: no background processes, perf governor pinned
-- CPU pinning (`taskset -c <cpu>` on Linux, `pthread_setaffinity_np`
-  inside the harness on macOS)
+- CPU pinning (`taskset -c <cpu>` on Linux; on macOS the harness
+  does not pin — Apple Silicon doesn't expose a fixed-frequency
+  mode and the timer noise floor is higher; document this honestly
+  rather than overclaim a CPU pin)
 
-Pin the results to `ct/dudect/results/{verify,combine}-submission.log`
-on the `submission-` tag.
+Use the wrapper:
 
-Pass criterion: no t-test statistic above 4.5σ (dudect calls this
-`t_threshold_moderate=10` by default — we apply the stricter NIST 4.5σ
-post-hoc when reading the logs).
+```bash
+# Both targets, default budget (10^6 × 1000 = 10^9 samples each):
+bash ct/dudect/run-submission.sh
+
+# Only one target:
+TARGET=combine bash ct/dudect/run-submission.sh
+
+# Custom budget (smoke test):
+DUDECT_SAMPLES=10000 DUDECT_MAX_BATCHES=10 \
+    bash ct/dudect/run-submission.sh
+
+# Pin to CPU 5 on Linux:
+CPU=5 bash ct/dudect/run-submission.sh
+```
+
+The wrapper produces a self-describing log set under
+`ct/dudect/results/submission-<commit>-<utc-stamp>.{meta.txt,
+build.log, verify.{stdout,stderr}, combine.{stdout,stderr}}`. The
+`.meta.txt` captures:
+
+- timestamp + UTC
+- repo commit + dirty-bit
+- host OS / arch / kernel / CPU model
+- CPU pin (or `none` with reason)
+- dudect upstream commit
+- Go / cc / jasminc versions
+- samples-per-batch + max-batches
+- max observed t-statistic (parsed out of dudect stdout)
+- iteration count
+- exit code per target
+
+This is exactly the metadata NIST submission needs to reproduce the
+run.
+
+Pass criterion: no max-t-statistic above 4.5σ (dudect calls this
+`t_threshold_moderate=10` by default — we apply the stricter NIST
+4.5σ post-hoc when reading the logs).
+
+Pin the canonical submission run to the `submission-` git tag and
+preserve the result set under `ct/dudect/results/`.
