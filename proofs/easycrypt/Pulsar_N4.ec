@@ -126,10 +126,25 @@ op fresh_sharing : int list -> share_t -> share_t list.
    as the algebraic kernel the Reshare proof reduces to.
    =================================================================== *)
 
-(* Adding zero is identity. *)
+(* BRIDGED TO LEAN: the three axioms below correspond 1:1 to proved
+   Lean theorems in `~/work/lux/proofs/lean/Crypto/`. Inline citations
+   given per-axiom; the full symbol-correspondence table lives in
+   `proofs/lean-easycrypt-bridge.md` (§ "Axioms 2-4"). The EC side
+   states them as axioms because EasyCrypt's first-order theory of
+   finite-field polynomial interpolation is comparatively thin; the
+   honest closure path (see bridge doc § "Future work") is to either
+   mechanize them in EC or wire a Lean-proof-object consumer. *)
+
+(* Adding zero is identity.
+   BRIDGE: instance fact for any AddCommMonoid (Mathlib auto-derives
+   for Polynomial F); see bridge doc § "Axiom 4". *)
 axiom add_share_zeroR : forall (s : share_t), add_share s zero_share = s.
 
-(* Reconstruction is linear over share-list addition. *)
+(* Reconstruction is linear over share-list addition.
+   BRIDGE: Crypto.Threshold.Lagrange.combine_distributes_over_sum
+   (`~/work/lux/proofs/lean/Crypto/Threshold_Lagrange.lean:81`).
+   Proved as `(Lagrange.interpolate s v).map_add a b` — direct
+   instance of `LinearMap.map_add`. *)
 axiom reconstruct_linear :
   forall (q : int list) (a b : share_t list),
     size a = size q => size b = size q =>
@@ -137,7 +152,13 @@ axiom reconstruct_linear :
       add_share (reconstruct q a) (reconstruct q b).
 
 (* Reconstruction is a left inverse of fresh sharing at any quorum
-   (Lagrange-at-zero identity). *)
+   (Lagrange-at-zero identity).
+   BRIDGE: Crypto.Pulsar.Shamir.shamir_correct_at_target
+   (`~/work/lux/proofs/lean/Crypto/Pulsar/Shamir.lean:76`) +
+   Crypto.Threshold.Lagrange.secret_recovery_at_zero
+   (`~/work/lux/proofs/lean/Crypto/Threshold_Lagrange.lean:62`).
+   Same theorem as Axiom 1 in the bridge doc, applied to a
+   `fresh_sharing` build. *)
 axiom shamir_correct :
   forall (q : int list) (s : share_t),
     uniq q => 1 <= size q =>

@@ -171,9 +171,19 @@ op poly_eval : share_t -> int -> share_t.
 
 (* Group-secret reconstruction is the identity on the dealer's secret. *)
 (* This is the Lagrange-interpolation identity at X = 0, encoded for   *)
-(* a generic share_t carrying R_q^ell coordinate semantics. Mechanized *)
-(* in Crypto.Pulsar.Shamir.lagrange_denom_nonzero plus a follow-up    *)
-(* `shamir_correct_at_target` (`axiom` there pending Mathlib lifting). *)
+(* a generic share_t carrying R_q^ell coordinate semantics.            *)
+(*                                                                      *)
+(* BRIDGED TO LEAN: this axiom corresponds to                           *)
+(*   Crypto.Pulsar.Shamir.shamir_correct_at_target                      *)
+(*   (`~/work/lux/proofs/lean/Crypto/Pulsar/Shamir.lean:76`)            *)
+(* specialized to evaluation at 0 via                                   *)
+(*   Crypto.Threshold.Lagrange.secret_recovery_at_zero                  *)
+(*   (`~/work/lux/proofs/lean/Crypto/Threshold_Lagrange.lean:62`).      *)
+(* See `proofs/lean-easycrypt-bridge.md` § "Axiom 1" for the symbol    *)
+(* correspondence table. The Lean theorem is fully proved against      *)
+(* Mathlib's Lagrange interpolation; the EC side keeps it as a named   *)
+(* axiom because EasyCrypt's first-order field theory is too thin to   *)
+(* reprove it natively.                                                 *)
 axiom lagrange_inverse_eval (s : share_t) (Q : int list) :
   uniq Q =>
   1 <= size Q =>

@@ -193,6 +193,16 @@ fi
 # lemma `reshare_preserves_secret_honest` reducing to Shamir-zero
 # re-randomisation. Reintroducing the bad axiom shape would silently
 # re-open the trust footprint. CI grep-fail if it ever comes back.
+echo "==> Lean ↔ EC Shamir bridge guard"
+if bash "$REPO_ROOT/scripts/check-lean-bridge.sh" > /tmp/bridge.log 2>&1; then
+    grep -E "\[ok\]" /tmp/bridge.log | sed 's/^/    /'
+else
+    grep -E "\[FAIL\]|bridge guard" /tmp/bridge.log | sed 's/^/    /'
+    echo
+    echo "    Lean ↔ EC bridge guard FAILED."
+    exit 2
+fi
+
 echo "==> Regression guard: behavioral reshare_preserves_secret axiom"
 if grep -RE "^[[:space:]]*declare axiom[[:space:]]+reshare_preserves_secret" \
    "$EC_ROOT" >/dev/null 2>&1 ; then
