@@ -508,21 +508,121 @@ proof.
   by rewrite encode_decode_c_tilde.
 qed.
 
-(* Conjuncts (2)-(3) — still stated as smaller axioms.
-   They are the analogous statements for t0 and r2_msgs. The proof
-   pattern is the same but the bookkeeping is heavier (especially
-   for r2_msgs, which involves the foldl walk). Closing them is
-   the next narrow target after this commit. *)
-axiom encode_layout_t0 (arg_abs : combine_abs_args_t) :
+(* Conjunct (2) — t0 reads back. PROVED.
+   Same pattern as encode_layout_c_tilde: peel r2 writes via
+   store_r2_msgs_disjoint_before (each at address >= c_tilde_len +
+   t0_len), then load_bytes on the t0-only write equals encode_t0
+   by store_bytes_load_bytes (size encode_t0 = t0_len). Decode
+   inverts via encode_decode_t0. *)
+lemma encode_layout_t0 (arg_abs : combine_abs_args_t) :
   read_t0_vec (encode_combine_args arg_abs).`1
               (encode_combine_args arg_abs).`2.`t0_ptr
   = arg_abs.`t0_abs.
+proof.
+  rewrite /read_t0_vec /encode_combine_args /=.
+  have Ht_len : size (encode_t0 arg_abs.`t0_abs) = t0_len
+    by exact encode_t0_len.
+  have ->:
+    load_bytes
+      (store_r2_msgs
+         (store_bytes
+            (store_bytes (fun _ : int => 0) 0
+               (encode_c_tilde arg_abs.`c_tilde_abs))
+            c_tilde_len
+            (encode_t0 arg_abs.`t0_abs))
+         (c_tilde_len + t0_len) arg_abs.`r2s_abs)
+      c_tilde_len t0_len
+    = load_bytes
+        (store_bytes
+           (store_bytes (fun _ : int => 0) 0
+              (encode_c_tilde arg_abs.`c_tilde_abs))
+           c_tilde_len
+           (encode_t0 arg_abs.`t0_abs))
+        c_tilde_len t0_len.
+  - rewrite /load_bytes.
+    apply (eq_from_nth witness); first by rewrite !size_mkseq.
+    move=> i Hi; rewrite size_mkseq in Hi.
+    rewrite !nth_mkseq /=; first 2 by smt().
+    apply store_r2_msgs_disjoint_before; smt().
+  (* Now load_bytes from store_bytes m1 c_tilde_len (encode_t0 ...).
+     Direct application of store_bytes_load_bytes. *)
+  have ->: t0_len = size (encode_t0 arg_abs.`t0_abs) by rewrite Ht_len.
+  by rewrite store_bytes_load_bytes encode_decode_t0.
+qed.
 
-axiom encode_layout_r2_msgs (arg_abs : combine_abs_args_t) :
+(* Helper: read the k-th r2 message out of a store_r2_msgs write.
+
+   Proof: induction on msgs. For msgs = x :: xs and k = 0, the
+   first write at base is x, subsequent writes are at
+   base + response_bytes, ..., disjoint from [base, base + response_bytes).
+   For k >= 1, the first write is disjoint from
+   [base + k*response_bytes, ...), and IH on xs handles the tail. *)
+lemma store_r2_msgs_read_kth :
+  forall (msgs : r2_msg_t list) (m : mem_t) (base k : int),
+    0 <= k < size msgs =>
+    load_bytes (store_r2_msgs m base msgs)
+               (base + k * response_bytes)
+               response_bytes
+    = encode_r2_msg (nth witness msgs k).
+proof.
+  elim => [|x xs IH] m base k Hk //=; first by smt().
+  case (k = 0) => Hk0.
+  - subst k.
+    have ->: base + 0 * response_bytes = base by ring.
+    rewrite /load_bytes.
+    apply (eq_from_nth witness).
+    + rewrite size_mkseq encode_r2_msg_len; rewrite /response_bytes; smt().
+    move=> i Hi.
+    rewrite size_mkseq in Hi.
+    rewrite nth_mkseq /=; first by rewrite /response_bytes; smt().
+    rewrite store_r2_msgs_disjoint_before; first by rewrite /response_bytes; smt().
+    have Hsize : size (encode_r2_msg x) = response_bytes
+      by exact encode_r2_msg_len.
+    have HSBL := store_bytes_load_bytes (encode_r2_msg x) m base.
+    rewrite Hsize /load_bytes in HSBL.
+    have := nth_mkseq<:int> witness
+              (fun (j : int) =>
+                 load_byte (store_bytes m base (encode_r2_msg x))
+                           (base + j))
+              response_bytes i _; first by rewrite /response_bytes; smt().
+    smt().
+  - have Hk' : 0 <= k - 1 < size xs by smt().
+    have HIH := IH (store_bytes m base (encode_r2_msg x))
+                   (base + response_bytes) (k - 1) Hk'.
+    have Hbase :
+      base + k * response_bytes
+      = base + response_bytes + (k - 1) * response_bytes by smt().
+    rewrite Hbase.
+    move: HIH => HIH.
+    smt().
+qed.
+
+(* Conjunct (3) — r2 messages read back. PROVED via
+   store_r2_msgs_read_kth + encode_decode_r2_msg. *)
+lemma encode_layout_r2_msgs (arg_abs : combine_abs_args_t) :
   read_r2_msgs (encode_combine_args arg_abs).`1
                (encode_combine_args arg_abs).`2.`round2_msgs_ptr
                (encode_combine_args arg_abs).`2.`threshold_w32
   = arg_abs.`r2s_abs.
+proof.
+  rewrite /read_r2_msgs /encode_combine_args /=.
+  apply (eq_from_nth witness).
+  - rewrite size_mkseq; smt(size_ge0).
+  move=> k Hk.
+  rewrite size_mkseq in Hk.
+  rewrite nth_mkseq /=; first by smt(size_ge0).
+  have Hk' : 0 <= k < size arg_abs.`r2s_abs by smt(size_ge0).
+  have := store_r2_msgs_read_kth
+            arg_abs.`r2s_abs
+            (store_bytes
+               (store_bytes (fun _ : int => 0) 0
+                  (encode_c_tilde arg_abs.`c_tilde_abs))
+               c_tilde_len
+               (encode_t0 arg_abs.`t0_abs))
+            (c_tilde_len + t0_len) k Hk'.
+  move=> ->.
+  by rewrite encode_decode_r2_msg.
+qed.
 
 (* Aggregate encoder-correctness — DERIVED from the four conjuncts. *)
 lemma encode_combine_args_layout (arg_abs : combine_abs_args_t) :
@@ -572,18 +672,20 @@ qed.
        store_bytes_disjoint) became lemmas.
      Phase 2 (recursive store_r2_msgs + structural lemmas):
        1 encoder-layout conjunct (encode_layout_c_tilde) became a
-       lemma. Trust delta: −1 axiom, +3 proved lemmas
-       (store_r2_msgs_disjoint_before,
-        store_r2_msgs_disjoint_c_tilde,
-        encode_layout_c_tilde).
+       lemma.
+     Phase 3 (this commit):
+       2 more encoder-layout conjuncts (encode_layout_t0,
+       encode_layout_r2_msgs) became lemmas. The aggregate
+       encode_combine_args_layout (already a derived lemma)
+       no longer depends on any conjunct axiom.
 
-   This file: 10 axioms, 13 proved lemmas.
+   This file: 8 axioms, 16 proved lemmas.
 
    Status of the wider implementation-refinement count:
      The 6 axioms in the refinement + wrapper files (combine /
-     sign byte-walk, separation, wrapper bridges) are UNCHANGED.
-     Next narrow target: encode_layout_t0 (same proof pattern as
-     encode_layout_c_tilde — peel r2 writes via
-     store_r2_msgs_disjoint_before, then read t0 directly from
-     the store_bytes m1 c_tilde_len ... layer).
+     sign byte-walk, separation, wrapper bridges) remain. Collapsing
+     `combine_wrapper_bridge` to a lemma requires aligning the
+     wrapper file's abstract `encode_combine_args` (3-tuple) with
+     this file's concrete one (2-tuple) — a separate refactor.
+     That bridge work is the next narrow target.
    =================================================================== *)
