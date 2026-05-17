@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pulsar high-assurance gate — orchestrator.
+# Pulsar high-assurance gate — orchestrator (per-push, REAL checks).
 #
 # Each check below lives in its own script under scripts/checks/ (or
 # scripts/, for the cross-prover Lean↔EC bridge guard). This file
@@ -19,8 +19,13 @@
 #   5. check-lean-bridge.sh       — Lean↔EC Shamir bridge guard.
 #   6. extraction.sh              — Jasmin → EC extraction sanity.
 #   7. ec-compile.sh              — All EC files compile clean.
-#   8. dudect.sh                  — dudect smoke (verify advisory,
-#                                   combine blocking).
+#
+# NOT in this gate (intentionally): dudect at smoke budget. A
+# 40k-sample dudect run can't certify constant time; the budget
+# isn't statistically meaningful. The REAL dudect gate is the
+# submission-grade run from ct/dudect/run-submission.sh (10^9
+# samples per target on a pinned CPU). It belongs in the nightly
+# gate (scripts/nightly.sh), not per-push.
 #
 # Any per-check failure (exit 2) fails the orchestrator with the
 # same code. Per-check skips (exit 0 with a [skip] message) do not
@@ -39,7 +44,6 @@ CHECKS=(
     "scripts/check-lean-bridge.sh"
     "scripts/checks/extraction.sh"
     "scripts/checks/ec-compile.sh"
-    "scripts/checks/dudect.sh"
 )
 
 echo "==> Pulsar high-assurance track"
