@@ -140,6 +140,8 @@ EC_FILES=(
     "$EC_ROOT/Pulsar_N4.ec"
     "$EC_ROOT/lemmas/Pulsar_CT.ec"
     "$EC_ROOT/lemmas/MLDSA65_Functional.ec"
+    "$EC_ROOT/Pulsar_N1_Combine_Refinement.ec"
+    "$EC_ROOT/Pulsar_N1_Sign_Refinement.ec"
 )
 
 # Admit budget — the count of `admit.` source lines across the EC
