@@ -19,8 +19,14 @@ PKG := github.com/luxfi/pulsar-mptc/ref/go/pkg/pulsar
 SMOKE_TIME := 5s
 NIGHTLY_TIME := 1h
 
-# List every Fuzz target in this package. Keep in sync with
-# fuzz_test.go.
+# Differential fuzz runs the full DKG+threshold-sign+reconstruct+
+# centralized-sign pipeline per iteration. ~150-450 execs/sec
+# (vs ~200k/sec for parser fuzz), so SMOKE_TIME=5s gives only
+# a few hundred iterations. Use DIFF_SMOKE_TIME for a longer
+# default smoke window for this target alone.
+DIFF_SMOKE_TIME := 30s
+
+# Parser-surface fuzz targets — fast (~100k-200k execs/sec).
 FUZZ_TARGETS := \
     FuzzUnmarshalAbortEvidence \
     FuzzVerifySignature \
@@ -28,10 +34,19 @@ FUZZ_TARGETS := \
     FuzzShareFromBytes \
     FuzzParamsFor
 
-.PHONY: fuzz-smoke fuzz-nightly fuzz-list
+# Differential fuzz targets — slow (~150-450 execs/sec) because
+# each iteration drives the full DKG + threshold-sign +
+# reconstruct + centralized-sign + byte-compare pipeline.
+DIFF_FUZZ_TARGETS := \
+    FuzzN1_ByteEquality_Differential
+
+.PHONY: fuzz-smoke fuzz-nightly fuzz-diff-smoke fuzz-diff-nightly fuzz-list fuzz-all
 
 fuzz-list:
-	@for t in $(FUZZ_TARGETS); do echo $$t; done
+	@echo "Parser-surface (fast):"
+	@for t in $(FUZZ_TARGETS); do echo "  $$t"; done
+	@echo "Differential (slow — full pipeline per iter):"
+	@for t in $(DIFF_FUZZ_TARGETS); do echo "  $$t"; done
 
 fuzz-smoke:
 	@for t in $(FUZZ_TARGETS); do \
@@ -44,3 +59,22 @@ fuzz-nightly:
 	    echo "==> fuzz-nightly $$t ($(NIGHTLY_TIME))"; \
 	    GOWORK=off go test -run=^$$ -fuzz=^$$t$$ -fuzztime=$(NIGHTLY_TIME) $(PKG) || exit 1; \
 	done
+
+# Differential fuzz: per-push smoke at 30s (a few hundred
+# iterations covers most quorum-size + msg/ctx-length permutations).
+fuzz-diff-smoke:
+	@for t in $(DIFF_FUZZ_TARGETS); do \
+	    echo "==> fuzz-diff-smoke $$t ($(DIFF_SMOKE_TIME))"; \
+	    GOWORK=off go test -run=^$$ -fuzz=^$$t$$ -fuzztime=$(DIFF_SMOKE_TIME) $(PKG) || exit 1; \
+	done
+
+# Differential fuzz nightly: 1h per target gives ~500k-1M iters
+# at the lower per-iter throughput.
+fuzz-diff-nightly:
+	@for t in $(DIFF_FUZZ_TARGETS); do \
+	    echo "==> fuzz-diff-nightly $$t ($(NIGHTLY_TIME))"; \
+	    GOWORK=off go test -run=^$$ -fuzz=^$$t$$ -fuzztime=$(NIGHTLY_TIME) $(PKG) || exit 1; \
+	done
+
+# Convenience: run both smoke layers in sequence.
+fuzz-all: fuzz-smoke fuzz-diff-smoke
