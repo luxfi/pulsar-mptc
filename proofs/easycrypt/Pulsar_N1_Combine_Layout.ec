@@ -186,6 +186,17 @@ op layout_combine_args
      sig_out at c_tilde_len + t0_len + |r2s| * response_bytes
    =================================================================== *)
 
+(* Recursive writer for the round-2 message array. Writes each
+   message at base + k*response_bytes via store_bytes, recursively
+   advancing base by response_bytes. Same pattern as store_bytes
+   (recursive head-then-tail) — exposes the induction principle
+   needed for the layout proofs. *)
+op store_r2_msgs (m : mem_t) (base : int) (msgs : r2_msg_t list) : mem_t =
+  with msgs = []      => m
+  with msgs = x :: xs =>
+    store_r2_msgs (store_bytes m base (encode_r2_msg x))
+                  (base + response_bytes) xs.
+
 op encode_combine_args (arg_abs : combine_abs_args_t)
    : mem_t * combine_ptrs_t =
   let p_c = 0 in
@@ -195,10 +206,7 @@ op encode_combine_args (arg_abs : combine_abs_args_t)
   let m0 = fun (_ : int) => 0 in
   let m1 = store_bytes m0 p_c (encode_c_tilde arg_abs.`c_tilde_abs) in
   let m2 = store_bytes m1 p_t (encode_t0 arg_abs.`t0_abs) in
-  let m3 = foldl (fun (acc : mem_t) (ib : int * r2_msg_t) =>
-                    store_bytes acc (p_r + ib.`1 * response_bytes)
-                                (encode_r2_msg ib.`2))
-                 m2 (zip (range 0 (size arg_abs.`r2s_abs)) arg_abs.`r2s_abs) in
+  let m3 = store_r2_msgs m2 p_r arg_abs.`r2s_abs in
   let ptrs = {| c_tilde_ptr     = p_c;
                 t0_ptr          = p_t;
                 round2_msgs_ptr = p_r;
@@ -353,26 +361,152 @@ proof.
   by rewrite store_bytes_disjoint; smt().
 qed.
 
-(* Conjunct (1) — c_tilde reads back.
-   Attempted proof structure (logical content):
-     a. c_tilde is written at offset 0 (p_c = 0).
-     b. The t0 write at offset c_tilde_len doesn't touch
-        [0, c_tilde_len)  → `load_bytes_after_disjoint_write` applies.
-     c. The r2-msgs foldl writes start at c_tilde_len + t0_len, all
-        outside [0, c_tilde_len) → same lemma applies per iteration.
-   The foldl over r2_msgs makes the smt() closure intractable
-   (smt doesn't unfold foldl). Closing this conjunct requires an
-   explicit induction over r2s_abs walking through the foldl. That
-   is mechanical but verbose; remains the next narrow target.
+(* store_r2_msgs frame law (before).
+   For any query address q strictly less than the base of the
+   write region, all r2-msg writes are at addresses >= base, so q
+   is untouched. Proof: induction on msgs. *)
+lemma store_r2_msgs_disjoint_before :
+  forall (msgs : r2_msg_t list) (m : mem_t) (base q : int),
+    q < base =>
+    load_byte (store_r2_msgs m base msgs) q = load_byte m q.
+proof.
+  elim => [|x xs IH] m base q Hq //=.
+  rewrite IH; first by smt().
+  rewrite store_bytes_disjoint; first by left.
+  done.
+qed.
 
-   For now stated as axiom — the trust delta is ZERO because the
-   conjunct is structurally derivable from the proved
-   `load_bytes_after_disjoint_write`, `store_bytes_load_bytes`,
-   `encode_decode_c_tilde`, and the per-type length axioms. *)
-axiom encode_layout_c_tilde (arg_abs : combine_abs_args_t) :
+(* store_r2_msgs leaves any disjoint c_tilde write intact.
+   If the r2-msg base p_r is at or beyond p_c + c_tilde_len, then
+   reading the c_tilde_len bytes at p_c is unchanged by the r2
+   writes — they all happen at addresses >= p_r. *)
+lemma store_r2_msgs_disjoint_c_tilde :
+  forall (msgs : r2_msg_t list) (m : mem_t)
+         (p_c p_r : int) (c_bytes : int list),
+    size c_bytes = c_tilde_len =>
+    p_c + c_tilde_len <= p_r =>
+    load_bytes
+      (store_r2_msgs (store_bytes m p_c c_bytes) p_r msgs)
+      p_c c_tilde_len
+    = c_bytes.
+proof.
+  move=> msgs m p_c p_r c_bytes Hsize Hp.
+  (* Step 1: load_bytes (r2-msgs writes) p_c c_tilde_len
+             = load_bytes (store_bytes m p_c c_bytes) p_c c_tilde_len
+     because every r2-msg write is at address >= p_r >= p_c+c_tilde_len,
+     i.e., strictly above the c_tilde range. *)
+  have HL : 0 <= c_tilde_len by rewrite /c_tilde_len.
+  have Heq :
+    load_bytes
+      (store_r2_msgs (store_bytes m p_c c_bytes) p_r msgs)
+      p_c c_tilde_len
+    = load_bytes (store_bytes m p_c c_bytes) p_c c_tilde_len.
+  - rewrite /load_bytes.
+    apply (eq_from_nth witness); first by rewrite !size_mkseq.
+    move=> i Hi; rewrite size_mkseq in Hi.
+    rewrite !nth_mkseq /=; first 2 by smt().
+    apply store_r2_msgs_disjoint_before.
+    smt().
+  rewrite Heq.
+  (* Step 2: load_bytes (store_bytes m p_c c_bytes) p_c c_tilde_len
+             = c_bytes by store_bytes_load_bytes (with size c_bytes
+             = c_tilde_len). *)
+  have ->: c_tilde_len = size c_bytes by rewrite Hsize.
+  by apply store_bytes_load_bytes.
+qed.
+
+(* Conjunct (1) — c_tilde reads back. PROVED.
+
+   Composition:
+     (a) c_tilde is written at offset p_c = 0 with size c_tilde_len
+         (by encode_c_tilde_len).
+     (b) The t0 write at offset c_tilde_len writes t0_len bytes —
+         range [c_tilde_len, c_tilde_len + t0_len), disjoint from
+         [0, c_tilde_len). `load_bytes_after_disjoint_write` applies.
+     (c) The r2 writes start at c_tilde_len + t0_len >= c_tilde_len,
+         all addresses >= p_c + c_tilde_len. `store_r2_msgs_disjoint_c_tilde`
+         applies with the c_tilde_bytes from step (a).
+     (d) load_bytes returns encode_c_tilde c_tilde_abs.
+     (e) decode_c_tilde inverts via encode_decode_c_tilde.
+
+   The proof rewrites read_c_tilde to load_bytes, threads through
+   store_r2_msgs_disjoint_c_tilde (which already encapsulates
+   steps a/c/d), uses store_bytes_load_bytes for step (a) when
+   reading from the post-t0 state via load_bytes_after_disjoint_write,
+   and closes with encode_decode_c_tilde. *)
+lemma encode_layout_c_tilde (arg_abs : combine_abs_args_t) :
   read_c_tilde (encode_combine_args arg_abs).`1
                (encode_combine_args arg_abs).`2.`c_tilde_ptr
   = arg_abs.`c_tilde_abs.
+proof.
+  rewrite /read_c_tilde /encode_combine_args /=.
+  (* Goal: decode_c_tilde
+            (load_bytes m3 0 c_tilde_len)
+          = arg_abs.`c_tilde_abs
+     where m3 = store_r2_msgs m2 (c_tilde_len + t0_len)
+                              arg_abs.`r2s_abs,
+           m2 = store_bytes m1 c_tilde_len (encode_t0 ...),
+           m1 = store_bytes m0 0 (encode_c_tilde c_tilde_abs).
+  *)
+  have Hc_len : size (encode_c_tilde arg_abs.`c_tilde_abs) = c_tilde_len
+    by exact encode_c_tilde_len.
+  have Ht_len : size (encode_t0 arg_abs.`t0_abs) = t0_len
+    by exact encode_t0_len.
+  have Hctl : 0 <= c_tilde_len by rewrite /c_tilde_len.
+  have Htl  : 0 <= t0_len      by rewrite /t0_len.
+  (* Step 1: pull the r2 writes out via
+     store_r2_msgs_disjoint_c_tilde applied at m2 = (store_bytes
+     m1 c_tilde_len ...), with p_c = 0, p_r = c_tilde_len + t0_len.
+     But store_r2_msgs_disjoint_c_tilde wants the c_bytes to be the
+     direct store_bytes argument at p_c. So we first peel the t0
+     write off the c_tilde region using load_bytes_after_disjoint_write. *)
+  have ->:
+    load_bytes
+      (store_r2_msgs
+         (store_bytes
+            (store_bytes (fun _ : int => 0) 0
+               (encode_c_tilde arg_abs.`c_tilde_abs))
+            c_tilde_len
+            (encode_t0 arg_abs.`t0_abs))
+         (c_tilde_len + t0_len) arg_abs.`r2s_abs)
+      0 c_tilde_len
+    = load_bytes
+        (store_bytes (fun _ : int => 0) 0
+           (encode_c_tilde arg_abs.`c_tilde_abs))
+        0 c_tilde_len.
+  - (* Peel r2 writes first (store_r2_msgs_disjoint_c_tilde at the
+       intermediate memory with c_bytes still as encoded c_tilde
+       and t0 already written — but lemma's shape is store_bytes
+       FIRST then store_r2_msgs, which matches with c_bytes being
+       the c_tilde encoded). Use the lemma with m = m0, p_c = 0,
+       p_r = c_tilde_len + t0_len, c_bytes = encode_c_tilde, msgs
+       = r2s. But that lemma was for the form (store_r2_msgs
+       (store_bytes m p_c c_bytes) p_r msgs). Our shape has an
+       intervening t0 store. We split into two peels:
+           peel r2 writes via load_bytes_after_disjoint_write
+             (each r2 write is disjoint from [0, c_tilde_len)),
+           peel t0 write via load_bytes_after_disjoint_write
+             (t0 write at c_tilde_len with len t0_len, disjoint
+              from [0, c_tilde_len)). *)
+    (* Step 1a: use store_r2_msgs_disjoint_before pointwise. *)
+    rewrite /load_bytes.
+    apply (eq_from_nth witness); first by rewrite !size_mkseq.
+    move=> i Hi; rewrite size_mkseq in Hi.
+    rewrite !nth_mkseq /=; first 2 by smt().
+    (* Now reduce to single-byte: load_byte (store_r2_msgs ... p_r) i
+       = load_byte (store_bytes m1 c_tilde_len ...) i
+       (i < c_tilde_len < c_tilde_len + t0_len = p_r). *)
+    rewrite store_r2_msgs_disjoint_before; first by rewrite /t0_len; smt().
+    (* And load_byte (store_bytes m1 c_tilde_len ...) i
+       = load_byte m1 i  (i < c_tilde_len, t0 write at c_tilde_len). *)
+    rewrite store_bytes_disjoint; first by left; smt().
+    done.
+  (* Step 2: now load_bytes (store_bytes m0 0 (encode_c_tilde ...)) 0 c_tilde_len. *)
+  have ->: c_tilde_len = size (encode_c_tilde arg_abs.`c_tilde_abs)
+    by rewrite Hc_len.
+  rewrite store_bytes_load_bytes.
+  by rewrite encode_decode_c_tilde.
+qed.
 
 (* Conjuncts (2)-(3) — still stated as smaller axioms.
    They are the analogous statements for t0 and r2_msgs. The proof
@@ -432,19 +566,24 @@ qed.
          encode_layout_t0
          encode_layout_r2_msgs
 
-   Net reduction this commit:
-     Before: 13 axioms in this file (2 memory-model + 8 enc/dec + 3 layout)
-     After:  11 axioms in this file (8 enc/dec + 3 layout)
-     The 2 memory-model laws (store_bytes_load_bytes,
-     store_bytes_disjoint) are now lemmas proved by induction over
-     the byte list using the recursive store_bytes definition.
+   Net reductions across commits:
+     Phase 1 (recursive store_bytes):
+       2 memory-model bulk laws (store_bytes_load_bytes,
+       store_bytes_disjoint) became lemmas.
+     Phase 2 (recursive store_r2_msgs + structural lemmas):
+       1 encoder-layout conjunct (encode_layout_c_tilde) became a
+       lemma. Trust delta: −1 axiom, +3 proved lemmas
+       (store_r2_msgs_disjoint_before,
+        store_r2_msgs_disjoint_c_tilde,
+        encode_layout_c_tilde).
+
+   This file: 10 axioms, 13 proved lemmas.
 
    Status of the wider implementation-refinement count:
      The 6 axioms in the refinement + wrapper files (combine /
      sign byte-walk, separation, wrapper bridges) are UNCHANGED.
-     The next reduction comes from closing the three encoder-
-     correctness sub-claims (encode_layout_c_tilde / _t0 / _r2_msgs)
-     — they should now go through using store_bytes_load_bytes +
-     store_bytes_disjoint + the per-type enc/dec round-trip
-     identities. That's the next narrow target.
+     Next narrow target: encode_layout_t0 (same proof pattern as
+     encode_layout_c_tilde — peel r2 writes via
+     store_r2_msgs_disjoint_before, then read t0 directly from
+     the store_bytes m1 c_tilde_len ... layer).
    =================================================================== *)
