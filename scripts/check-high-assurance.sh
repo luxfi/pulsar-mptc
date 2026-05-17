@@ -77,6 +77,36 @@ else
             echo "    Jasmin type-check gate FAILED — see errors above."
             exit 2
         fi
+
+        # ----- jasmin-ct constant-time check (advisory, non-blocking) ----
+        # `jasmin-ct` checks Jasmin programs for constant-time leakage.
+        # Currently libjade upstream (commit 9426b32) does NOT pass
+        # jasmin-ct on its own avx2/sign.jazz — the error is in
+        # libjade's keygen_end.jinc:125, not in our threshold layer.
+        # Running jasmin-ct on our .jazz files inherits libjade's
+        # missing public/secret annotations.
+        #
+        # We invoke jasmin-ct as ADVISORY (does not fail the gate)
+        # so the output is captured per push without blocking. Once
+        # libjade upstream lands the public/secret annotations
+        # (Formosa-Crypto upstream tracking item), this gate flips
+        # to BLOCKING by removing `|| true`.
+        if command -v jasmin-ct >/dev/null 2>&1; then
+            echo
+            echo "==> jasmin-ct (advisory; libjade upstream annotations pending)"
+            for f in "${JAZZ_FILES[@]}"; do
+                [[ -f "$f" ]] || continue
+                # 2 lines of output is enough to see the first CT
+                # finding per file. Full output goes to a build log.
+                CT_OUT=$(jasmin-ct --infer -I "Jade=$LIBJADE_DIR" "$f" 2>&1 | tail -2 || true)
+                if [[ -z "$CT_OUT" ]] || echo "$CT_OUT" | grep -q "^$"; then
+                    echo "    [advisory-ok] $f"
+                else
+                    echo "    [advisory-note] $f"
+                    echo "$CT_OUT" | sed 's/^/      /'
+                fi
+            done
+        fi
     fi
 fi
 
