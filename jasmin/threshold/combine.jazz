@@ -73,6 +73,12 @@ from Jade require "crypto_sign/dilithium/dilithium3/amd64/ref/packing.jinc"
 //   k     = rejection; bit-encoded as (R1_fail | R2_fail<<1 | R3_fail<<2 |
 //           R4_fail<<3), so caller can distinguish which check failed.
 //
+// CT signature: all pointer values are public addresses; combine
+// operates over public Round-2 responses (z_j, r_j, h_j) plus
+// public c_tilde and public t0, all of which are on the wire by the
+// time combine runs. The aggregation produces a public FIPS 204
+// signature byte string at sig_out_ptr.
+#[ct = "public * public * public * public * public -> public"]
 export
 fn pulsar_combine(
     reg u64 c_tilde_ptr,
@@ -120,6 +126,15 @@ fn pulsar_combine(
         t0_vec[i] = r32;
         i += 1;
     }
+
+    // c_tilde is the FIPS 204 challenge hash — public by §3.6 (it
+    // is part of every signature byte string and is what every
+    // verifier hashes against). Mark it public for sampleInBall.
+    #declassify(c_tilde);
+    // t0 is the public Pedersen-recovered commit low-bits, held by
+    // every quorum member out-of-band. Public by the Pulsar protocol
+    // (see jasmin/threshold/combine.jazz header comment).
+    #declassify(t0_vec);
 
     // ---- 1. Initialise aggregates to zero ----
     ?{}, i = #set0_64();
@@ -208,6 +223,17 @@ fn pulsar_combine(
     vec_k_rsp = polyveck_caddq(vec_k_rsp);
     w_agg = vec_k_rsp;
 
+    // The aggregates z_agg, cs2, w_agg are sums of Round-2 responses
+    // (z_j, r_j, w_bar_j respectively), each of which is public-by-
+    // protocol (Round-2 messages are on the wire by the time combine
+    // runs). Their sums are public. jasmin-ct's flow inference does
+    // not track this through the libjade primitives (polyvecl_caddq
+    // etc. are inferred to preserve secrecy), so declassify
+    // explicitly to express the protocol-level invariant.
+    #declassify(z_agg);
+    #declassify(cs2);
+    #declassify(w_agg);
+
     // ---- 4. w' = w - cs2 ----
     ?{}, i = #set0_64();
     while (i < Li2_k * Li2_polydeg) {
@@ -266,6 +292,17 @@ fn pulsar_combine(
     vec_k_rsp = w_plus_ct0;
     vec_k_rsp = polyveck_caddq(vec_k_rsp);
     w_plus_ct0 = vec_k_rsp;
+
+    // The aggregates neg_ct0 and w_plus_ct0 are derived entirely
+    // from public inputs (z_j, r_j aggregates of public Round-2
+    // responses, plus c * t0 with c from public c_tilde and t0
+    // already declassified above). MakeHint reveals nothing further:
+    // it operates over public data to produce public hint bits.
+    // jasmin-ct's flow inference cannot reconstruct this purely
+    // from the function bodies — declassify here to express the
+    // Pulsar-protocol invariant.
+    #declassify(neg_ct0);
+    #declassify(w_plus_ct0);
 
     reg ptr u32[Li2_k * Li2_polydeg] v0_rsp, v1_rsp;
     v0_rsp = neg_ct0;

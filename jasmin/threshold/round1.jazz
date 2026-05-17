@@ -148,6 +148,20 @@ fn round1_tau1_digest(
 // caller does not have to memcpy them.
 //
 // Six register parameters total, fitting the x86_64 SysV ABI.
+//
+// CT signature: pointer values themselves are PUBLIC (they're just
+// addresses used for memory loads/stores — leaking an address is OK
+// here, the secrets are the *contents*). The attempt counter is
+// PUBLIC. The return is a PUBLIC status code.
+//
+// The pointed-to data carries its own secrecy level: share/blind/
+// randomness are SECRET in the cryptographic-content sense, but the
+// loads from those buffers go into stack arrays which carry the
+// secrecy forward. The public_inputs blob (sid, my_node_id, pk_seed,
+// mu) is loaded into stack arrays that flow into expandA / KMAC and
+// must be PUBLIC by the FIPS 204 + Pulsar-protocol spec; we mark
+// those explicitly via #public on the stack arrays where needed.
+#[ct = "public * public * public * public * public * public -> public"]
 export fn pulsar_round1_commit(
     reg u64 share_ptr,
     reg u64 blind_ptr,
@@ -183,7 +197,12 @@ export fn pulsar_round1_commit(
     stack u16 nonce_local;
     reg u16 nonce_reg;
     reg u64 i;
+    // Separate scratch bytes for the public-input copy loops (sid,
+    // node_id, pk_seed, mu) versus the secret randomness copy loop.
+    // Sharing `c` across all five would make jasmin-ct join its level
+    // to `secret` (from the randomness load), tainting pk_seed et al.
     reg u8  c;
+    reg u8  c_sec;
     reg u32 r32;
 
     reg ptr u8[16] sid_rsp;
@@ -207,7 +226,17 @@ export fn pulsar_round1_commit(
     ?{}, i = #set0_64();
     while (i < 64) { c = [:u8 public_inputs_ptr + 80 + i];  mu[i] = c;         i += 1; }
     ?{}, i = #set0_64();
-    while (i < 32) { c = [:u8 randomness_ptr + i];          randomness[i] = c; i += 1; }
+    while (i < 32) { c_sec = [:u8 randomness_ptr + i];      randomness[i] = c_sec; i += 1; }
+
+    // The four public-spec arrays loaded above (sid, node_id,
+    // pk_seed, mu) flow into expandA / KMAC absorb contexts that the
+    // FIPS 204 + Pulsar protocol treats as public. Mark them public
+    // explicitly so jasmin-ct's flow inference does not back-propagate
+    // secrecy from subsequent (intentionally-declassified) uses.
+    #declassify(sid);
+    #declassify(node_id);
+    #declassify(pk_seed);
+    #declassify(mu);
 
     // ---- 2. Derive rho_prime_i via KMAC(K, tau_1, "PULSAR-SIGN-PRNG-V1") ----
     randomness_rsp = randomness;
@@ -349,9 +378,14 @@ export fn pulsar_round1_commit(
 // The caller is expected to call this once per peer j != i after
 // pulsar_round1_commit has populated commit_buf[0..32) (= D_i) and
 // commit_buf[1472..1504) (= tau1_digest).
+// CT signature: pointer values are public addresses (no
+// secret-address branching). The pointed-to session key K_{i,j} is
+// SECRET; the commit_buf contents (D_i + tau1) are public-by-Round-1-
+// protocol (they're already on the wire). peer_index is public.
+#[ct = "public * public * public -> public"]
 export fn pulsar_round1_mac(
-    reg u64 session_key_ptr,    // *u8[32] K_{i,j} (secret)
-    reg u64 commit_buf_ptr,     // *u8[PULSARM_COMMIT_BYTES]
+    reg u64 session_key_ptr,    // *u8[32] K_{i,j} (secret contents)
+    reg u64 commit_buf_ptr,     // *u8[PULSARM_COMMIT_BYTES] (public contents)
     reg u32 peer_index)
     -> reg u64
 {

@@ -122,6 +122,12 @@ fn verify_peer_macs(
             exp_rsp = expected_buf;
             eq = ct_eq_32(exp_rsp, recv_rsp);
 
+            // Cryptographic declassification: the MAC verification
+            // outcome is a publicly-observable bit per the Pulsar
+            // protocol — wrong MAC ⇒ abort with accusation index. This
+            // is a protocol-level acceptance: the verifier learns
+            // accept/reject, which is exactly what `eq` encodes.
+            #declassify(eq);
             if (eq == 0) {
                 if (status == 0) {
                     status = (64u) j;
@@ -238,6 +244,29 @@ fn r2_challenge_seed(
 // Returns u64 status:
 //   0     = success
 //   j+1   = MAC mismatch on peer j (accused index encoded)
+//
+// CT signature: all pointer values are public addresses (no
+// secret-address branching). Pointed-to contents have the following
+// sensitivity per protocol spec:
+//   y_state_ptr      → SECRET (per-attempt y state held by this party)
+//   share_ptr        → SECRET (per-party Shamir share)
+//   blind_ptr        → SECRET (per-party Pedersen blind)
+//   peer_commits_ptr → public (Round-1 commits already on the wire)
+//   peer_bar_w_ptr   → public (Round-1 aggregated w-bars)
+//   peer_macs_ptr    → public (peer-MAC tags from Round-1)
+//   peer_tau_ptr     → public (per-peer tau_1 digests)
+//   mac_keys_ptr     → SECRET (session keys K_{i,j})
+//   eval_points_ptr  → public (Lagrange evaluation points)
+//   mu_ptr           → public (FIPS 204 message hash)
+//   quorum_size,
+//   my_index         → public
+//   response_out_ptr → writes public Round-2 response (z, r, hint)
+//
+// The CT signature itself only constrains pointer-publicity (used for
+// branching / load addresses). Per-buffer content sensitivity is
+// encoded by #declassify pragmas at the points where the protocol
+// declassifies them (e.g., w1 high-bits, signature challenge).
+#[ct = "public * public * public * public * public * public * public * public * public * public * public * public * public -> public"]
 export
 fn pulsar_round2(
     reg u64 y_state_ptr,
@@ -292,7 +321,12 @@ fn pulsar_round2(
 
     reg u64 i, offset, base;
     reg u32 j;
+    // Separate scratch bytes for the public-input load loops vs the
+    // secret-content load loop (mac_keys / share / blind). Sharing
+    // one `c` would join all loop levels to `secret` and taint the
+    // genuinely-public per-peer commits / MACs / tau1 digests.
     reg u8 c;
+    reg u8 c_sec;
     reg u32 r32, sum32;
     reg u32 lambda_mont;
     reg u64 status;
@@ -340,13 +374,17 @@ fn pulsar_round2(
         j += 1;
     }
 
-    // Per-peer buffers (commits, MACs, tau, keys).
+    // Per-peer buffers (commits, MACs, tau are public-by-protocol;
+    // mac_keys are secret session keys K_{i,j}). Use a separate
+    // scratch byte for the secret mac_keys load so jasmin-ct does
+    // not back-propagate secrecy onto the public commit / mac / tau
+    // buffers via a shared `c` register.
     ?{}, i = #set0_64();
     while (i < PULSARM_QUORUM_MAX * 32) {
-        c = [:u8 peer_commits_ptr + i]; commit_buf[i] = c;
-        c = [:u8 mac_keys_ptr + i];     mac_key_buf[i] = c;
-        c = [:u8 peer_macs_ptr + i];    mac_buf[i] = c;
-        c = [:u8 peer_tau_ptr + i];     tau_buf[i] = c;
+        c     = [:u8 peer_commits_ptr + i]; commit_buf[i]  = c;
+        c_sec = [:u8 mac_keys_ptr + i];     mac_key_buf[i] = c_sec;
+        c     = [:u8 peer_macs_ptr + i];    mac_buf[i]     = c;
+        c     = [:u8 peer_tau_ptr + i];     tau_buf[i]     = c;
         i += 1;
     }
 
@@ -406,6 +444,15 @@ fn pulsar_round2(
     packed_rsp = bar_w_packed;
     c_tilde_rsp = c_tilde;
     c_tilde_rsp = r2_challenge_seed(mu_rsp, packed_rsp, c_tilde_rsp);
+    // Cryptographic declassification: c_tilde is the FIPS 204
+    // challenge hash, public by §3.6 (it's the part of the signature
+    // every verifier sees). The Pulsar protocol publishes it as part
+    // of the Round-2 response payload. Marking it public here lets
+    // sampleInBall accept it; sampleInBall's output (c_poly) flows
+    // through public NTT into mat-vec mul against the secret share.
+    c_tilde = c_tilde_rsp;
+    #declassify(c_tilde);
+    c_tilde_rsp = c_tilde;
 
     // ---- 6. c = sampleInBall(c_tilde) -> NTT ----
     pc_rsp = c_poly;
@@ -575,6 +622,10 @@ fn pulsar_round2(
 // Wrapper calls this once per peer (j != my_index). Binds tau_2 to the
 // receiving peer's identity under the shared key K_{i,j}.
 // -----------------------------------------------------------------------------
+// CT signature: pointer values are public addresses. response_buf
+// holds public tau_2 + writes public MAC tag; session_key contents
+// are SECRET (K_{i,j}); peer/my index are public.
+#[ct = "public * public * public * public -> public"]
 export
 fn pulsar_round2_mac(
     reg u64 response_buf_ptr,

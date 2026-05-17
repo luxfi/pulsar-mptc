@@ -78,34 +78,53 @@ else
             exit 2
         fi
 
-        # ----- jasmin-ct constant-time check (advisory, non-blocking) ----
-        # `jasmin-ct` checks Jasmin programs for constant-time leakage.
-        # Currently libjade upstream (commit 9426b32) does NOT pass
-        # jasmin-ct on its own avx2/sign.jazz — the error is in
-        # libjade's keygen_end.jinc:125, not in our threshold layer.
-        # Running jasmin-ct on our .jazz files inherits libjade's
-        # missing public/secret annotations.
+        # ----- jasmin-ct constant-time check ------------------------------
+        # The threshold .jazz files (round1, round2, combine) carry
+        # explicit `#[ct = "..."]` security signatures + targeted
+        # `#declassify` pragmas at the protocol-level public-output
+        # boundaries. They MUST pass jasmin-ct (without --infer).
+        # Failure here is BLOCKING.
         #
-        # We invoke jasmin-ct as ADVISORY (does not fail the gate)
-        # so the output is captured per push without blocking. Once
-        # libjade upstream lands the public/secret annotations
-        # (Formosa-Crypto upstream tracking item), this gate flips
-        # to BLOCKING by removing `|| true`.
+        # libjade's ML-DSA-65 sign.jazz is handled in a separate CI
+        # job that runs jasmin-ct --infer and is still allowed-failure
+        # (issue #2): libjade upstream lacks the public/secret
+        # annotations bridging the secret seed `random_zeta` to the
+        # public PK components (rho, t1). Closing that requires
+        # libjade-internal CT analysis we should not attempt blind.
         if command -v jasmin-ct >/dev/null 2>&1; then
             echo
-            echo "==> jasmin-ct (advisory; libjade upstream annotations pending)"
+            echo "==> jasmin-ct (BLOCKING — threshold layer)"
+            CT_FAIL=0
             for f in "${JAZZ_FILES[@]}"; do
                 [[ -f "$f" ]] || continue
-                # 2 lines of output is enough to see the first CT
-                # finding per file. Full output goes to a build log.
-                CT_OUT=$(jasmin-ct --infer -I "Jade=$LIBJADE_DIR" "$f" 2>&1 | tail -2 || true)
-                if [[ -z "$CT_OUT" ]] || echo "$CT_OUT" | grep -q "^$"; then
-                    echo "    [advisory-ok] $f"
+                CT_OUT=$(jasmin-ct -I "Jade=$LIBJADE_DIR" "$f" 2>&1)
+                if [[ -z "$CT_OUT" ]]; then
+                    echo "    [ok]   $f"
                 else
-                    echo "    [advisory-note] $f"
+                    echo "    [FAIL] $f"
                     echo "$CT_OUT" | sed 's/^/      /'
+                    CT_FAIL=1
                 fi
             done
+            if [[ $CT_FAIL -ne 0 ]]; then
+                echo
+                echo "    jasmin-ct gate FAILED — threshold layer no longer CT-clean."
+                exit 2
+            fi
+
+            # libjade advisory: separately scoped, allowed-failure.
+            LIBJADE_SIGN="$LIBJADE_DIR/crypto_sign/dilithium/dilithium3/amd64/ref/sign.jazz"
+            if [[ -f "$LIBJADE_SIGN" ]]; then
+                echo
+                echo "==> jasmin-ct (advisory — libjade ML-DSA-65 sign, #2)"
+                CT_OUT=$(jasmin-ct --infer -I "Jade=$LIBJADE_DIR" "$LIBJADE_SIGN" 2>&1 | tail -2 || true)
+                if [[ -z "$CT_OUT" ]]; then
+                    echo "    [advisory-ok] $LIBJADE_SIGN"
+                else
+                    echo "    [advisory-note] $LIBJADE_SIGN"
+                    echo "$CT_OUT" | sed 's/^/      /'
+                fi
+            fi
         fi
     fi
 fi
@@ -178,6 +197,21 @@ if grep -RE "^[[:space:]]*declare axiom[[:space:]]+reshare_preserves_secret" \
     exit 2
 fi
 echo "    [ok]   no abstract reshare_preserves_secret axiom present"
+
+# Refinement-boundary status: while combine_body_axiom and
+# S_functional_spec are still `declare axiom`s in Pulsar_N1.ec they
+# emit a warning here. When each is replaced by a proper EC `lemma`
+# (proved from the extracted Jasmin/libjade modules + ABI/layout
+# theories), flip the corresponding check below to a hard failure
+# (exit 2) so we never regress past the closure.
+if grep -RE "^[[:space:]]*declare axiom[[:space:]]+combine_body_axiom" \
+   "$EC_ROOT" >/dev/null 2>&1 ; then
+    echo "    [warn] combine_body_axiom remains a refinement boundary (#4)"
+fi
+if grep -RE "^[[:space:]]*declare axiom[[:space:]]+S_functional_spec" \
+   "$EC_ROOT" >/dev/null 2>&1 ; then
+    echo "    [warn] S_functional_spec remains a refinement boundary (#3)"
+fi
 
 # Jasmin → EasyCrypt extraction sanity check.
 #
