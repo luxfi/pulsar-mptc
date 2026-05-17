@@ -19,12 +19,12 @@ echo "==> No-secret-logs linter"
 # DD-007: secret-touching files MUST NOT use stdlib log.* / fmt.Print* /
 # panic. This list is the implementation surface that touches secrets.
 SECRET_FILES=(
-    "ref/go/pkg/pulsarm/keygen.go"
-    "ref/go/pkg/pulsarm/sign.go"
-    "ref/go/pkg/pulsarm/dkg.go"
-    "ref/go/pkg/pulsarm/threshold.go"
-    "ref/go/pkg/pulsarm/reshare.go"
-    "ref/go/pkg/pulsarm/shamir.go"
+    "ref/go/pkg/pulsar/keygen.go"
+    "ref/go/pkg/pulsar/sign.go"
+    "ref/go/pkg/pulsar/dkg.go"
+    "ref/go/pkg/pulsar/threshold.go"
+    "ref/go/pkg/pulsar/reshare.go"
+    "ref/go/pkg/pulsar/shamir.go"
 )
 for f in "${SECRET_FILES[@]}"; do
     if [[ -f "$f" ]]; then
@@ -40,7 +40,7 @@ done
 
 echo "==> KAT validation"
 if [[ -f vectors/keygen.json ]]; then
-    go test -count=1 -run "^TestKAT_" ./ref/go/pkg/pulsarm/
+    go test -count=1 -run "^TestKAT_" ./ref/go/pkg/pulsar/
 else
     echo "    [info] vectors/ not generated — run scripts/gen_vectors.sh"
 fi
