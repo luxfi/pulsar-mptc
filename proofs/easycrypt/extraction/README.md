@@ -45,9 +45,16 @@ It does **NOT** guarantee:
   which requires a memory model + the ABI bridge from pointer-based
   W64 args to the abstract `(group_pk, m, ctx, …)` tuple.
 
-The refinement obligation is tracked in
-`proofs/easycrypt/Pulsar_N1_Combine_Refinement.ec` (skeleton; the
-proof is open and tracked as a continuing work item).
+The refinement obligations are tracked as separate issues (different
+proof efforts, different reviewers, different failure modes):
+
+- [#4 — `combine_body_axiom` refinement](https://github.com/luxfi/pulsar-mptc/issues/4):
+  `equiv [ M.pulsar_combine ~ CombineAbs.combine : ... ]`
+- [#3 — `S_functional_spec` refinement](https://github.com/luxfi/pulsar-mptc/issues/3):
+  `equiv [ M.sign ~ FIPS204Sign.sign : ... ]` (libjade ML-DSA-65)
+- [#2 — jasmin-ct annotations](https://github.com/luxfi/pulsar-mptc/issues/2):
+  add `#public` / `#declassify` to 4 .jazz files so the
+  `jasmin-ct-leakage` CI job flips from advisory to blocking.
 
 ## Pinning
 
