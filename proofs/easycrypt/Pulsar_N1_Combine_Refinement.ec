@@ -117,7 +117,7 @@ op wire_args_of_full (full : combine_full_args_t)
    (its identity content is the wire-layout of FIPS 204 §3.7).
    =================================================================== *)
 
-op refine_sig_to_n1 : Pulsar_N1_Combine_Layout.signature_t -> Pulsar_N1.signature_t.
+op refine_sig_to_n1 : Pulsar_N1_Signature_Codec.signature_t -> Pulsar_N1.signature_t.
 
 (* ===================================================================
    L2 — Functional spec operator (DEFINITION, not axiom).
@@ -170,9 +170,9 @@ op combine_abs_op (full : combine_full_args_t) : Pulsar_N1.signature_t =
    signature bytes that get written at sig_out_ptr. This is the
    ONLY remaining abstract op — the byte-walk obligation. *)
 op combine_body_compute_sig :
-  Pulsar_N1_Combine_Layout.mem_t ->
+  Pulsar_N1_Memory.mem_t ->
   Pulsar_N1_Combine_Layout.combine_ptrs_t ->
-  Pulsar_N1_Combine_Layout.signature_t.
+  Pulsar_N1_Signature_Codec.signature_t.
 
 (* Definition: combine_body_fn writes the computed signature at
    sig_out_ptr and leaves all other memory untouched, by virtue of
@@ -182,9 +182,9 @@ op combine_body_compute_sig :
    This decomposition is what makes the separation property a
    DERIVED LEMMA rather than an axiom: the "writes only at
    sig_out_ptr" invariant is now BY CONSTRUCTION, not by assumption. *)
-op combine_body_fn (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+op combine_body_fn (mem_pre : Pulsar_N1_Memory.mem_t)
                    (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
-   : Pulsar_N1_Combine_Layout.mem_t =
+   : Pulsar_N1_Memory.mem_t =
   Pulsar_N1_Combine_Layout.write_signature_at
     mem_pre
     ptrs.`Pulsar_N1_Combine_Layout.sig_out_ptr
@@ -195,7 +195,7 @@ op combine_body_fn (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
    but the surface area is smaller: it makes a claim about pure
    signature bytes, not about memory states. *)
 axiom combine_body_compute_sig_spec :
-  forall (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
          (full : combine_full_args_t),
     Pulsar_N1_Combine_Layout.layout_combine_args
@@ -212,7 +212,7 @@ axiom combine_body_compute_sig_spec :
 (* The old `combine_body_spec` shape, now PROVED. Compose
    read_after_write_signature with combine_body_compute_sig_spec. *)
 lemma combine_body_spec :
-  forall (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
          (full : combine_full_args_t),
     Pulsar_N1_Combine_Layout.layout_combine_args
@@ -234,15 +234,15 @@ qed.
    write_signature_separation (already a proved lemma in the
    layout file). *)
 op mem_separation
-   (mem_post mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+   (mem_post mem_pre : Pulsar_N1_Memory.mem_t)
    (p len : int) : bool =
   forall (q : int),
     q < p \/ p + len <= q =>
-    Pulsar_N1_Combine_Layout.load_byte mem_post q =
-    Pulsar_N1_Combine_Layout.load_byte mem_pre q.
+    Pulsar_N1_Memory.load_byte mem_post q =
+    Pulsar_N1_Memory.load_byte mem_pre q.
 
 lemma combine_body_separation :
-  forall (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t),
     mem_separation (combine_body_fn mem_pre ptrs) mem_pre
                    ptrs.`Pulsar_N1_Combine_Layout.sig_out_ptr 3293.
@@ -259,7 +259,7 @@ qed.
 (* L4: packed_signature(...) = CombineAbs.combine(...)
    DERIVED as a lemma from combine_body_spec via congruence. *)
 lemma packed_bytes_eq_CombineAbs :
-  forall (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
          (full : combine_full_args_t),
     Pulsar_N1_Combine_Layout.layout_combine_args
@@ -280,7 +280,7 @@ qed.
    signature. This is the lemma `Pulsar_N1.combine_body_axiom`
    imports. *)
 lemma combine_body_writes_signature :
-  forall (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
          (full : combine_full_args_t),
     Pulsar_N1_Combine_Layout.layout_combine_args

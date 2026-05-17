@@ -49,12 +49,41 @@ type combine_ptrs_t = {
 
 (* ===================================================================
    Abstract input/output types for the combine wire layer.
-   `signature_t` is shared (imported from Pulsar_N1_Signature_Codec).
+   `signature_t` is shared (imported from Pulsar_N1_Signature_Codec
+   and re-exported as a type alias so the existing qualified-name
+   API `Pulsar_N1_Combine_Layout.signature_t` keeps working for
+   downstream consumers that pre-date the decomplect).
    =================================================================== *)
 
 type c_tilde_t.
 type t0_vec_t.
 type r2_msg_t.
+
+(* Type aliases for backward compatibility.
+
+   The Memory + Signature_Codec decomplect moved the owning
+   definitions of `mem_t` and `signature_t` to those modules. For
+   downstream consumers (Refinement files, Wrapper_Bridge) that
+   reach for the qualified `Pulsar_N1_Combine_Layout.<name>` form,
+   we expose minimal type aliases here.
+
+   We deliberately do NOT alias the OPERATIONS (load_byte,
+   store_byte, load/store_bytes, encode/decode_signature) because
+   wrapping them as fresh ops with the same body breaks EC's
+   rewrite-unification with the canonical lemmas in Memory and
+   Signature_Codec. Consumers should reach for those ops at their
+   canonical home:
+     `Pulsar_N1_Memory.load_byte`         (not Combine_Layout.load_byte)
+     `Pulsar_N1_Memory.store_bytes`       (not Combine_Layout.store_bytes)
+     `Pulsar_N1_Signature_Codec.encode_signature`  (etc)
+
+   `sig_len` is kept as a definition local to this file because it
+   is the named combine-side ABI constant; it equals
+   `Pulsar_N1_Signature_Codec.sig_len` by construction. *)
+
+type mem_t = Pulsar_N1_Memory.mem_t.
+type signature_t = Pulsar_N1_Signature_Codec.signature_t.
+op sig_len : int = 3293.
 
 (* Byte encoders/decoders for the combine-specific wire types.
    `signature_t`'s encoder/decoder lives in

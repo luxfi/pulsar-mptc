@@ -26,11 +26,13 @@ EC_FILES=(
     "$EC_ROOT/lemmas/MLDSA65_Functional.ec"
     "$EC_ROOT/Pulsar_N1_Memory.ec"
     "$EC_ROOT/Pulsar_N1_Signature_Codec.ec"
-    "$EC_ROOT/Pulsar_N1_Combine_Refinement.ec"
-    "$EC_ROOT/Pulsar_N1_Sign_Refinement.ec"
-    "$EC_ROOT/Pulsar_N1_Wrapper_Bridge.ec"
     "$EC_ROOT/Pulsar_N1_Combine_Layout.ec"
     "$EC_ROOT/Pulsar_N1_Sign_Layout.ec"
+    "$EC_ROOT/Pulsar_N1_Combine_Refinement.ec"
+    "$EC_ROOT/Pulsar_N1_Sign_Refinement.ec"
+    "$EC_ROOT/Pulsar_N1_Combine_Wrapper.ec"
+    "$EC_ROOT/Pulsar_N1_Sign_Wrapper.ec"
+    "$EC_ROOT/Pulsar_N1_Extracted.ec"
 )
 
 ADMIT_COUNT=0

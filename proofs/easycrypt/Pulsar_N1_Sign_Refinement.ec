@@ -110,7 +110,7 @@ op wire_sign_args_of_full (full : sign_full_args_t)
    =================================================================== *)
 
 op refine_sig_to_n1_sign :
-  Pulsar_N1_Combine_Layout.signature_t -> Pulsar_N1.signature_t.
+  Pulsar_N1_Signature_Codec.signature_t -> Pulsar_N1.signature_t.
 
 (* ===================================================================
    L2 — Functional spec operator (DEFINITION, not axiom).
@@ -195,9 +195,9 @@ op sign_abs_op (full : sign_full_args_t) : Pulsar_N1.signature_t =
    signature bytes that get written at ptr_signature. This is the
    ONLY remaining abstract op — the byte-walk obligation. *)
 op sign_body_compute_sig :
-  Pulsar_N1_Combine_Layout.mem_t ->
+  Pulsar_N1_Memory.mem_t ->
   Pulsar_N1_Sign_Layout.sign_ptrs_t ->
-  Pulsar_N1_Combine_Layout.signature_t.
+  Pulsar_N1_Signature_Codec.signature_t.
 
 (* Definition: sign_body_fn writes the computed signature at
    ptr_signature and leaves all other memory untouched, by virtue
@@ -207,9 +207,9 @@ op sign_body_compute_sig :
    This decomposition is what makes the separation property a
    DERIVED LEMMA rather than an axiom: the "writes only at
    ptr_signature" invariant is now BY CONSTRUCTION. *)
-op sign_body_fn (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+op sign_body_fn (mem_pre : Pulsar_N1_Memory.mem_t)
                 (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
-   : Pulsar_N1_Combine_Layout.mem_t =
+   : Pulsar_N1_Memory.mem_t =
   Pulsar_N1_Sign_Layout.write_sig_sign
     mem_pre
     ptrs.`Pulsar_N1_Sign_Layout.ptr_signature
@@ -220,7 +220,7 @@ op sign_body_fn (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
    #3), but the surface area is smaller: it makes a claim about
    pure signature bytes, not about memory states. *)
 axiom sign_body_compute_sig_spec :
-  forall (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
          (full : sign_full_args_t),
     Pulsar_N1_Sign_Layout.layout_sign_args
@@ -231,7 +231,7 @@ axiom sign_body_compute_sig_spec :
 (* The old `sign_body_spec` shape, now PROVED. Compose
    read_after_write_sig_sign with sign_body_compute_sig_spec. *)
 lemma sign_body_spec :
-  forall (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
          (full : sign_full_args_t),
     Pulsar_N1_Sign_Layout.layout_sign_args
@@ -253,15 +253,15 @@ qed.
    then discharged by write_sig_sign_separation (already a proved
    lemma in Sign_Layout). *)
 op sig_mem_separation
-   (mem_post mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+   (mem_post mem_pre : Pulsar_N1_Memory.mem_t)
    (p len : int) : bool =
   forall (q : int),
     q < p \/ p + len <= q =>
-    Pulsar_N1_Combine_Layout.load_byte mem_post q =
-    Pulsar_N1_Combine_Layout.load_byte mem_pre q.
+    Pulsar_N1_Memory.load_byte mem_post q =
+    Pulsar_N1_Memory.load_byte mem_pre q.
 
 lemma sign_body_separation :
-  forall (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t),
     sig_mem_separation (sign_body_fn mem_pre ptrs) mem_pre
                        ptrs.`Pulsar_N1_Sign_Layout.ptr_signature
@@ -280,7 +280,7 @@ qed.
    a specific full_args. The wrapper-bridge collapse depends on
    this lemma. *)
 lemma sign_body_writes_abs :
-  forall (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
          (full : sign_full_args_t),
     Pulsar_N1_Sign_Layout.layout_sign_args
@@ -295,7 +295,7 @@ proof. exact sign_body_spec. qed.
 (* The byte-equality unfolds to mldsa_sign_op of the four ghost
    fields by definition of sign_abs_op. *)
 lemma sign_body_writes_mldsa_sign :
-  forall (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
          (full : sign_full_args_t),
     Pulsar_N1_Sign_Layout.layout_sign_args
