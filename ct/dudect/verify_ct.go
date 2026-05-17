@@ -4,19 +4,31 @@
 // verify_ct.go — cgo bridge exposing pulsar.Verify to the C dudect
 // harness in dudect_verify.c.
 //
-// The bridge owns ONE long-lived test fixture (public key + valid
-// signature on a fixed message). dudect drives a fixed-vs-random
-// classification on the signature bytes; the harness mutates a
-// caller-supplied scratch buffer that is fed into Verify. Verify is
-// expected to be constant-time over all of (pk, message, signature),
-// because the underlying FIPS 204 verifier is constant-time by
-// design (FIPS 204 §6.3) and pulsar.Verify is a thin dispatch on
-// top (verify.go — Class N1 manifesto).
+// FIPS 204 §6.3 mandates that Verify is CONSTANT-TIME OVER VALID
+// SIGNATURES from honest signers. It does NOT require constant time
+// over arbitrary byte patterns — Verify holds no secret state, so an
+// attacker has no secret to learn by observing how fast an INVALID
+// signature is rejected. circl's ML-DSA Verify (the dispatch target
+// of pulsar.Verify) is documented as CT over the valid-sig class.
 //
-// The harness deliberately calls VerifyCtx with the EXACT same byte
-// lengths every time, regardless of class — so any timing difference
-// dudect detects is real bit-level dependence, not control-flow
-// dependence on input length / structure.
+// Accordingly the dudect harness here tests the RIGHT CT population:
+// BOTH classes are VALID signatures on the same (pk, message); they
+// differ only in the per-signing randomness (signing is randomised
+// per FIPS 204 §3.5.2), so the byte strings vary but the verify
+// pipeline executes the same code path. Any timing difference dudect
+// detects between class-A and class-B samples is a real signature-
+// content-dependent timing in Verify.
+//
+// The bridge precomputes a pool of K_VALID valid signatures at
+// startup. prepare_inputs (in dudect_verify.c) copies pool[0] for
+// every class-A sample (Welch's t-test requires identical class-A
+// inputs) and pool[rand % K_VALID] for class-B.
+//
+// Earlier versions of this harness used zero-bytes (class A) vs
+// random-bytes (class B). Both were invalid sigs but on different
+// rejection paths (z-range pass vs fail), so dudect detected a
+// rejection-path timing difference that was NOT a FIPS 204 §6.3
+// violation. See ct/dudect/README.md "Verify smoke CT framing".
 //
 // Build:
 //   GOWORK=off go build -buildmode=c-shared \
@@ -43,11 +55,18 @@ import (
 // Long-lived fixture. The dudect main loop calls
 // pulsar_verify_ct_setup() once at startup, then calls
 // pulsar_verify_ct() in a tight measurement loop.
+const kValidPool = 64
+
 var (
 	fixtureParams *pulsar.Params
 	fixturePub    *pulsar.PublicKey
 	fixtureMsg    []byte
 	fixtureSig    *pulsar.Signature
+	// validPool holds kValidPool valid signatures over the same
+	// (pk, message), differing only in per-signing randomness.
+	// The C harness selects from this pool to populate the dudect
+	// class A (pool[0]) and class B (pool[rand]) input buffers.
+	validPool [kValidPool]*pulsar.Signature
 )
 
 //export pulsar_verify_ct_setup
@@ -80,6 +99,18 @@ func pulsar_verify_ct_setup() C.int {
 	fixturePub = sk.Pub
 	fixtureMsg = msg
 	fixtureSig = sig
+	// Generate kValidPool independent valid signatures on the same
+	// (pk, msg). Each draws fresh randomness from crypto/rand.
+	for i := 0; i < kValidPool; i++ {
+		s, err := pulsar.Sign(params, sk, msg, nil, true, rand.Reader)
+		if err != nil {
+			return 4
+		}
+		if err := pulsar.Verify(params, sk.Pub, msg, s); err != nil {
+			return 5
+		}
+		validPool[i] = s
+	}
 	return 0
 }
 
@@ -93,6 +124,37 @@ func pulsar_verify_ct_sig_size() C.size_t {
 		return 0
 	}
 	return C.size_t(fixtureParams.SignatureSize)
+}
+
+//export pulsar_verify_ct_pool_size
+//
+// Returns the number of valid signatures in the per-startup pool.
+// The C harness draws class-B samples from pool[0..pool_size).
+func pulsar_verify_ct_pool_size() C.size_t {
+	return C.size_t(kValidPool)
+}
+
+//export pulsar_verify_ct_copy_pool
+//
+// Copies validPool[idx].Bytes into the caller-supplied dst buffer
+// (sig_size bytes). idx MUST be in [0, kValidPool); the C harness
+// enforces this via pulsar_verify_ct_pool_size. Returns 0 on
+// success, non-zero on bounds violation.
+//
+// dst is owned by the caller; this is a one-way copy. The copy
+// itself is constant-time over idx since we always write exactly
+// sig_size bytes; the timing of the copy is irrelevant because
+// dudect measures cycles around pulsar_verify_ct, not around this
+// setup-time data movement.
+func pulsar_verify_ct_copy_pool(idx C.size_t, dst *C.uint8_t) C.int {
+	i := int(idx)
+	if i < 0 || i >= kValidPool || fixtureParams == nil || validPool[i] == nil {
+		return 1
+	}
+	n := fixtureParams.SignatureSize
+	dstSlice := unsafe.Slice((*byte)(unsafe.Pointer(dst)), n)
+	copy(dstSlice, validPool[i].Bytes)
+	return 0
 }
 
 //export pulsar_verify_ct

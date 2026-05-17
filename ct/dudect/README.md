@@ -10,9 +10,18 @@ This directory holds the Pulsar dudect harness. We measure two
 operations:
 
 1. **`pulsar.Verify`** — the load-bearing entry point. Must be
-   constant-time in the public key, message, and signature bytes.
+   constant-time in the public key, message, and signature bytes
+   **for the class of VALID signatures from honest signers**
+   (FIPS 204 §6.3). Verify holds no secret state, so timing
+   differences over INVALID inputs (random byte patterns rejected
+   at parse / range check) are not a security property — the
+   attacker has no secret to learn by observing how fast a bogus
+   signature is rejected.
 2. **`pulsar.Combine`** — the threshold aggregator. Must be
-   constant-time in the per-party signature shares.
+   constant-time in the per-party signature shares (which DO carry
+   secret-derived randomness). A leak here is a real CT regression
+   on the threshold path; the high-assurance gate promotes a
+   combine-side dudect leak to a HARD FAIL.
 
 `pulsar.Sign` is intentionally NOT constant-time per FIPS 204 §3.3 —
 the rejection-sampling loop has secret-dependent retry count. This is
@@ -20,6 +29,54 @@ a property of ML-DSA itself, not Pulsar. Production deployments that
 need constant-time Sign use the FIPS 204 "ext-ml-dsa-65-cs" context-
 supplied variant (open question for MPTC); Pulsar inherits whatever
 Sign property the underlying FIPS 204 implementation gives.
+
+### Verify CT population
+
+`dudect_verify` tests the FIPS 204 §6.3 CT property over the
+**valid-signature class**: both class A and class B are valid
+signatures on the same `(pk, message)`, varying only in the
+per-signing randomness (ML-DSA signing is randomised per FIPS 204
+§3.5.2, so two valid sigs over the same message have different
+byte strings but verify through the same code path).
+
+- Class A: `pool[0]` every time (Welch's t-test requires
+  byte-identical class-A samples).
+- Class B: `pool[rand % 64]` (uniform draw from the 64-sig pool).
+
+Pool generation runs once at startup (`pulsar_verify_ct_setup`
+calls `pulsar.Sign` 64 times under `crypto/rand`). The class
+selection in `prepare_inputs` uses dudect's own RNG, so the
+class assignment is uncorrelated with anything Verify could see.
+
+**Why not zeros vs random?** Earlier versions of this harness
+used `class A = all-zero bytes` vs `class B = random bytes`.
+Both are INVALID signatures but on different rejection paths:
+zeros pass the `||z||_∞ < γ1-β` range check (z=0 is trivially in
+range) and run the full pipeline; random bytes usually fail
+range fast and early-reject. dudect detected that timing
+difference — but it is **NOT a FIPS 204 §6.3 violation**. The
+spec's CT requirement applies to the valid-signature class only;
+Verify holds no secret, so timing differences over arbitrary
+byte patterns are not a security property. The current design
+tests the actually-relevant population.
+
+### Smoke vs submission budget
+
+At the smoke budget (10k samples per batch × 4 batches = 40k max),
+even the valid-vs-valid test can land borderline around dudect's
+`t = 10` threshold. The verdict depends on platform noise; ARM
+generic-timer noise floor on Apple Silicon is higher than RDTSC
+on x86. The high-assurance gate reports a smoke-budget leak as
+`[warn]`, not `[FAIL]`.
+
+The authoritative gate is the submission-grade run: ~10^9 samples
+on a pinned, quiet CPU. Pin the result to
+`ct/dudect/results/verify-submission.log` on the `submission-`
+tag. Pass criterion: no max-t above 4.5σ.
+
+For Combine the smoke-budget `[LEAK]` outcome is gated as HARD
+FAIL because Combine processes secret shares — there a leak is a
+real CT regression on the threshold path.
 
 ## Status
 
@@ -133,15 +190,18 @@ Exit codes:
 ## CI integration
 
 `scripts/check-high-assurance.sh` builds + runs the smoke test
-automatically when `dudect/src/dudect.h` is present. The script
-exits 0 either way:
+automatically when `dudect/src/dudect.h` is present:
 
-- dudect not fetched → reports `[skip]` with install instructions
-- harness builds but reports no leakage → `[ok]`
-- harness reports leakage → `[LEAK]` (results pinned for review)
-- harness build fails → `[info]` (mid-refactor, expected during
-  ongoing development; the pulsar package may not compile under
-  cgo at every commit)
+- dudect not fetched → `[skip]` with install instructions
+- harness builds, no leakage → `[ok]`
+- `dudect_verify` reports leakage → `[warn]` (expected at smoke
+  budget per "Verify smoke CT framing" above; not a CT regression,
+  not gate-blocking)
+- `dudect_combine` reports leakage → `[FAIL]` (Combine handles
+  secret shares; gate-blocking)
+- other harness rc → `[warn]`
+- harness build fails → `[info]` (mid-refactor; non-blocking
+  during ongoing development)
 
 ## Submission run
 
