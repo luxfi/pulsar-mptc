@@ -215,6 +215,28 @@ if grep -RE "^[[:space:]]*declare axiom[[:space:]]+S_functional_spec" \
     echo "    [warn] S_functional_spec remains a refinement boundary (#3)"
 fi
 
+# Refinement-scaffold guard: the layered refinement files
+# (Pulsar_N1_Combine_Refinement.ec, Pulsar_N1_Sign_Refinement.ec) are
+# scaffolds — they declare each layer's obligation precisely. While
+# they still contain `declare axiom` lines, the implementation
+# refinement is NOT closed. CI must surface this so scaffolding is
+# never mistaken for closure. Today this is a warning; flip to
+# `exit 2` once the byte-walk lands and every declare axiom in those
+# files becomes a real lemma.
+echo "==> Refinement-scaffold status"
+REFINE_AXIOMS=$(grep -RE "^[[:space:]]*declare axiom" \
+    "$EC_ROOT/Pulsar_N1_Combine_Refinement.ec" \
+    "$EC_ROOT/Pulsar_N1_Sign_Refinement.ec" 2>/dev/null || true)
+if [[ -n "$REFINE_AXIOMS" ]]; then
+    echo "    [warn] refinement scaffolds still contain declare axioms:"
+    echo "$REFINE_AXIOMS" | sed 's/^/      /'
+    echo "    Strict closure (per #3, #4) replaces each of these with a"
+    echo "    lemma proved from the extracted Jasmin EC. Flip this"
+    echo "    warning to a hard failure once all axioms are gone."
+else
+    echo "    [ok]   no declare axiom in refinement scaffolds"
+fi
+
 # Jasmin → EasyCrypt extraction sanity check.
 #
 # The threshold-layer .jazz files (round1, round2, combine) extract to
