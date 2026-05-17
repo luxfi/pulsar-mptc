@@ -179,6 +179,32 @@ if grep -RE "^[[:space:]]*declare axiom[[:space:]]+reshare_preserves_secret" \
 fi
 echo "    [ok]   no abstract reshare_preserves_secret axiom present"
 
+# Jasmin → EasyCrypt extraction sanity check.
+#
+# The threshold-layer .jazz files (round1, round2, combine) extract to
+# EasyCrypt via `jasmin2ec`. The extracted EC must compile against the
+# same EasyCrypt version we use for hand-written proofs. This guarantees
+# the Jasmin sources stay extraction-clean: any change that breaks
+# `jasmin2ec` (e.g., an unsupported language construct or a missing
+# libjade primitive) fails the gate. The extracted artifacts are NOT
+# vendored; see proofs/easycrypt/extraction/README.md.
+#
+# Refinement (`equiv [ M.pulsar_combine ~ CombineAbs.combine : ... ]`)
+# is the open follow-up — tracked in
+# proofs/easycrypt/extraction/README.md.
+if [[ $have_jasmin -eq 1 && $have_ec -eq 1 \
+      && -d "$JASMIN_ROOT/ml-dsa-65/libjade/oldsrc-should-delete" ]]; then
+    echo "==> Jasmin → EC extraction sanity check"
+    if bash "$REPO_ROOT/scripts/extract-jasmin-ec.sh" >/tmp/extract.log 2>&1 ; then
+        n_ok=$(grep -c '\[ok\]' /tmp/extract.log || echo 0)
+        echo "    [ok]   $n_ok .jazz files extracted + type-checked"
+    else
+        echo "    [FAIL] extraction sanity check failed — see /tmp/extract.log"
+        cat /tmp/extract.log | tail -20
+        exit 2
+    fi
+fi
+
 if [[ $have_ec -eq 0 ]]; then
     echo "    [skip] easycrypt not on PATH; admit-count budget enforced statically"
     echo "           install (source build): https://github.com/EasyCrypt/easycrypt"

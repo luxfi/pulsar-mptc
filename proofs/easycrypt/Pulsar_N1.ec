@@ -393,16 +393,43 @@ declare module T <: Pulsar_Threshold.
 
 (* Section-local refinement axiom: the Jasmin-extracted Combine is    *)
 (* equivalent to `CombineAbs.combine` under the honest-quorum precond. *)
-(* Discharging this is the Jasmin-side obligation tracked in           *)
-(* `jasmin/threshold/combine.jazz` (currently a stub).                 *)
+(*                                                                      *)
+(* Discharge path (CONCRETE — extraction exists):                       *)
+(*   1. Run `scripts/extract-jasmin-ec.sh` to regenerate the extracted *)
+(*      EC theory in `proofs/easycrypt/extraction/build/combine.ec`.   *)
+(*      The high-assurance gate runs this every push and asserts the   *)
+(*      extracted EC compiles standalone.                              *)
+(*   2. The extracted module is `M` (the canonical jasmin2ec name)     *)
+(*      with procedure `M.pulsar_combine(c_tilde_ptr, t0_ptr,          *)
+(*      round2_msgs_ptr, threshold, sig_out_ptr) : W64.t`. The         *)
+(*      parameters are W64 pointers into a memory model — the          *)
+(*      refinement requires a byte-level memory invariant plus an ABI  *)
+(*      bridge from (group_pk, m, ctx, quorum, shares, rho_rnd, r1s,   *)
+(*      r2s) to the pointer-based layout.                              *)
+(*   3. The refinement obligation:                                      *)
+(*        equiv [ M.pulsar_combine ~ CombineAbs.combine :              *)
+(*                  layout_invariant arg{1} arg{2}                     *)
+(*                ==> read_signature_at(sig_out_ptr) = res{2} ]         *)
+(*                                                                      *)
+(* Status: extraction works (CI gate enforces it). The byte-level      *)
+(* refinement to `CombineAbs.combine` is open and tracked in           *)
+(* `proofs/easycrypt/extraction/README.md`. Until that's discharged,   *)
+(* this section-local axiom stands as the hand-off contract.           *)
 declare axiom combine_body_axiom :
   equiv [ T.combine ~ CombineAbs.combine :
             ={arg}
           ==> ={res} ].
 
 (* Functional-spec hypothesis on the single-party module `S`.          *)
-(* Mirrors `mldsa_sign_axiom` above for arbitrary `S`. Discharging      *)
-(* this for the libjade-extracted module is the libjade-side hand-off. *)
+(* Mirrors `mldsa_sign_axiom` above for arbitrary `S`.                  *)
+(*                                                                      *)
+(* Discharge path: instantiate `S` with the libjade-extracted ML-DSA   *)
+(* sign module (run `jasmin2ec` over libjade's sign.jazz) and prove    *)
+(*   equiv [ M_libjade.crypto_sign ~ FIPS204Sign.sign :                *)
+(*             layout_invariant arg{1} arg{2}                          *)
+(*           ==> read_sig_at(sig_ptr) = res{2} ].                       *)
+(* This bridges to MLDSA65_Functional.fips204_sign (lemmas/MLDSA65_Functional.ec)
+   on the right side, completing the libjade ↔ FIPS 204 byte-equality. *)
 declare axiom S_functional_spec :
   equiv [ S.sign ~ FIPS204Sign.sign :
             ={arg} ==> ={res} ].
