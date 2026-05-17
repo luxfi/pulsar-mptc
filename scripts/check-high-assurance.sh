@@ -142,6 +142,7 @@ EC_FILES=(
     "$EC_ROOT/lemmas/MLDSA65_Functional.ec"
     "$EC_ROOT/Pulsar_N1_Combine_Refinement.ec"
     "$EC_ROOT/Pulsar_N1_Sign_Refinement.ec"
+    "$EC_ROOT/Pulsar_N1_Wrapper_Bridge.ec"
 )
 
 # Admit budget — the count of `admit.` source lines across the EC
@@ -282,7 +283,7 @@ else
         # Critical errors are reported via `[critical]` to stderr;
         # we grep for them rather than relying on the exit code
         # (which can be 0 even with a `[critical]` parse error).
-        if easycrypt compile "$f" 2>&1 | grep -q '\[critical\]' ; then
+        if easycrypt compile -I "$EC_ROOT" -I "$EC_ROOT/lemmas" "$f" 2>&1 | grep -q '\[critical\]' ; then
             echo "    [FAIL] $f — see easycrypt output above"
             EC_FAIL=1
         else
