@@ -129,6 +129,46 @@ op sign_abs_op (full : sign_full_args_t) : Pulsar_N1.signature_t =
     full.`sgn_ctx_n1 full.`sgn_rnd_n1.
 
 (* ===================================================================
+   GHOST CONTRACT: ctx / rho_rnd binding.
+
+   libjade `M.sign(ptr_signature, ptr_m, m_len, ptr_sk)` does NOT
+   take ctx or rho_rnd directly. The wrapper carries `sgn_ctx_n1`
+   and `sgn_rnd_n1` as ghost protocol fields in `sign_full_args_t`.
+
+   The remaining `sign_body_compute_sig_spec` obligation includes
+   the claim that the bytes supplied to libjade — specifically:
+
+     - mu, the FIPS 204 §6.2 message binder, encoding the
+       wrapper-supplied ctx via `SHAKE256(0x00 || ctxlen || ctx || M)`
+       (FIPS 204 §5.4.1 ExternalMu), and
+     - the K-derived randomness that libjade's deterministic
+       rejection-sampling consumes,
+
+   correspond to FIPS 204 `Sign_internal(sk, M, ctx, rho_rnd_n1)`
+   over the four ghost fields.
+
+   This is a NAMED REFINEMENT OBLIGATION, not a definitional fact.
+   It is the wrapper's responsibility to construct
+   `sign_full_args_t` such that the wire-level (sk, m) bytes
+   + libjade's internal mu/K derivation together implement the
+   protocol-level Sign_internal on (sgn_sk_n1, sgn_m_n1,
+   sgn_ctx_n1, sgn_rnd_n1).
+
+   If a future refactor needs to surface this as a stand-alone
+   obligation (rather than folded into the byte-walk), split as:
+
+     axiom sign_body_compute_sig_core      — pure libjade core
+     axiom ctx_rho_binding_contract        — ctx/rho integration
+
+   For now, both live inside `sign_body_compute_sig_spec`. The
+   refactor is on the table the moment the libjade core proof
+   starts to close — keeping them bundled until that point
+   avoids the spurious extra axiom and keeps the dependency cone
+   minimal. The split is the right move only when the core piece
+   is being discharged independently.
+   =================================================================== *)
+
+(* ===================================================================
    L3 — ATOMIC AXIOM (libjade-extraction trust boundary).
 
    `sign_body_spec` says: given inputs whose wire-level layout
