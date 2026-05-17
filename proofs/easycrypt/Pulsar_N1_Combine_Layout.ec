@@ -1,81 +1,27 @@
 (* -------------------------------------------------------------------- *)
 (* Pulsar — Class N1 Combine concrete memory layout                    *)
 (* -------------------------------------------------------------------- *)
-(* Concrete EC definitions for the memory model, encoders, decoders,    *)
-(* and layout predicate that previously lived as ABSTRACT `op`          *)
-(* declarations in `Pulsar_N1_Combine_Refinement.ec`. With concrete     *)
-(* bodies, several structural facts about encode/decode/layout become   *)
-(* PROVABLE lemmas instead of axioms.                                   *)
+(* Concrete EC definitions for the combine ABI byte layout. With        *)
+(* concrete bodies, several structural facts about encode/decode/       *)
+(* layout become PROVABLE lemmas instead of axioms.                     *)
 (*                                                                      *)
-(* This file is the "concrete combine layout" the user identified as    *)
-(* the next milestone: it lets `combine_wrapper_bridge` collapse from   *)
-(* an axiom into a derived lemma whose body composes:                   *)
-(*   - encode_combine_args_layout    (proved here)                      *)
-(*   - read_after_write_signature    (proved here)                      *)
-(*   - write_signature_separation    (proved here)                      *)
-(*   - combine_body_spec             (axiom in refinement file)         *)
+(* This file used to also carry the generic byte-memory model and the   *)
+(* FIPS 204 signature codec — those have been decomplected out into:    *)
 (*                                                                      *)
-(* Trust-boundary delta:                                                *)
-(*   Before: 6 localized axioms                                         *)
-(*   After:  4 localized axioms (combine_wrapper_bridge becomes lemma   *)
-(*           + combine_body_separation becomes lemma, both reduced to   *)
-(*           the concrete structural facts here).                       *)
+(*   Pulsar_N1_Memory.ec         (mem_t, load_byte/store_byte,          *)
+(*                                load_bytes/store_bytes + frame laws)  *)
+(*   Pulsar_N1_Signature_Codec.ec (signature_t, encode/decode/len,      *)
+(*                                read_sig_at/write_sig_at + frame      *)
+(*                                lemmas)                               *)
 (*                                                                      *)
-(* What this file does NOT yet provide:                                 *)
-(*   - The sign analogue (Pulsar_N1_Sign_Layout.ec); same pattern, to   *)
-(*     follow once this combine pass settles.                           *)
-(*   - The combine_body_spec byte-walk; that still requires walking     *)
-(*     the extracted M.pulsar_combine body and stays as an axiom.       *)
+(* The sign-side layout (Pulsar_N1_Sign_Layout.ec) imports those two    *)
+(* directly, so the sign layout no longer transitively depends on this  *)
+(* file's combine-specific encoders.                                    *)
 (* -------------------------------------------------------------------- *)
 
 require import AllCore List Int IntDiv SmtMap.
-
-(* ===================================================================
-   Concrete memory model.
-
-   `mem_t` is a total function from byte address (int) to byte (int
-   in [0, 256)). This is the simplest faithful representation: it
-   matches the JModel_x86 `Glob.mem` storeW8 / loadW8 view at the
-   byte level, abstracted from word-aligned semantics that aren't
-   needed for the layout proofs below.
-   =================================================================== *)
-
-type mem_t = int -> int.
-
-(* Read/write a single byte at address `a`. *)
-op load_byte (m : mem_t) (a : int) : int = m a.
-
-op store_byte (m : mem_t) (a : int) (v : int) : mem_t =
-  fun (x : int) => if x = a then v else m x.
-
-lemma load_store_same (m : mem_t) (a v : int) :
-  load_byte (store_byte m a v) a = v.
-proof. by rewrite /load_byte /store_byte /=. qed.
-
-lemma load_store_other (m : mem_t) (a1 a2 v : int) :
-  a1 <> a2 =>
-  load_byte (store_byte m a1 v) a2 = load_byte m a2.
-proof. by move=> ha; rewrite /load_byte /store_byte /=; smt(). qed.
-
-(* Bulk read of a contiguous byte range. *)
-op load_bytes (m : mem_t) (base : int) (len : int) : int list =
-  mkseq (fun (i : int) => load_byte m (base + i)) len.
-
-(* Bulk write of a contiguous byte range — RECURSIVE definition.
-   Writes the head of bs at `base`, then recursively writes the
-   tail starting at `base + 1`. This is the inductive shape
-   `load_bytes (store_bytes m p bs) p (size bs) = bs` requires for
-   the proof to go through.
-
-   This recursive definition is byte-content equivalent to the
-   earlier foldl-over-zip(range 0 n, bs) definition the file
-   originally carried, but exposes the induction principle needed
-   for store/load proofs. The semantic equivalence is not used
-   downstream (the foldl form is no longer referenced anywhere),
-   so we do not prove it as a separate lemma. *)
-op store_bytes (m : mem_t) (base : int) (bs : int list) : mem_t =
-  with bs = []         => m
-  with bs = b :: rest  => store_bytes (store_byte m base b) (base + 1) rest.
+require import Pulsar_N1_Memory.
+require import Pulsar_N1_Signature_Codec.
 
 (* ===================================================================
    Combine ABI byte layout (per jasmin/threshold/combine.jazz header).
@@ -90,7 +36,8 @@ op store_bytes (m : mem_t) (base : int) (bs : int list) : mem_t =
 op c_tilde_len    : int = 32.
 op t0_len         : int = 6144.        (* Li2_k=6 * polydeg=256 * 4 *)
 op response_bytes : int = 11168.       (* PULSARM_RESPONSE_BYTES *)
-op sig_len        : int = 3293.        (* PULSARM_SIG_BYTES *)
+(* `sig_len` (3293, the FIPS 204 ML-DSA-65 signature size) lives in
+   Pulsar_N1_Signature_Codec as it is shared with the sign layout. *)
 
 type combine_ptrs_t = {
   c_tilde_ptr     : int;
@@ -101,20 +48,22 @@ type combine_ptrs_t = {
 }.
 
 (* ===================================================================
-   Abstract input/output types (still abstract — represent the
-   protocol-level values; this file pins their byte layout).
+   Abstract input/output types for the combine wire layer.
+   `signature_t` is shared (imported from Pulsar_N1_Signature_Codec).
    =================================================================== *)
 
 type c_tilde_t.
 type t0_vec_t.
 type r2_msg_t.
-type signature_t.
 
-(* Byte encoders/decoders for the per-value types. These remain ops:
-   the concrete byte layout of c_tilde / t0 / r2_msg / signature is
-   defined by the FIPS 204 packing in MLDSA65_Functional.ec. Here we
-   just need their existence + the round-trip property as axioms (one
-   axiom per type, smaller than the previous monolithic ones). *)
+(* Byte encoders/decoders for the combine-specific wire types.
+   `signature_t`'s encoder/decoder lives in
+   Pulsar_N1_Signature_Codec.
+
+   The concrete byte layout of c_tilde / t0 / r2_msg is defined by
+   the FIPS 204 packing in MLDSA65_Functional.ec. Here we just need
+   their existence + the round-trip property as axioms (one axiom
+   per type). *)
 
 op encode_c_tilde   : c_tilde_t -> int list.
 op decode_c_tilde   : int list -> c_tilde_t.
@@ -122,18 +71,14 @@ op encode_t0        : t0_vec_t -> int list.
 op decode_t0        : int list -> t0_vec_t.
 op encode_r2_msg    : r2_msg_t -> int list.
 op decode_r2_msg    : int list -> r2_msg_t.
-op encode_signature : signature_t -> int list.
-op decode_signature : int list -> signature_t.
 
-axiom encode_decode_c_tilde   (x : c_tilde_t)   : decode_c_tilde   (encode_c_tilde   x) = x.
-axiom encode_decode_t0        (x : t0_vec_t)    : decode_t0        (encode_t0        x) = x.
-axiom encode_decode_r2_msg    (x : r2_msg_t)    : decode_r2_msg    (encode_r2_msg    x) = x.
-axiom encode_decode_signature (x : signature_t) : decode_signature (encode_signature x) = x.
+axiom encode_decode_c_tilde (x : c_tilde_t) : decode_c_tilde (encode_c_tilde x) = x.
+axiom encode_decode_t0      (x : t0_vec_t)  : decode_t0      (encode_t0      x) = x.
+axiom encode_decode_r2_msg  (x : r2_msg_t)  : decode_r2_msg  (encode_r2_msg  x) = x.
 
-axiom encode_c_tilde_len   (x : c_tilde_t)   : size (encode_c_tilde   x) = c_tilde_len.
-axiom encode_t0_len        (x : t0_vec_t)    : size (encode_t0        x) = t0_len.
-axiom encode_r2_msg_len    (x : r2_msg_t)    : size (encode_r2_msg    x) = response_bytes.
-axiom encode_signature_len (x : signature_t) : size (encode_signature x) = sig_len.
+axiom encode_c_tilde_len (x : c_tilde_t) : size (encode_c_tilde x) = c_tilde_len.
+axiom encode_t0_len      (x : t0_vec_t)  : size (encode_t0      x) = t0_len.
+axiom encode_r2_msg_len  (x : r2_msg_t)  : size (encode_r2_msg  x) = response_bytes.
 
 (* ===================================================================
    Concrete read/write/layout definitions.
@@ -152,11 +97,11 @@ op read_r2_msgs (m : mem_t) (p : int) (n : int) : r2_msg_t list =
            decode_r2_msg (load_bytes m (p + i * response_bytes) response_bytes))
         n.
 
-op read_signature_at (m : mem_t) (p : int) : signature_t =
-  decode_signature (load_bytes m p sig_len).
-
+(* Thin wrappers around Pulsar_N1_Signature_Codec for backward
+   compatibility with existing Refinement-file consumers. *)
+op read_signature_at (m : mem_t) (p : int) : signature_t = read_sig_at m p.
 op write_signature_at (m : mem_t) (p : int) (s : signature_t) : mem_t =
-  store_bytes m p (encode_signature s).
+  write_sig_at m p s.
 
 (* The layout predicate: memory reads at the given pointers decode to
    the abstract args. *)
@@ -223,92 +168,18 @@ op encode_combine_args (arg_abs : combine_abs_args_t)
      - write_signature_separation (memory disjointness)
    =================================================================== *)
 
-(* Single-byte separation: a write at one address doesn't affect a
-   read at a different address. *)
-lemma load_after_store_disjoint (m : mem_t) (a1 a2 v : int) :
-  a1 <> a2 =>
-  load_byte (store_byte m a1 v) a2 = load_byte m a2.
-proof. exact load_store_other. qed.
-
-(* Bulk-write frame law — PROVED by induction on bs using the
-   recursive store_bytes definition + load_store_other. *)
-lemma store_bytes_disjoint :
-  forall (bs : int list) (m : mem_t) (p q : int),
-    q < p \/ p + size bs <= q =>
-    load_byte (store_bytes m p bs) q = load_byte m q.
-proof.
-  elim => [|b rest IH] m p q Hdisj /=; first by trivial.
-  rewrite IH; first by smt(size_ge0).
-  by rewrite /load_byte /store_byte /=; smt(size_ge0).
-qed.
-
-(* Bulk store-then-load identity — PROVED by induction on bs.
-
-   Proof structure: extensional list equality at each index i.
-   At i = 0 the head byte is what we wrote at p (store_bytes_disjoint
-   skips the tail writes which all touch addresses >= p+1). At
-   i > 0 the IH on rest gives the result.
-
-   The proof uses smt heavily to discharge arithmetic + nth/mkseq
-   side conditions after the structural case-split. *)
-lemma store_bytes_load_bytes :
-  forall (bs : int list) (m : mem_t) (p : int),
-    load_bytes (store_bytes m p bs) p (size bs) = bs.
-proof.
-  elim => [|b rest IH] m p.
-  - by rewrite /load_bytes mkseq0.
-  rewrite /load_bytes /=.
-  apply (eq_from_nth witness).
-  - by rewrite size_mkseq; smt(size_ge0).
-  move=> i Hi.
-  rewrite size_mkseq in Hi.
-  rewrite nth_mkseq /=; first by smt(size_ge0).
-  case (i = 0) => Hi0.
-  - by smt(store_bytes_disjoint load_store_same size_ge0).
-  - have HIH := IH (store_byte m p b) (p + 1).
-    rewrite /load_bytes in HIH.
-    have Hir : 0 <= i - 1 < size rest by smt(size_ge0).
-    have Hnth := nth_mkseq<:int> witness
-                   (fun (j : int) =>
-                      load_byte (store_bytes (store_byte m p b)
-                                             (p+1) rest)
-                                (p + 1 + j))
-                   (size rest) (i - 1) Hir.
-    move: HIH Hnth => HIH Hnth.
-    smt().
-qed.
-
-(* read_after_write_signature: writing a signature at p and then
-   reading it back at p yields the original signature. DERIVED
-   from store_bytes_load_bytes + encode_decode_signature. *)
+(* Backward-compat aliases for combine-side consumers. The actual
+   proofs live in Pulsar_N1_Signature_Codec. *)
 lemma read_after_write_signature
       (m : mem_t) (p : int) (s : signature_t) :
   read_signature_at (write_signature_at m p s) p = s.
-proof.
-  rewrite /read_signature_at /write_signature_at.
-  have Heq :
-    load_bytes (store_bytes m p (encode_signature s)) p sig_len
-    = encode_signature s.
-  - have <-: size (encode_signature s) = sig_len
-      by exact encode_signature_len.
-    by apply store_bytes_load_bytes.
-  by rewrite Heq encode_decode_signature.
-qed.
+proof. rewrite /read_signature_at /write_signature_at; exact read_after_write_sig. qed.
 
-(* write_signature_separation: a write to range [p, p+sig_len)
-   doesn't affect reads at addresses outside that range. DERIVED
-   from store_bytes_disjoint + encode_signature_len. *)
 lemma write_signature_separation
       (m : mem_t) (p : int) (s : signature_t) (q : int) :
   q < p \/ p + sig_len <= q =>
   load_byte (write_signature_at m p s) q = load_byte m q.
-proof.
-  move=> Hdisj.
-  rewrite /write_signature_at.
-  apply store_bytes_disjoint.
-  by have ->: size (encode_signature s) = sig_len
-    by exact encode_signature_len.
-qed.
+proof. rewrite /write_signature_at; exact write_sig_separation. qed.
 
 (* ===================================================================
    encode_combine_args_layout: aggregate encoder correctness.

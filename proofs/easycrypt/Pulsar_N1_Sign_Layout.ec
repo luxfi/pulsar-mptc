@@ -47,12 +47,13 @@
 
 require import AllCore List Int IntDiv SmtMap.
 
-(* Reuse the concrete memory model + proved memory-frame lemmas from
-   the combine layout file. This gives us `mem_t`, `load_byte`,
-   `store_byte`, `load_bytes`, `store_bytes`, and the PROVED
-   lemmas `store_bytes_load_bytes`, `store_bytes_disjoint`,
-   `load_bytes_after_disjoint_write`. *)
-require import Pulsar_N1_Combine_Layout.
+(* Decomplected imports: no longer pulls in combine-specific encoders
+   just to reach the byte-memory model or the FIPS 204 signature
+   codec. Memory primitives live in Pulsar_N1_Memory; the FIPS 204
+   signature_t + read_sig_at / write_sig_at + their proved frame
+   lemmas live in Pulsar_N1_Signature_Codec. *)
+require import Pulsar_N1_Memory.
+require import Pulsar_N1_Signature_Codec.
 
 (* ===================================================================
    Sign ABI size constants.
@@ -67,12 +68,12 @@ require import Pulsar_N1_Combine_Layout.
      ptr_signature →  3293 bytes  (FIPS 204 §3.5.5 sig packing:
                                    c_tilde 32 || z 4*640 || h 83)
 
-   `sig_len_sign` matches `sig_len` in the combine layout file
+   `sig_len_sign` mirrors `Pulsar_N1_Signature_Codec.sig_len`
    (both are the FIPS 204 §3.5.5 ML-DSA-65 signature length).
    =================================================================== *)
 
 op sk_len       : int = 4032.
-op sig_len_sign : int = 3293.        (* = sig_len from combine layout *)
+op sig_len_sign : int = 3293.        (* = sig_len from Signature_Codec *)
 
 (* ===================================================================
    Sign-side abstract input/output types.
@@ -143,11 +144,13 @@ op read_sk (m : mem_t) (p : int) : share_t =
 op read_msg (m : mem_t) (p : int) (l : int) : message_t =
   decode_msg (load_bytes m p l).
 
-op read_sig_sign (m : mem_t) (p : int) : signature_t =
-  decode_signature (load_bytes m p sig_len_sign).
+(* Thin sign-side aliases over Pulsar_N1_Signature_Codec.read_sig_at
+   / write_sig_at. Kept for backward compatibility with the
+   Refinement-file consumers; sig_len_sign = sig_len by construction. *)
+op read_sig_sign (m : mem_t) (p : int) : signature_t = read_sig_at m p.
 
 op write_sig_sign (m : mem_t) (p : int) (s : signature_t) : mem_t =
-  store_bytes m p (encode_signature s).
+  write_sig_at m p s.
 
 (* The layout predicate: memory reads at the given pointers decode
    to the abstract args, and the pointer bundle's `m_len` field
@@ -309,16 +312,7 @@ qed.
 lemma read_after_write_sig_sign
       (mem : mem_t) (p : int) (s : signature_t) :
   read_sig_sign (write_sig_sign mem p s) p = s.
-proof.
-  rewrite /read_sig_sign /write_sig_sign.
-  have Heq :
-    load_bytes (store_bytes mem p (encode_signature s)) p sig_len_sign
-    = encode_signature s.
-  - have <-: size (encode_signature s) = sig_len_sign
-      by rewrite encode_signature_len /sig_len_sign /sig_len.
-    by apply store_bytes_load_bytes.
-  by rewrite Heq encode_decode_signature.
-qed.
+proof. rewrite /read_sig_sign /write_sig_sign; exact read_after_write_sig. qed.
 
 lemma write_sig_sign_separation
       (mem : mem_t) (p : int) (s : signature_t) (q : int) :
@@ -327,10 +321,10 @@ lemma write_sig_sign_separation
 proof.
   move=> Hdisj.
   rewrite /write_sig_sign.
-  apply store_bytes_disjoint.
-  have ->: size (encode_signature s) = sig_len_sign
-    by rewrite encode_signature_len /sig_len_sign /sig_len.
-  exact Hdisj.
+  apply write_sig_separation.
+  (* sig_len_sign and Signature_Codec.sig_len are both 3293 —
+     definitionally equal. *)
+  by rewrite /sig_len_sign in Hdisj; rewrite /sig_len.
 qed.
 
 (* ===================================================================
