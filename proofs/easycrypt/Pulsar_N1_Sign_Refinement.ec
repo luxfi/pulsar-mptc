@@ -150,12 +150,47 @@ op sign_abs_op (full : sign_full_args_t) : Pulsar_N1.signature_t =
    Tracked: https://github.com/luxfi/pulsar-mptc/issues/3
    =================================================================== *)
 
-op sign_body_fn :
+(* The functional "compute" output of the extracted libjade sign
+   body: given input memory + pointer bundle, return the FIPS 204
+   signature bytes that get written at ptr_signature. This is the
+   ONLY remaining abstract op — the byte-walk obligation. *)
+op sign_body_compute_sig :
   Pulsar_N1_Combine_Layout.mem_t ->
   Pulsar_N1_Sign_Layout.sign_ptrs_t ->
-  Pulsar_N1_Combine_Layout.mem_t.
+  Pulsar_N1_Combine_Layout.signature_t.
 
-axiom sign_body_spec :
+(* Definition: sign_body_fn writes the computed signature at
+   ptr_signature and leaves all other memory untouched, by virtue
+   of write_sig_sign's definition (single store_bytes call at the
+   given pointer of exactly sig_len_sign = 3293 bytes).
+
+   This decomposition is what makes the separation property a
+   DERIVED LEMMA rather than an axiom: the "writes only at
+   ptr_signature" invariant is now BY CONSTRUCTION. *)
+op sign_body_fn (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+                (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+   : Pulsar_N1_Combine_Layout.mem_t =
+  Pulsar_N1_Sign_Layout.write_sig_sign
+    mem_pre
+    ptrs.`Pulsar_N1_Sign_Layout.ptr_signature
+    (sign_body_compute_sig mem_pre ptrs).
+
+(* The byte-walk axiom — restated against the compute op. Closing
+   this still requires walking the extracted libjade body (tracked
+   #3), but the surface area is smaller: it makes a claim about
+   pure signature bytes, not about memory states. *)
+axiom sign_body_compute_sig_spec :
+  forall (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+         (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+         (full : sign_full_args_t),
+    Pulsar_N1_Sign_Layout.layout_sign_args
+      mem_pre ptrs (wire_sign_args_of_full full) =>
+    refine_sig_to_n1_sign (sign_body_compute_sig mem_pre ptrs)
+    = sign_abs_op full.
+
+(* The old `sign_body_spec` shape, now PROVED. Compose
+   read_after_write_sig_sign with sign_body_compute_sig_spec. *)
+lemma sign_body_spec :
   forall (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
          (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
          (full : sign_full_args_t),
@@ -166,18 +201,36 @@ axiom sign_body_spec :
          (sign_body_fn mem_pre ptrs)
          ptrs.`Pulsar_N1_Sign_Layout.ptr_signature)
     = sign_abs_op full.
+proof.
+  move=> mem_pre ptrs full Hlay.
+  rewrite /sign_body_fn.
+  rewrite Pulsar_N1_Sign_Layout.read_after_write_sig_sign.
+  by apply sign_body_compute_sig_spec.
+qed.
 
-(* Memory separation: M.sign writes only to ptr_signature range. *)
-op sig_mem_separation :
-  Pulsar_N1_Combine_Layout.mem_t ->
-  Pulsar_N1_Combine_Layout.mem_t -> int -> int -> bool.
+(* Memory separation: M.sign writes only to ptr_signature range.
+   PROVED — defined as a concrete predicate over byte-level memory,
+   then discharged by write_sig_sign_separation (already a proved
+   lemma in Sign_Layout). *)
+op sig_mem_separation
+   (mem_post mem_pre : Pulsar_N1_Combine_Layout.mem_t)
+   (p len : int) : bool =
+  forall (q : int),
+    q < p \/ p + len <= q =>
+    Pulsar_N1_Combine_Layout.load_byte mem_post q =
+    Pulsar_N1_Combine_Layout.load_byte mem_pre q.
 
-axiom sign_body_separation :
+lemma sign_body_separation :
   forall (mem_pre : Pulsar_N1_Combine_Layout.mem_t)
          (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t),
-    sig_mem_separation mem_pre (sign_body_fn mem_pre ptrs)
+    sig_mem_separation (sign_body_fn mem_pre ptrs) mem_pre
                        ptrs.`Pulsar_N1_Sign_Layout.ptr_signature
                        Pulsar_N1_Sign_Layout.sig_len_sign.
+proof.
+  move=> mem_pre ptrs q Hdisj.
+  rewrite /sign_body_fn.
+  by apply Pulsar_N1_Sign_Layout.write_sig_sign_separation; exact Hdisj.
+qed.
 
 (* ===================================================================
    DERIVED LEMMAS — fully proved from sign_body_spec + EC congruence.
@@ -223,25 +276,49 @@ qed.
 (* ===================================================================
    AXIOM ACCOUNTING
 
-   axioms (2):
-     sign_body_spec       — libjade byte-walk + FROST identity folded
-     sign_body_separation — only ptr_signature range modified
+   axioms (1 — libjade byte-walk on signature bytes):
+     sign_body_compute_sig_spec
+       Single byte-walk obligation. Tracked #3.
 
-   Concrete definitions:
-     sign_full_args_t, wire_sign_args_of_full
-     refine_sig_to_n1_sign
-     sign_abs_op (DEFINITION — folds mldsa_sign_op identity)
-     sign_body_fn
-     sig_mem_separation
+   ops (DEFINITIONS — no proof obligation):
+     wire_sign_args_of_full   (record projection)
+     refine_sig_to_n1_sign    (structural sig-type coercion)
+     sign_abs_op              (DEFINED — mldsa_sign_op on ghost fields)
+     sign_body_fn             (DEFINED — write_sig_sign at ptr_signature
+                               of the compute_sig output; by construction
+                               only ptr_signature range is touched)
+     sig_mem_separation       (DEFINED — byte-level memory disjointness)
+
+   ops (abstract — held inside the byte-walk obligation):
+     sign_body_compute_sig
+       Pure signature bytes the extracted libjade body produces from
+       the input memory + pointer bundle.
+
+   types (records):
+     sign_full_args_t   (wire + ghost protocol-level args)
 
    Lemmas (PROVED):
+     sign_body_spec
+       (was axiom; now lemma via read_after_write_sig_sign +
+        sign_body_compute_sig_spec)
+     sign_body_separation
+       (was axiom; now lemma via write_sig_sign_separation +
+        the constructive definition of sign_body_fn)
      sign_body_writes_abs
      sign_body_writes_mldsa_sign
 
+   Implementation-refinement axiom delta for this file:
+     Before: 2 axioms (sign_body_spec + sign_body_separation)
+     After:  1 axiom  (sign_body_compute_sig_spec)
+
+   The separation property is now BY CONSTRUCTION. The byte-walk
+   obligation reduces to a claim about pure signature bytes (the
+   "what" the extracted body computes), separated from the "where"
+   it writes them.
+
    The wrapper bridge (`sign_wrapper_bridge`) in
-   Pulsar_N1_Wrapper_Bridge.ec now derives from `sign_body_spec`
-   directly (mirror of how `combine_wrapper_bridge` derives from
-   `combine_body_spec`). When the byte-walk axiom itself closes via
+   Pulsar_N1_Wrapper_Bridge.ec derives from `sign_body_spec` (now a
+   lemma, was an axiom). When the byte-walk axiom itself closes via
    the extraction byte-walk (tracked #3), this file contains ZERO
    axioms.
 

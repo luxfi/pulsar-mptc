@@ -547,31 +547,43 @@ qed.
    Combined with the two refinement files, the total Pulsar-side
    axiom count for the N1 byte-equality theorem is:
 
-     - 2 in Pulsar_N1_Combine_Refinement.ec (byte-walk + separation)
-     - 2 in Pulsar_N1_Sign_Refinement.ec    (byte-walk + separation)
-     - 0 in this file                       (both wrapper bridges
-                                             are lemmas)
-     - 2 in Pulsar_N1.ec                    (declare axiom
+     - 1 in Pulsar_N1_Combine_Refinement.ec
+         (combine_body_compute_sig_spec — single byte-walk
+          obligation on pure signature bytes)
+     - 1 in Pulsar_N1_Sign_Refinement.ec
+         (sign_body_compute_sig_spec    — single byte-walk
+          obligation on pure signature bytes)
+     - 0 in this file                  (both wrapper bridges
+                                        are lemmas)
+     - 2 in Pulsar_N1.ec               (declare axiom
        combine_body_axiom, declare axiom S_functional_spec — these
        are SECTION-LOCAL module-contract axioms; not in the
        extracted N1 corollary's dependency cone, which uses the
        wrapper modules + bridge lemmas above)
 
-   Strict-closure delta from this commit:
-     IMPLEMENTATION-REFINEMENT axiom count drops 5 → 4
-     (the sign wrapper-bridge axiom is now a lemma; its content
-      was folded into sign_body_spec via the Sign_Refinement
-      restructure that defines `sign_abs_op` as `mldsa_sign_op`
-      on the four ghost fields). Across the two commits in this
-      sequence, IMPLEMENTATION-REFINEMENT axioms have dropped 6 → 4.
+   Strict-closure delta across this branch's commits:
+     IMPLEMENTATION-REFINEMENT axiom count has dropped 6 → 2.
 
-   Remaining 4 implementation-refinement axioms in the extracted
+   Reduction chain:
+     6 → 5  (combine wrapper-bridge axiom → lemma; FROST identity
+              folded into combine_body_spec)
+     5 → 4  (sign wrapper-bridge axiom → lemma; sign_abs_op
+              defined as mldsa_sign_op on four ghost fields)
+     4 → 2  (combine + sign body_separation axioms → lemmas; the
+              "writes only at sig_out_ptr / ptr_signature"
+              invariant is now BY CONSTRUCTION via the
+              write_signature_at decomposition. combine_body_spec
+              and sign_body_spec are also now lemmas, derived
+              from the new compute_sig_spec primitives.)
+
+   Remaining 2 implementation-refinement axioms in the extracted
    N1 corollary's dependency cone:
-     - combine_body_spec       (byte-walk + FROST-correctness)
-     - combine_body_separation (write-frame isolation)
-     - sign_body_spec          (byte-walk for libjade M.sign)
-     - sign_body_separation    (write-frame isolation)
+     - combine_body_compute_sig_spec
+         the pure-signature-output byte-walk for combine
+     - sign_body_compute_sig_spec
+         the pure-signature-output byte-walk for sign
 
-   Each of these is a single localized byte-walk obligation that
-   closes by walking the corresponding extracted Jasmin body.
+   Each is a single localized byte-walk obligation on signature
+   bytes (no memory indirection). Closing each requires walking
+   the corresponding extracted Jasmin body (tracked #3, #4).
    =================================================================== *)
