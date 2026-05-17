@@ -285,6 +285,66 @@ proof.
 qed.
 
 (* ===================================================================
+   Concrete extracted N1 corollary.
+
+   Pulsar_N1.pulsar_n1_byte_equality is the GENERIC theorem (proved
+   inside `section ClassN1`, parametric on abstract `T : Pulsar_Threshold`
+   + `S : MLDSA65_Sign` + the two `declare axiom`s combine_body_axiom
+   / S_functional_spec). After section closure, it is exported as a
+   universally-quantified lemma over (S, T, equiv-on-T.combine,
+   equiv-on-S.sign).
+
+   This corollary instantiates the section parameters with the
+   concrete wrapper modules and supplies the equivalence hypotheses
+   from the wrapper bridge lemmas above. The result is a CONCRETE
+   N1 byte-equality theorem that does NOT depend on raw
+   `combine_body_axiom` / `S_functional_spec` — those are discharged
+   here via `combine_wrapper_equiv_CombineAbs` /
+   `sign_wrapper_equiv_FIPS204Sign`.
+
+   Trust boundary of this corollary:
+     - 2 byte-walk + separation axioms in
+       Pulsar_N1_Combine_Refinement.ec
+     - 2 byte-walk + separation axioms in
+       Pulsar_N1_Sign_Refinement.ec
+     - 2 ABI bridge identity axioms in this file
+     - 0 module-contract axioms (NO declare axiom combine_body_axiom
+       / S_functional_spec in scope here)
+     - All Lagrange / Shamir / FIPS-204 algebraic axioms shared with
+       the generic theorem.
+   =================================================================== *)
+
+lemma pulsar_n1_byte_equality_extracted :
+  equiv [
+    Pulsar_N1.ThresholdRun(CombineExtractedWrapper).run
+    ~ Pulsar_N1.SinglePartyRun(SignExtractedWrapper).run :
+        ={group_pk, shares, quorum, m, ctx, rho_rnd}
+      /\ uniq quorum{1}
+      /\ size shares{1} = size quorum{1}
+    ==> ={res}
+  ].
+proof.
+  (* The generic theorem after section closure takes the abstract
+     module + axiom parameters as explicit arguments. We pass:
+       - S := SignExtractedWrapper
+       - T := CombineExtractedWrapper
+       - combine_body_axiom : equiv [ T.combine ~ CombineAbs.combine
+                                      : ={arg} ==> ={res} ]
+         discharged by combine_wrapper_equiv_CombineAbs
+       - S_functional_spec  : equiv [ S.sign ~ FIPS204Sign.sign
+                                      : ={arg} ==> ={res} ]
+         discharged by sign_wrapper_equiv_FIPS204Sign.
+
+     EasyCrypt's section mechanism elaborates the dependency order
+     and we apply via `proc` + `call` chain mirroring the generic
+     proof. *)
+  apply (Pulsar_N1.pulsar_n1_byte_equality
+           SignExtractedWrapper CombineExtractedWrapper
+           combine_wrapper_equiv_CombineAbs
+           sign_wrapper_equiv_FIPS204Sign).
+qed.
+
+(* ===================================================================
    AXIOM ACCOUNTING (this file)
 
    This file declares:

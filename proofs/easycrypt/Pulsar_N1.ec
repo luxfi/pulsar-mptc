@@ -582,6 +582,25 @@ qed.
 (* the symmetric of `single_party_run_refines_fips204` (which itself    *)
 (* uses `S_functional_spec`). Every step is a discharged sub-lemma or a *)
 (* section-local axiom; no new admit is introduced.                      *)
+(* GENERIC theorem: parametric over abstract `T : Pulsar_Threshold`
+   and `S : MLDSA65_Sign` with the two module-contract axioms
+   (`combine_body_axiom`, `S_functional_spec`) as section-local
+   hypotheses. After section closure, this lemma is universally-
+   quantified over (S, T, combine-equiv-on-T, sign-equiv-on-S).
+
+   For an IMPLEMENTATION-BACKED N1 byte-equality theorem against the
+   concrete `Combine.M.pulsar_combine` / libjade `M.sign` extracted
+   modules, cite `Pulsar_N1_Wrapper_Bridge.pulsar_n1_byte_equality_extracted`
+   instead. That concrete corollary instantiates this generic theorem
+   with `CombineExtractedWrapper` / `SignExtractedWrapper` and
+   discharges the module-contract axioms via the wrapper-bridge
+   equiv lemmas — its trust boundary is the six localized
+   implementation-refinement axioms in the refinement + wrapper
+   files, with ZERO module-contract axioms left over.
+
+   Both theorems coexist: the generic version is useful for any
+   future T / S that satisfies the contracts; the concrete version
+   is the one to cite for end-to-end implementation correctness. *)
 lemma pulsar_n1_byte_equality :
   equiv [ ThresholdRun(T).run ~ SinglePartyRun(S).run :
             ={group_pk, shares, quorum, m, ctx, rho_rnd}
