@@ -120,6 +120,7 @@ EC_FILES=(
     "$EC_ROOT/Pulsar_N1.ec"
     "$EC_ROOT/Pulsar_N4.ec"
     "$EC_ROOT/lemmas/Pulsar_CT.ec"
+    "$EC_ROOT/lemmas/MLDSA65_Functional.ec"
 )
 
 # Admit budget — the count of `admit.` source lines across the EC
@@ -162,6 +163,21 @@ if [[ $ADMIT_COUNT -gt $ADMIT_BUDGET ]]; then
     echo "           or update ADMIT_BUDGET in this script (and BLOCKERS.md)."
     exit 2
 fi
+
+# Regression guard: the behavioral `declare axiom reshare_preserves_secret`
+# was removed in favour of a concrete `ReshareHonest` module + an algebraic
+# lemma `reshare_preserves_secret_honest` reducing to Shamir-zero
+# re-randomisation. Reintroducing the bad axiom shape would silently
+# re-open the trust footprint. CI grep-fail if it ever comes back.
+echo "==> Regression guard: behavioral reshare_preserves_secret axiom"
+if grep -RE "^[[:space:]]*declare axiom[[:space:]]+reshare_preserves_secret" \
+   "$EC_ROOT" >/dev/null 2>&1 ; then
+    echo "    [FAIL] behavioral reshare_preserves_secret axiom reintroduced"
+    echo "           (must remain a discharged lemma on ReshareHonest, not"
+    echo "            a declare axiom on an abstract R)."
+    exit 2
+fi
+echo "    [ok]   no abstract reshare_preserves_secret axiom present"
 
 if [[ $have_ec -eq 0 ]]; then
     echo "    [skip] easycrypt not on PATH; admit-count budget enforced statically"

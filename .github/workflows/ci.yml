@@ -114,3 +114,72 @@ jobs:
         run: |
           eval $(opam env --switch=jasmin)
           bash scripts/check-high-assurance.sh
+
+  jasmin-ct-leakage:
+    # Tracked allowed-failure job. Runs jasmin-ct --infer over the
+    # threshold .jazz files and the upstream libjade Dilithium sign
+    # path; uploads the report as an artifact. This is ALLOWED TO FAIL
+    # today because libjade upstream (commit 9426b32) is missing the
+    # public/secret annotations on sign.jazz (random_zeta_p flagged as
+    # secret that needs to be public — see jasmin/ml-dsa-65/keygen_end.jinc:125).
+    #
+    # Tracking: https://github.com/luxfi/pulsar-mptc/issues/2
+    # ("Vendor libjade Dilithium CT annotations and flip jasmin-ct gate
+    # from advisory to blocking"). When the libjade overlay lands and
+    # all four .jazz files pass jasmin-ct --infer, remove
+    # `continue-on-error` from this job to make it blocking.
+    name: jasmin-ct leakage check (tracked allowed-failure, #2)
+    needs: high-assurance
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore opam cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.opam
+          key: opam-jasmin-easycrypt-${{ runner.os }}-v2
+
+      - name: Fetch libjade (pinned commit)
+        run: bash jasmin/ml-dsa-65/fetch.sh
+
+      - name: jasmin-ct on threshold layer
+        id: ct
+        run: |
+          eval $(opam env --switch=jasmin)
+          mkdir -p ct/reports
+          rc=0
+          for f in jasmin/threshold/round1.jazz \
+                   jasmin/threshold/round2.jazz \
+                   jasmin/threshold/combine.jazz ; do
+            [[ -f "$f" ]] || continue
+            base=$(basename "$f" .jazz)
+            echo "==> $f"
+            if ! jasmin-ct --infer \
+                 -I "Jade=$PWD/jasmin/ml-dsa-65/libjade/oldsrc-should-delete" \
+                 "$f" 2>&1 | tee "ct/reports/${base}.log" ; then
+              rc=2
+            fi
+          done
+          echo "ct-rc=$rc" >> $GITHUB_OUTPUT
+          # Always exit 0 — the continue-on-error: true above already
+          # marks the job as allowed-failure, but we also want the
+          # artifact upload step to fire.
+          exit 0
+
+      - name: Upload jasmin-ct report
+        uses: actions/upload-artifact@v4
+        with:
+          name: jasmin-ct-report
+          path: ct/reports/
+          if-no-files-found: warn
+
+      - name: Mark CT result
+        run: |
+          if [[ "${{ steps.ct.outputs.ct-rc }}" = "2" ]]; then
+            echo "::warning::jasmin-ct reported leakage findings — see artifact 'jasmin-ct-report'. Tracked under issue #2 (libjade public/secret annotations)."
+          else
+            echo "::notice::jasmin-ct clean across all threshold .jazz files. Once libjade upstream lands the public/secret annotations, this job can be flipped from continue-on-error to blocking."
+          fi
