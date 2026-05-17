@@ -116,21 +116,21 @@ op refine_sig_to_n1_sign :
    `combine` / `sign` procs use end-to-end.
    =================================================================== *)
 
-(* For the combine wrapper: applying the byte-walk effect of
-   `combine_body_fn` to the encoded args and decoding the resulting
-   signature equals `CombineAbs.combine` on the original abstract
-   inputs. This is the bridge identity. It composes:
-     - encode_combine_args (definition)
-     - combine_body_fn (refinement file `op`)
-     - read_signature_at (refinement file `op`)
-     - refine_sig_to_n1 (definition)
-     - combine_abs_op (refinement file `op` ≡ CombineAbs.combine
-       result via the FIPS 204 packing identity).
+(* `combine_wrapper_bridge` remains a single top-level `axiom` for
+   the wrapper-bridge identity. Splitting it into smaller atomic
+   pieces (encode-layout-correct + abstract-decode-identity +
+   composition-via-combine_body_spec) ADDS to the trust surface
+   rather than reducing it, because the constituent pieces are
+   not currently derivable from existing claims (they each carry
+   independent semantic content about encode_combine_args /
+   refine_sig_to_n1 / combine_abs_op).
 
-   Closing this axiom — once `combine_body_spec` itself closes —
-   requires a mechanical structural lemma showing that the encode
-   step and the FIPS 204 packing compose to the identity on the
-   wire byte representation. *)
+   The structural improvement that WOULD reduce trust requires
+   giving `encode_combine_args` and `refine_sig_to_n1` concrete
+   EC bodies tied to the extracted memory model + FIPS 204 §3.7
+   packing — then encode-layout-correct becomes definitional and
+   abstract-decode-identity becomes a structural lemma. That work
+   is part of the same byte-walk that closes `combine_body_spec`. *)
 axiom combine_wrapper_bridge :
   forall (gpk : Pulsar_N1.group_pk_t)
          (m : Pulsar_N1.message_t)
