@@ -36,7 +36,7 @@ import (
 	"crypto/rand"
 	"unsafe"
 
-	"github.com/luxfi/pulsar/ref/go/pkg/pulsar"
+	"github.com/luxfi/pulsar-mptc/ref/go/pkg/pulsar"
 )
 
 // Long-lived fixture: a real (n=3, t=2) threshold ceremony at
@@ -79,10 +79,29 @@ func pulsar_combine_ct_setup() C.int {
 		committee[i] = pulsar.NodeID{byte(i + 1)}
 	}
 
+	// Identity fixture (BLOCKERS.md CR-8): every party gets a
+	// long-term ML-KEM-768 + ML-DSA-65 identity, and an
+	// IdentityDirectory carries every peer's published KEM pubkey
+	// so Round-1 envelopes can be sealed.
+	identities := make(map[pulsar.NodeID]*pulsar.IdentityKey, n)
+	pubs := make(map[pulsar.NodeID]*pulsar.IdentityPublicKey, n)
+	for _, id := range committee {
+		ik, err := pulsar.GenerateIdentity(rand.Reader)
+		if err != nil {
+			return 10
+		}
+		identities[id] = ik
+		pubs[id] = ik.PublicKey()
+	}
+	directory, err := pulsar.NewIdentityDirectory(pubs)
+	if err != nil {
+		return 11
+	}
+
 	// DKG.
 	dkgSessions := make([]*pulsar.DKGSession, n)
 	for i := 0; i < n; i++ {
-		s, err := pulsar.NewDKGSession(params, committee, t, committee[i], rand.Reader)
+		s, err := pulsar.NewDKGSession(params, committee, t, committee[i], identities[committee[i]], directory, rand.Reader)
 		if err != nil {
 			return 1
 		}
@@ -130,9 +149,29 @@ func pulsar_combine_ct_setup() C.int {
 	if _, err := rand.Read(sid[:]); err != nil {
 		return 5
 	}
+
+	// Per-pair session keys for the quorum (BLOCKERS.md CR-7).
+	// SymmetricSession runs the two-sided EstablishSession on each
+	// (a, b) pair so both endpoints derive the same 32-byte key.
+	sessionKeys := make(map[pulsar.NodeID]map[pulsar.NodeID][32]byte, t)
+	for _, id := range quorum {
+		sessionKeys[id] = make(map[pulsar.NodeID][32]byte, t-1)
+	}
+	for i := 0; i < t; i++ {
+		for j := i + 1; j < t; j++ {
+			a, b := quorum[i], quorum[j]
+			key, err := pulsar.SymmetricSession(a, identities[a], b, identities[b], sid, msg)
+			if err != nil {
+				return 12
+			}
+			sessionKeys[a][b] = key
+			sessionKeys[b][a] = key
+		}
+	}
+
 	signers := make([]*pulsar.ThresholdSigner, t)
 	for i := 0; i < t; i++ {
-		s, err := pulsar.NewThresholdSigner(params, sid, 1, quorum, shares[i], msg, rand.Reader)
+		s, err := pulsar.NewThresholdSigner(params, sid, 1, quorum, shares[i], sessionKeys[shares[i].NodeID], msg, rand.Reader)
 		if err != nil {
 			return 6
 		}

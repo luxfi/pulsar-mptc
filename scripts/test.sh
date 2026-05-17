@@ -49,4 +49,18 @@ echo "==> Class N1 interoperability — cross-validate KAT signatures against"
 echo "    cloudflare/circl FIPS 204 verifier (independent of reference impl)"
 go test -count=1 ./test/interoperability/...
 
+# Layer-6 (fuzzing) smoke. Per-push gate: 5s per target; deep
+# fuzzing runs nightly via Makefile.fuzz fuzz-nightly. Skips silently
+# on Go < 1.18 (no -fuzz support).
+echo "==> Fuzz smoke (Layer 6)"
+GO_VER="$(go env GOVERSION 2>/dev/null || true)"
+case "$GO_VER" in
+    go1.1[89]*|go1.[2-9][0-9]*|go[2-9].*)
+        make -C ref/go/pkg/pulsar -f Makefile.fuzz fuzz-smoke
+        ;;
+    *)
+        echo "    [info] Go $GO_VER does not support -fuzz; skipping"
+        ;;
+esac
+
 echo "==> done"

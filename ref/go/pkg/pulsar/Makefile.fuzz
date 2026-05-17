@@ -1,0 +1,46 @@
+# Pulsar fuzz harness — Layer-6 (fuzzing) entry points.
+#
+# fuzz-smoke runs every Fuzz target in the package for a short window.
+# This is the per-push gate: it catches a regression that breaks the
+# fuzz harness or surfaces an obvious panic in the parser surface.
+#
+# fuzz-nightly is the deep run (~1h per target). Wire it into the
+# nightly job that preserves the discovered corpus under
+# testdata/fuzz/<target>/.
+#
+# Invocation:
+#   make -C ref/go/pkg/pulsar -f Makefile.fuzz fuzz-smoke
+#   make -C ref/go/pkg/pulsar -f Makefile.fuzz fuzz-nightly
+#
+# The repo's top-level go.work is disabled here because the package is
+# in module-only build mode (see scripts/test.sh).
+
+PKG := github.com/luxfi/pulsar-mptc/ref/go/pkg/pulsar
+SMOKE_TIME := 5s
+NIGHTLY_TIME := 1h
+
+# List every Fuzz target in this package. Keep in sync with
+# fuzz_test.go.
+FUZZ_TARGETS := \
+    FuzzUnmarshalAbortEvidence \
+    FuzzVerifySignature \
+    FuzzVerifyCtx \
+    FuzzShareFromBytes \
+    FuzzParamsFor
+
+.PHONY: fuzz-smoke fuzz-nightly fuzz-list
+
+fuzz-list:
+	@for t in $(FUZZ_TARGETS); do echo $$t; done
+
+fuzz-smoke:
+	@for t in $(FUZZ_TARGETS); do \
+	    echo "==> fuzz-smoke $$t ($(SMOKE_TIME))"; \
+	    GOWORK=off go test -run=^$$ -fuzz=^$$t$$ -fuzztime=$(SMOKE_TIME) $(PKG) || exit 1; \
+	done
+
+fuzz-nightly:
+	@for t in $(FUZZ_TARGETS); do \
+	    echo "==> fuzz-nightly $$t ($(NIGHTLY_TIME))"; \
+	    GOWORK=off go test -run=^$$ -fuzz=^$$t$$ -fuzztime=$(NIGHTLY_TIME) $(PKG) || exit 1; \
+	done

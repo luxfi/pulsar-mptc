@@ -144,6 +144,7 @@ EC_FILES=(
     "$EC_ROOT/Pulsar_N1_Sign_Refinement.ec"
     "$EC_ROOT/Pulsar_N1_Wrapper_Bridge.ec"
     "$EC_ROOT/Pulsar_N1_Combine_Layout.ec"
+    "$EC_ROOT/Pulsar_N1_Sign_Layout.ec"
 )
 
 # Admit budget — the count of `admit.` source lines across the EC
@@ -332,6 +333,7 @@ else
     # still useful even when the cgo harness is mid-refactor.
     BUILD_LOG="$CT_ROOT/results/build.log"
     if ( cd "$CT_ROOT" && make -s all ) >"$BUILD_LOG" 2>&1; then
+        echo "    [ok]  harness build clean (libpulsar_verify + libpulsar_combine)"
         echo "    [check] dudect_verify (smoke: 10000 samples/batch × 4 batches)"
         ( cd "$CT_ROOT" && ./dudect_verify ) \
             >"$CT_ROOT/results/verify.stdout" 2>"$CT_ROOT/results/verify.log"

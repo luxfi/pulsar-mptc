@@ -12,6 +12,12 @@ ct/dudect/libpulsarm_verify.h
 ct/dudect/libpulsarm_combine.so
 ct/dudect/libpulsarm_combine.dylib
 ct/dudect/libpulsarm_combine.h
+ct/dudect/libpulsar_verify.so
+ct/dudect/libpulsar_verify.dylib
+ct/dudect/libpulsar_verify.h
+ct/dudect/libpulsar_combine.so
+ct/dudect/libpulsar_combine.dylib
+ct/dudect/libpulsar_combine.h
 ct/dudect/results/*.log
 ct/dudect/results/*.stdout
 spec/*.pdf

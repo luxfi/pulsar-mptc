@@ -37,7 +37,7 @@ import (
 	"crypto/rand"
 	"unsafe"
 
-	"github.com/luxfi/pulsar/ref/go/pkg/pulsar"
+	"github.com/luxfi/pulsar-mptc/ref/go/pkg/pulsar"
 )
 
 // Long-lived fixture. The dudect main loop calls
