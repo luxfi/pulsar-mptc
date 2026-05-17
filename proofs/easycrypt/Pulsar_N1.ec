@@ -272,11 +272,32 @@ module FIPS204Sign : MLDSA65_Sign = {
   }
 }.
 
-(* Functional spec correspondence -- the libjade hand-off point.       *)
-axiom mldsa_sign_axiom :
-  forall (sk : share_t) (m : message_t) (c : ctx_t) (r : randomness_t) &m,
-    Pr[FIPS204Sign.sign(sk, m, c, r) @ &m :
-        res = mldsa_sign_op sk m c r] = 1%r.
+(* Functional spec correspondence -- DISCHARGED as a lemma.            *)
+(*                                                                      *)
+(* The original axiom was the libjade hand-off point. With the in-house *)
+(* `MLDSA65_Functional.ec` mechanization (FIPS 204 §3 spec at the EC-op *)
+(* level), the role of `FIPS204Sign.sign` collapses to a pure-functional *)
+(* wrapper around the `mldsa_sign_op` operator: the body literally       *)
+(* returns `mldsa_sign_op sk m ctx rho_rnd`. The Pr-equality is then     *)
+(* a deterministic Hoare assertion closed by `byphoare` + skip.          *)
+(*                                                                      *)
+(* This removes ONE axiom from the trust footprint: the cryptographic   *)
+(* content (Module-LWE rejection-sampling identity) sits inside         *)
+(* `mldsa_sign_op` (the abstract operator) and the section-local        *)
+(* refinement axioms (`combine_body_axiom`, `S_functional_spec`,        *)
+(* `reshare_preserves_secret`), which are the actual libjade /          *)
+(* Jasmin-extraction hand-off points.                                   *)
+lemma mldsa_sign_axiom :
+  forall (sk0 : share_t) (m0 : message_t) (c0 : ctx_t)
+         (r0 : randomness_t) &mm,
+    Pr[FIPS204Sign.sign(sk0, m0, c0, r0) @ &mm :
+        res = mldsa_sign_op sk0 m0 c0 r0] = 1%r.
+proof.
+  move=> sk0 m0 c0 r0 &mm.
+  byphoare (_: sk = sk0 /\ m = m0 /\ ctx = c0 /\ rho_rnd = r0
+            ==> res = mldsa_sign_op sk0 m0 c0 r0) => //.
+  proc; wp; skip => />.
+qed.
 
 (* -------------------------------------------------------------------- *)
 (* Pulsar threshold oracle interface                                  *)
