@@ -118,16 +118,23 @@ jobs:
   jasmin-ct-leakage:
     # Tracked allowed-failure job. Runs jasmin-ct --infer over the
     # threshold .jazz files and the upstream libjade Dilithium sign
-    # path; uploads the report as an artifact. This is ALLOWED TO FAIL
-    # today because libjade upstream (commit 9426b32) is missing the
-    # public/secret annotations on sign.jazz (random_zeta_p flagged as
-    # secret that needs to be public — see jasmin/ml-dsa-65/keygen_end.jinc:125).
+    # path; uploads the report as an artifact.
+    #
+    # CURRENT FINDINGS (per jasmin-ct --infer):
+    #   - jasmin/threshold/round1.jazz:232  pk_seed (public by spec,
+    #                                       loaded from memory)
+    #   - jasmin/threshold/round2.jazz:358  mkey_rsp (public MAC key)
+    #   - jasmin/threshold/combine.jazz:226 c_tilde_rsp (FIPS 204 challenge)
+    #   - libjade Dilithium sign:           random_zeta_p (libjade gap)
+    #
+    # All four are values loaded from memory that the algorithm treats
+    # as public; jasmin-ct's --infer mode defaults memory reads to
+    # `secret`, requiring explicit annotations the code does not yet have.
     #
     # Tracking: https://github.com/luxfi/pulsar-mptc/issues/2
-    # ("Vendor libjade Dilithium CT annotations and flip jasmin-ct gate
-    # from advisory to blocking"). When the libjade overlay lands and
-    # all four .jazz files pass jasmin-ct --infer, remove
-    # `continue-on-error` from this job to make it blocking.
+    # (corrected scope: not only libjade, also threshold .jazz files).
+    # When all four files pass `jasmin-ct --infer` with exit 0, remove
+    # `continue-on-error: true` to make this job blocking.
     name: jasmin-ct leakage check (tracked allowed-failure, #2)
     needs: high-assurance
     runs-on: ubuntu-latest

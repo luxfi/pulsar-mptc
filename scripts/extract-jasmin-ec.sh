@@ -19,6 +19,14 @@ JAZZ_FILES=(
     "$REPO_ROOT/jasmin/threshold/combine.jazz"
 )
 
+# Libjade Dilithium sign — extraction target for the libjade ↔ FIPS 204
+# refinement (the discharge path for Pulsar_N1's S_functional_spec).
+# Conditional on libjade being present at the pinned commit.
+LIBJADE_DILITHIUM_SIGN="$LIBJADE/crypto_sign/dilithium/dilithium3/amd64/ref/sign.jazz"
+if [[ -f "$LIBJADE_DILITHIUM_SIGN" ]]; then
+    JAZZ_FILES+=("$LIBJADE_DILITHIUM_SIGN")
+fi
+
 if ! command -v jasmin2ec >/dev/null 2>&1; then
     echo "[skip] jasmin2ec not on PATH"
     echo "       install: opam install jasmin --switch=jasmin"
