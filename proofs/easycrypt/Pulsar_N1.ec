@@ -460,12 +460,45 @@ op unpack_sk  : share_t -> unpacked_sk_t.
 
 (* The byte-layout input to the ExternalMu SHAKE call: per FIPS 204
    §5.4.1, the layout is `IntegerToBytes(0, 1) || IntegerToBytes(|ctx|, 1)
-   || ctx || M`. Abstract type here; concrete byte serialisation
-   lands when `MLDSA65_Functional` exposes the byte ops at the
-   `bits` level. *)
-type mu_shake_input_t.
+   || ctx || M`.
 
-op external_mu_layout : message_t -> ctx_t -> mu_shake_input_t.
+   v9: concretized to `int list` (byte sequence). The previous
+   abstract `type mu_shake_input_t.` declaration is replaced by a
+   concrete type alias, and `external_mu_layout` is converted from
+   an abstract op to a constructive definition over per-component
+   byte ops (`message_bytes`, `context_bytes`). The `*_body_mu_input`
+   ops on the refinement sides can now talk about CONCRETE BYTES
+   rather than an abstract value — exposing the byte structure for
+   further closure attempts. *)
+type mu_shake_input_t = int list.
+
+(* Per-value byte encodings for the message and context. Abstract
+   ops here; concrete shapes pinned at the wrapper layer. Both
+   produce `int list` — the FIPS 204 specifies them as opaque
+   byte strings at this level. *)
+op message_bytes : message_t -> int list.
+op context_bytes : ctx_t     -> int list.
+
+(* FIPS 204 §5.4.1 bounds the context length to a single byte
+   (max 255). The honest implementation must reject longer
+   contexts at the wrapper layer; here we surface the bound as a
+   single axiom that downstream consumers may use to discharge
+   FIPS 204 size invariants. *)
+axiom context_bytes_len_bound :
+  forall (ctx : ctx_t),
+    0 <= size (context_bytes ctx) <= 255.
+
+(* FIPS 204 §5.4.1 ExternalMu byte layout — now a constructive
+   DEFINITION. Components, in order:
+     1.  0x00          (FIPS 204 §5.4.1 prefix byte for pure mode)
+     2.  |ctx|         (single byte; bounded above by 255)
+     3.  ctx_bytes     (the context bytes themselves)
+     4.  m_bytes       (the message bytes)
+   This decomposition lets the refinement files split their
+   mu_input byte-walk obligations along per-component lines. *)
+op external_mu_layout (m : message_t) (ctx : ctx_t) : mu_shake_input_t =
+  [0; size (context_bytes ctx)] ++ context_bytes ctx ++ message_bytes m.
+
 op shake256_to_mu      : mu_shake_input_t -> mu_t.
 
 op compute_mu (m : message_t) (ctx : ctx_t) : mu_t =
