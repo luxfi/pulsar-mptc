@@ -96,32 +96,74 @@ pulsar/
 ├── jasmin/                   high-assurance Jasmin sources (initial track)
 │   ├── ml-dsa-65/             libjade single-party baseline (fetched on demand)
 │   └── threshold/             Pulsar threshold layer (round1 + round2 + combine implemented)
-├── proofs/easycrypt/         high-assurance EasyCrypt theories (theory shells; reduction core remains `admit`)
-│   ├── Pulsar_N1.ec          Class N1 byte-equality reduction
-│   ├── Pulsar_N4.ec          Class N4 public-key preservation
-│   └── lemmas/Pulsar_CT.ec   constant-time obligations
-├── scripts/                  build / test / bench / gen_vectors / sbom / check-high-assurance
+├── proofs/easycrypt/         high-assurance EasyCrypt theories
+│   ├── Pulsar_N1.ec                       Class N1 protocol-level spec + generic byte-equality theorem
+│   ├── Pulsar_N4.ec                       Class N4 reshare public-key preservation
+│   ├── Pulsar_N1_Memory.ec                byte-memory model (0 axioms)
+│   ├── Pulsar_N1_Signature_Codec.ec       FIPS 204 sig codec
+│   ├── Pulsar_N1_Combine_Layout.ec        combine ABI byte layout
+│   ├── Pulsar_N1_Sign_Layout.ec           libjade sign ABI byte layout
+│   ├── Pulsar_N1_Combine_Refinement.ec    combine refinement scaffold
+│   ├── Pulsar_N1_Sign_Refinement.ec       sign refinement scaffold + ctx/rho_rnd ghost contract
+│   ├── Pulsar_N1_Combine_Wrapper.ec       combine wrapper module + bridge lemma
+│   ├── Pulsar_N1_Sign_Wrapper.ec          sign wrapper module + bridge lemma
+│   ├── Pulsar_N1_Extracted.ec             concrete extracted N1 byte-equality corollary
+│   ├── lemmas/MLDSA65_Functional.ec       FIPS 204 functional ops
+│   ├── lemmas/Pulsar_CT.ec                constant-time obligations
+│   └── README.md                          trust-boundary dashboard + per-file concerns
+├── proofs/lean-easycrypt-bridge.md        Lean↔EC algebraic-bridge correspondence
+├── scripts/
+│   ├── check-high-assurance.sh            per-push proof gate orchestrator
+│   ├── test.sh                            per-push test gate orchestrator
+│   ├── nightly.sh                         cron-scheduled REAL-budget gate
+│   │                                        (1h fuzz + 10^9 dudect)
+│   ├── check-lean-bridge.sh               Lean↔EC bridge guard
+│   ├── checks/                            per-check scripts (independently runnable)
+│   │   ├── jasmin.sh, ec-{admits,compile,regressions,refinement-scaffold}.sh,
+│   │   ├── extraction.sh
+│   │   └── test/{go-unit,no-secret-logs,kat,interop}.sh
+│   └── build.sh / bench.sh / sbom.sh / gen_vectors.sh / extract-jasmin-ec.sh
 └── go.mod
 ```
 
 ## Quickstart
 
 The repository is **live and self-validating**. A fresh clone runs the
-full submission gate (build + test + KAT replay + Class N1 interop)
-end-to-end in under 30 seconds:
+full per-push submission gate end-to-end in under 60 seconds:
 
 ```bash
 git clone https://github.com/luxfi/pulsar-mptc
 cd pulsar-mptc
 ./scripts/build.sh                  # Go ref + spec PDF (MacTeX / TeX Live)
-./scripts/test.sh                   # unit + no-secret-logs + KAT replay + N1 interop
+./scripts/test.sh                   # Go unit + DD-007 linter + KAT replay
+                                    # + Class N1 interop
 ./scripts/gen_vectors.sh            # deterministic KAT regen
-./scripts/check-high-assurance.sh   # Jasmin + EasyCrypt (skips if tools missing)
+./scripts/check-high-assurance.sh   # Jasmin + EasyCrypt + Lean↔EC bridge guard
+                                    # (skips per-tool if not installed)
 ./scripts/bench.sh                  # signing / verification benchmarks
 ```
 
-`scripts/build.sh` and `scripts/test.sh` exit non-zero on any failure.
-The reproducibility property is the load-bearing CI invariant.
+Each per-push script is an **orchestrator** that sequences per-check
+scripts under `scripts/checks/` (and `scripts/checks/test/`). Per-check
+scripts are independently runnable for fast iteration:
+
+```bash
+bash scripts/checks/ec-compile.sh        # just the EC compile gate
+bash scripts/checks/jasmin.sh            # just jasminc + jasmin-ct
+bash scripts/checks/test/kat.sh          # just KAT replay
+```
+
+`build.sh`, `test.sh`, and `check-high-assurance.sh` exit non-zero on
+any failure. Reproducibility is the load-bearing CI invariant. The
+per-push gates run **real-budget checks only** — no smoke tests; the
+fuzz + dudect REAL-budget runs live in the nightly gate (`hours`,
+cron-scheduled):
+
+```bash
+./scripts/nightly.sh                # 1h-per-target parser fuzz
+                                    # + 1h differential fuzz
+                                    # + 10^9-sample dudect (per target)
+```
 
 ## NIST MPTC submission
 
