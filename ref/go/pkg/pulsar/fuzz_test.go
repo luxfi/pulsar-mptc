@@ -153,6 +153,41 @@ func FuzzUnmarshalAbortEvidence(f *testing.F) {
 }
 
 // =====================================================================
+// FuzzAbortEvidence_PerKindValidation — fuzz the per-kind structural
+// validator. Contract: must not panic on any (kind, blob) input;
+// either accepts and returns nil, or returns a typed error. The
+// adversarial property "blob valid for kind A must reject under
+// kind B" is covered by TestAbortEvidence_RejectsWrongKindShape;
+// the fuzz here widens random-input coverage.
+// =====================================================================
+
+func FuzzAbortEvidence_PerKindValidation(f *testing.F) {
+	for _, kind := range []ComplaintKind{
+		ComplaintEquivocation,
+		ComplaintBadDelivery,
+		ComplaintMACFailure,
+		ComplaintRangeFailure,
+		ComplaintKind(99), // unknown kind seed
+	} {
+		f.Add(uint8(kind), []byte{})
+		if blob := validEvidenceFor(kind); blob != nil {
+			f.Add(uint8(kind), blob)
+		}
+	}
+
+	f.Fuzz(func(t *testing.T, kind uint8, blob []byte) {
+		e := &AbortEvidence{
+			Kind:     ComplaintKind(kind),
+			Accuser:  NodeID{0x01},
+			Accused:  NodeID{0x02},
+			Evidence: blob,
+		}
+		// Must not panic. Result is checked-error or nil.
+		_ = ValidateAbortEvidence(e)
+	})
+}
+
+// =====================================================================
 // FuzzVerifySignature — fuzz the FIPS 204 signature byte parser via
 // the Pulsar consensus-consumer entry point.
 // =====================================================================
