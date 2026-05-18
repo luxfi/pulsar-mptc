@@ -284,8 +284,62 @@ qed.
 (* produces exactly `mldsa_sign_op(sk, m, ctx, rho_rnd)`.                   *)
 (* -------------------------------------------------------------------- *)
 
-op mldsa_sign_op : share_t -> message_t -> ctx_t -> randomness_t
-                   -> signature_t.
+(* FIPS 204 §6.2 Sign_internal structural skeleton (Agent 1 HIGH-4).
+
+   `mldsa_sign_op` is the centralised FIPS 204 ML-DSA-65 signature
+   operator. Previously declared as an uninterpreted four-arg op;
+   an adversarial instantiation could realise it as ANY total
+   function of (sk, m, ctx, rho_rnd) — including ones that ignore
+   m or ctx, or that depend on rho_rnd in non-FIPS ways.
+
+   The closure: surface FIPS 204 §6.2 Sign_internal's THREE-STAGE
+   pipeline as named sub-ops, then DEFINE mldsa_sign_op as their
+   composition. The pipeline:
+
+     stage 1  unpack_sk     sk → (rho, K, tr, s1, s2, t0)
+                            (FIPS 204 §3.5.4 decoding)
+     stage 2  compute_mu    (m, ctx) → mu
+                            (FIPS 204 §5.4.1 ExternalMu:
+                             SHAKE256(0x00 || |ctx| || ctx || M, 64))
+     stage 3  sign_internal_loop
+                            (unpacked_sk, mu, rho_rnd) → signature
+                            (FIPS 204 §6.2 kappa rejection loop:
+                             y ← ExpandMask(K, rho_rnd, kappa);
+                             w = A·y ; (w1,w0) = Decompose w ;
+                             c_tilde = H(mu || w1) ;
+                             c = SampleInBall c_tilde ;
+                             z = y + c·s1 ; r0 = w0 - c·s2 ;
+                             reject if ‖z‖∞ ≥ γ1-β or ‖r0‖∞ ≥ γ2-β ;
+                             else pack(c_tilde, z, h))
+
+   The three sub-ops are still abstract (their bodies require
+   share_t / poly-vec concretization, tracked HIGH-5 + #3), but the
+   structural composition is now FIXED. Adversarial mldsa_sign_op
+   instantiations must instantiate the three sub-ops independently;
+   any honest FIPS 204 reference implementation factors cleanly
+   into this skeleton.
+
+   The mu computation (stage 2) is a function of (m, ctx) only —
+   the FIPS 204 ExternalMu derivation — and the rejection-loop
+   randomness is rho_rnd (stage 3). Decomposing mldsa_sign_op this
+   way rules out adversarial realisations that bypass mu/ExternalMu
+   (e.g. computing the signature directly from ctx instead of
+   folding it into mu first). *)
+
+(* Abstract types for the pipeline outputs/inputs. Both bodies are
+   open until share_t is concretized as a 6-tuple (HIGH-5). *)
+type unpacked_sk_t.
+type mu_t.
+
+op unpack_sk  : share_t -> unpacked_sk_t.
+op compute_mu : message_t -> ctx_t -> mu_t.
+op sign_internal_loop :
+  unpacked_sk_t -> mu_t -> randomness_t -> signature_t.
+
+op mldsa_sign_op (sk : share_t) (m : message_t)
+                 (ctx : ctx_t) (rho_rnd : randomness_t)
+   : signature_t =
+  sign_internal_loop (unpack_sk sk) (compute_mu m ctx) rho_rnd.
 
 module type MLDSA65_Sign = {
   proc sign(sk : share_t, m : message_t, ctx : ctx_t,
