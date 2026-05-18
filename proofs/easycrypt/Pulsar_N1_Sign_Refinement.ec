@@ -690,9 +690,11 @@ qed.
          v2: 1 axiom  (sign_body_compute_sig_spec — packed signature)
          v3: 1 axiom  (sign_body_compute_components_spec — triple)
          v4: 3 axioms (sign_body_{c_tilde,z,h}_spec — per-stage)
-         v5 (this commit): c_tilde-stage closed as derived lemma;
-             stage-level axiom count 3 → 2 (z, h only) +
-             2 sub-stage axioms (mu, w1)
+         v5 (this commit): c_tilde-stage axiom DECOMPOSED — the
+             primitive `sign_body_c_tilde_spec` axiom is replaced
+             by 2 narrower sub-axioms (mu, w1); `sign_body_c_tilde_spec`
+             becomes a derived lemma. NOT full mechanized closure
+             of the c_tilde path: mu and w1 specs remain axioms.
 
    ops (DEFINITIONS — no proof obligation):
      wire_sign_args_of_full   (record projection)
@@ -731,9 +733,11 @@ qed.
      v3: 1 axiom  (sign_body_compute_components_spec — triple)
      v4: 3 axioms (sign_body_{c_tilde,z,h}_spec — per-stage)
      v5 (this commit):
-         4 axioms — c_tilde stage CLOSED as a derived lemma,
+         4 axioms — c_tilde stage AXIOM DECOMPOSED (not strictly
+         closed): `sign_body_c_tilde_spec` becomes a derived lemma,
          replaced by two narrower sub-axioms (sign_body_mu_spec +
-         sign_body_w1_spec). z + h stages remain bundled.
+         sign_body_w1_spec). z + h stages remain bundled. mu and
+         w1 specs themselves remain axioms.
 
    Mirror of the combine-side post-v5 structure.
 

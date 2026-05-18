@@ -712,13 +712,18 @@ qed.
                Pulsar_N1.pack_n1_signature.
            v4: 3 per-stage axioms — one per FIPS 204 §6.2
                inner-loop output component.
-           v5 (this commit): c_tilde-stage closed as a derived
-               lemma; replaced by 2 strictly-narrower sub-axioms
-               (mu and w1). Stage-level axiom count goes 3 → 2 on
-               this file; total axioms (stage + sub-stage) goes
-               3 → 4 but each axiom is now strictly smaller in
-               surface area, and the c_tilde stage itself is a
-               proved lemma.
+           v5 (this commit): c_tilde-stage axiom DECOMPOSED — the
+               primitive `combine_body_c_tilde_spec` axiom is
+               replaced by 2 strictly-narrower sub-axioms (mu and
+               w1), plus a structural definition (`shake_mu_w1`)
+               common to both extracted and centralised sides.
+               `combine_body_c_tilde_spec` becomes a derived lemma.
+               NOT full mechanized closure of the c_tilde path:
+               mu and w1 specs remain axioms. Stage-level axiom
+               count goes 3 → 2 on this file; total axioms (stage
+               + sub-stage) goes 3 → 4. Trade is smaller surface
+               area per axiom; `combine_body_c_tilde_spec` is now
+               provable (not primitive).
 
      ops (DEFINITIONS — no proof obligation):
        wire_args_of_full     (record projection)
@@ -784,12 +789,15 @@ qed.
      v3: 1 axiom  (combine_body_compute_components_spec — triple)
      v4: 3 axioms (combine_body_{c_tilde,z,h}_spec — per-stage)
      v5 (this commit):
-         4 axioms — c_tilde stage CLOSED as a derived lemma,
-         replaced by two strictly narrower sub-axioms:
+         4 axioms — c_tilde stage AXIOM DECOMPOSED (not strictly
+         closed): `combine_body_c_tilde_spec` becomes a derived
+         lemma, replaced by two strictly narrower sub-axioms:
            combine_body_mu_spec   (extracted mu = compute_mu m ctx)
            combine_body_w1_spec   (extracted w1 = central_w1 (...))
          z and h stages still bundled:
            combine_body_z_spec, combine_body_h_spec
+         The mu and w1 specs themselves remain axioms; closing
+         them is the next narrowing step (mu first — narrowest).
 
    Concrete attack surface per axiom (post-v5):
      combine_body_mu_spec ↦ FIPS 204 §5.4.1 ExternalMu derivation

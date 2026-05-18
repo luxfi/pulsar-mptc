@@ -33,8 +33,9 @@ require import Pulsar_N1.
 
    Trust boundary of this corollary (v5):
      - 4 stage-level byte-walk axioms in the refinement files
-       (z + h on combine and sign; c_tilde stage CLOSED as derived
-       lemma — see sub-stage axioms below):
+       (z + h on combine and sign; c_tilde stage axiom DECOMPOSED
+       into narrower mu+w1 sub-stage sub-axioms — see below — and
+       *_body_c_tilde_spec is now a derived lemma):
          combine_body_z_spec          (Lagrange+decompose  — roadmap S3+S5)
          combine_body_h_spec          (MakeHint stage      — roadmap S7)
          sign_body_z_spec, sign_body_h_spec
@@ -64,10 +65,17 @@ require import Pulsar_N1.
    Headline trust footprint:
      Was (v4): 6 stage-level byte-walks
      Now (v5): 4 stage-level + 4 narrow sub-stage = 8 axioms total
-     The c_tilde stage is now a PROVEN LEMMA on both sides, and
-     each remaining axiom is strictly narrower than what it
-     replaces. Path to closure on the remaining stages is named
-     in the per-side accounting blocks.
+     This is axiom DECOMPOSITION, not full mechanized closure:
+     - The top-level c_tilde byte-walk axioms (`combine_body_c_tilde_spec`,
+       `sign_body_c_tilde_spec`) are no longer primitive axioms —
+       they are derived lemmas.
+     - The underlying trust is now localized to FOUR narrower
+       sub-axioms (combine/sign × {mu, w1}). Each is strictly smaller
+       than what it replaces.
+     - The c_tilde path is NOT fully closed in the strict sense;
+       *_mu_spec and *_w1_spec remain axioms. Closing those is the
+       next narrowing step (mu is the cleanest target — single
+       SHAKE call, no aggregation).
    =================================================================== *)
 
 lemma pulsar_n1_byte_equality_extracted :

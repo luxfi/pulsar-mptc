@@ -209,23 +209,42 @@ axiom set:
 
 **Remaining trust footprint of the extracted N1 corollary**:
 
-- **4 stage-level byte-walk axioms** — the remaining
-  per-FIPS-204-stage byte-walks on the extracted Jasmin/libjade
-  procedures, after the c_tilde-stage close. Two per side, on z
-  and h:
+The c_tilde stage has been *decomposed and structurally factored*:
+the top-level c_tilde byte-walk axioms are now derived lemmas, with
+remaining trust localized to mu-derivation and w1-derivation
+sub-axioms. This increases the raw axiom count from 6 stage-level
+obligations (v4) to 4 stage-level plus 4 sub-stage obligations (v5),
+but each remaining axiom is smaller, independently attackable, and
+aligned with a concrete FIPS 204 computation boundary. This is
+axiom decomposition; it is **not** full mechanized closure of the
+c_tilde path — the underlying obligations remain axiomatized via
+mu and w1.
+
+| Category | Count | Notes |
+|---|---|---|
+| Stage-level byte-walk axioms | 4 | combine/sign × {z, h} |
+| c_tilde sub-stage axioms | 4 | combine/sign × {mu, w1} |
+| Derived c_tilde lemmas | 2 | `combine_body_c_tilde_spec`, `sign_body_c_tilde_spec` |
+| Accepted-path no-reject axioms | 2 | unchanged |
+| Lean-bridged algebraic axioms | 4 | unchanged |
+| Codec roundtrip axioms | existing + 1 | includes `pack_unpack_n1_signature_roundtrip` |
+
+Detail on the byte-walk + sub-stage axioms:
+
+- **4 stage-level byte-walk axioms**:
     combine side (tracked #4):
       `combine_body_z_spec`       — Lagrange-aggregated z + decompose
                                     (roadmap S3 + S5)
       `combine_body_h_spec`       — MakeHint stage (roadmap S7)
     sign side (tracked #3):
       `sign_body_z_spec`, `sign_body_h_spec`
-- **4 c_tilde-stage sub-axioms** (NARROW; replace the c_tilde
-  bundle on each side):
+- **4 c_tilde sub-stage axioms** (NARROW; replaced the bundled
+  c_tilde axiom on each side):
     combine side: `combine_body_mu_spec`, `combine_body_w1_spec`
     sign side:    `sign_body_mu_spec`,    `sign_body_w1_spec`
-  Each is strictly narrower than the prior bundled c_tilde-stage
-  axiom. The SHAKE composition tying mu + w1 → c_tilde is encoded
-  as a STRUCTURAL DEFINITION on both sides (`Pulsar_N1.shake_mu_w1`,
+  Each is strictly narrower than the prior bundled c_tilde axiom.
+  The SHAKE composition tying mu + w1 → c_tilde is encoded as a
+  STRUCTURAL DEFINITION on both sides (`Pulsar_N1.shake_mu_w1`,
   same op), not an axiom. `*_body_c_tilde_spec` is now a derived
   lemma on each side.
 
@@ -233,7 +252,7 @@ axiom set:
     `*_mu_spec` ↦ FIPS 204 ExternalMu derivation (single SHAKE call
                   over a fixed prefix + ctx + M). Smallest remaining
                   attack surface; future structural identity through
-                  `MLDSA65_Functional.shake256`.
+                  `MLDSA65_Functional.shake256`. **Next target.**
     `*_w1_spec` ↦ HighBits of A·y at the accepting kappa. Reduces
                   to `MLDSA65_Functional.decompose_vec_k` +
                   `mat_vec_mul` once those are concretized.
@@ -300,9 +319,12 @@ What this gives the NIST reviewer at submission time:
      well-formedness guards.
 
    `combine_body_c_tilde_spec` and `sign_body_c_tilde_spec` are
-   PROVED LEMMAS (was: axioms in v4) via the sub-axiom decomposition
-   + the structural `shake_mu_w1` identity used on both sides of
-   the equality.
+   DERIVED LEMMAS (no longer primitive axioms; were axioms in v4)
+   via the sub-axiom decomposition + the structural `shake_mu_w1`
+   identity used on both sides of the equality. This is axiom
+   decomposition — the c_tilde-stage path is *not* fully closed
+   in the strict sense; trust is now localized to the (still
+   axiomatic) mu and w1 sub-stage specs.
 
    The N4 cone adds 3 more Lean-bridged algebraic axioms
    (`add_share_zeroR`, `reconstruct_linear`, `shamir_correct`).
@@ -315,7 +337,7 @@ What this gives the NIST reviewer at submission time:
 What remains in the high-assurance track:
 
 - The eight per-stage byte-walk obligations remaining after the
-  c_tilde-stage close:
+  c_tilde-stage axiom decomposition (4 stage-level + 4 sub-stage):
     Stage-level (4): `combine_body_{z,h}_spec`, `sign_body_{z,h}_spec`
     Sub-stage    (4): `combine_body_{mu,w1}_spec`, `sign_body_{mu,w1}_spec`
   Each is independently attackable. The z-stage axioms have a
@@ -365,7 +387,7 @@ requires closing the following named obligations.
    Each maps to a concrete FIPS 204 sub-stage; closure paths are
    listed in the per-side accounting blocks. The mu-stage is the
    narrowest (single SHAKE call) and the natural next target after
-   the c_tilde-stage close.
+   the c_tilde-stage axiom decomposition.
 
 2. **2 accepted-path no-reject axioms**
    (`combine_no_reject_on_accepted_honest_layout`,
@@ -420,8 +442,12 @@ would compose to: "if you trust the published FIPS 204 standard
 and the Jasmin verified compiler, you trust every Pulsar signature".
 
 This is the right north star for the post-submission audit cycle.
-Each closed axiom above is one step toward it; the v5 c_tilde-stage
-close is one such step.
+Each axiom converted to a derived lemma (or each primitive axiom
+decomposed into strictly-narrower sub-axioms) is one step toward
+it; the v5 c_tilde-stage axiom decomposition is one such step
+(`*_body_c_tilde_spec` is now a derived lemma; mu and w1 sub-stage
+specs remain axiomatic, narrower than the c_tilde bundle they
+replaced).
 
 ## What this submission does NOT claim
 
