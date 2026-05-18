@@ -106,18 +106,23 @@ op wire_args_of_full (full : combine_full_args_t)
   full.`full_wire.
 
 (* ===================================================================
-   Signature-type coercion.
+   Signature-type coercion — IDENTITY.
 
-   Layout's abstract `signature_t` is the wire-level byte string
-   the extracted body writes at `sig_out_ptr`. Pulsar_N1's abstract
-   `signature_t` is the protocol-level signature type. They are
-   structurally identical at the byte layer; the EC types differ
-   only by name. `refine_sig_to_n1` is the structural identity
-   coercion — a single named op, no axiom needed for its existence
-   (its identity content is the wire-layout of FIPS 204 §3.7).
+   Prior to commit "axiom hygiene: refine_sig_to_n1 identity + explicit
+   wrapper equivs", `Pulsar_N1.signature_t` and
+   `Pulsar_N1_Signature_Codec.signature_t` were two DISTINCT abstract
+   types and `refine_sig_to_n1` was an uninterpreted coercion between
+   them. That left room for an adversarial instantiation where
+   `refine_sig_to_n1` collapsed all signatures to a single value,
+   making the byte-walk axiom `combine_body_compute_sig_spec` vacuous
+   on the threshold side. The closure: alias the two types so they
+   are the same concrete type, and define `refine_sig_to_n1` as the
+   identity (`fun s => s`). Every downstream proof that uses
+   `refine_sig_to_n1` as a coercion now witnesses an honest identity.
    =================================================================== *)
 
-op refine_sig_to_n1 : Pulsar_N1_Signature_Codec.signature_t -> Pulsar_N1.signature_t.
+op refine_sig_to_n1 (s : Pulsar_N1_Signature_Codec.signature_t)
+                    : Pulsar_N1.signature_t = s.
 
 (* ===================================================================
    L2 — Functional spec operator (DEFINITION, not axiom).

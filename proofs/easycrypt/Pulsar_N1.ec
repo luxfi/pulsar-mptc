@@ -99,6 +99,11 @@
 
 require import AllCore List Int IntDiv Distr DBool DInterval SmtMap.
 
+(* The FIPS 204 ML-DSA-65 signature byte-codec, owning `signature_t`. *)
+(* Pulsar_N1's protocol-level `signature_t` is aliased to the codec's *)
+(* type below (single concrete type — no separate abstract surface).  *)
+require import Pulsar_N1_Signature_Codec.
+
 (* -------------------------------------------------------------------- *)
 (* libjade ML-DSA-65 single-party functional theorem (placeholder).     *)
 (* When the upstream libjade theory lands at                            *)
@@ -128,9 +133,19 @@ type share_t.
 type group_pk_t.
 
 (* Message / context / signature wire-level types.                     *)
+(*                                                                      *)
+(* `signature_t` is ALIASED to `Pulsar_N1_Signature_Codec.signature_t`. *)
+(* Prior to this commit the two types were independent abstract         *)
+(* declarations with an uninterpreted coercion `refine_sig_to_n1`       *)
+(* between them — that left room for an adversarial instantiation       *)
+(* where the coercion collapsed all signatures to a single value,       *)
+(* making the byte-walk axiom in Combine_Refinement / Sign_Refinement   *)
+(* vacuous. With a single concrete type the coercion becomes the        *)
+(* identity (defined as `fun (s : signature_t) => s`) and the byte-     *)
+(* walk axiom directly constrains the protocol-level signature value.   *)
 type message_t.
 type ctx_t.
-type signature_t.
+type signature_t = Pulsar_N1_Signature_Codec.signature_t.
 
 (* Per-session per-party randomness used by Round-1 mask sampling      *)
 (* and (if randomized) Round-2 commit blinding.                        *)

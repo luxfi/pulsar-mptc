@@ -99,18 +99,24 @@ op wire_sign_args_of_full (full : sign_full_args_t)
   full.`sgn_wire.
 
 (* ===================================================================
-   Signature-type coercion.
+   Signature-type coercion — IDENTITY.
 
-   Sign_Layout's abstract `signature_t` is the wire-level byte
-   string the libjade body writes at `ptr_signature`. Pulsar_N1's
-   `signature_t` is the protocol-level signature type. They are
-   structurally identical at the byte layer; the EC types differ
-   only by name. `refine_sig_to_n1_sign` is the structural identity
-   coercion — a single named op, no axiom needed for its existence.
+   Prior to commit "axiom hygiene: refine_sig_to_n1 identity + explicit
+   wrapper equivs", `Pulsar_N1.signature_t` and
+   `Pulsar_N1_Signature_Codec.signature_t` were two DISTINCT abstract
+   types and `refine_sig_to_n1_sign` was an uninterpreted coercion
+   between them. That left room for an adversarial instantiation where
+   `refine_sig_to_n1_sign` collapsed all signatures to a single
+   value, making the byte-walk axiom `sign_body_compute_sig_spec`
+   vacuous on the sign side. The closure: alias the two types so
+   they are the same concrete type, and define
+   `refine_sig_to_n1_sign` as the identity (`fun s => s`). Every
+   downstream proof that uses `refine_sig_to_n1_sign` as a
+   coercion now witnesses an honest identity.
    =================================================================== *)
 
-op refine_sig_to_n1_sign :
-  Pulsar_N1_Signature_Codec.signature_t -> Pulsar_N1.signature_t.
+op refine_sig_to_n1_sign (s : Pulsar_N1_Signature_Codec.signature_t)
+                         : Pulsar_N1.signature_t = s.
 
 (* ===================================================================
    L2 — Functional spec operator (DEFINITION, not axiom).

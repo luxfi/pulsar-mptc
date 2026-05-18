@@ -79,13 +79,13 @@ op reconstruct : int list -> share_t list -> share_t.
    ML-DSA-65 it is R_q^ell (a vector over the polynomial ring), which
    is an additive group under componentwise addition. The three
    operators below pin that structure: a zero element, a binary +,
-   and a "fresh sharing of secret s over quorum q" operator (whose
-   randomness is bound to the quorum + secret per the dealer choice).
+   and the dealer's polynomial-evaluation primitive `poly_eval`.
 
    The bridge to the Lean theory `Crypto.Pulsar.Shamir` is
-   one-to-one: `add_share` ↔ R_q^ell `+`, `zero_share` ↔ 0, and
-   `fresh_sharing` ↔ the dealer's polynomial-eval operator
-   `poly_eval`.
+   one-to-one: `add_share` ↔ R_q^ell `+`, `zero_share` ↔ 0,
+   `poly_eval` ↔ the dealer's polynomial-eval operator
+   `Polynomial.eval`. `fresh_sharing` is now a *concrete* definition
+   in terms of `poly_eval`, not an abstract operator (see below).
    =================================================================== *)
 op zero_share : share_t.
 op add_share  : share_t -> share_t -> share_t.
@@ -95,9 +95,11 @@ op add_share  : share_t -> share_t -> share_t.
 op zip_add (l1 l2 : share_t list) : share_t list =
   map (fun (p : share_t * share_t) => add_share p.`1 p.`2) (zip l1 l2).
 
-(* A Shamir sharing of secret s over quorum q. The dealer picks a
-   degree-(t-1) polynomial whose constant term is s and hands party
-   i the evaluation at i.
+(* The dealer's polynomial-evaluation primitive. `poly_eval s i`
+   returns the share for party index `i` produced by the dealer
+   whose Shamir polynomial has constant term `s`. The same operator
+   name + signature exists in `Pulsar_N1.ec`; both files use it
+   identically.
 
    IMPORTANT: A real Shamir sharing is RANDOMISED (many polynomials
    share the same constant term). The operator here is a DETERMINISTIC
@@ -109,13 +111,25 @@ op zip_add (l1 l2 : share_t list) : share_t list =
    hiding side. The deterministic-representative choice is sound
    because for any concrete dealer randomness `r` we can plug `r`
    into the right-hand side of the sharing identities below and the
-   same proof goes through — `fresh_sharing` is just the unhided
-   "pure function" view of the dealer.
+   same proof goes through — `poly_eval` is just the unhided
+   "pure function" view of the dealer. *)
+op poly_eval : share_t -> int -> share_t.
 
-   `fresh_sharing q s` returns the list of shares
-       [ poly(i_0); poly(i_1); ...; poly(i_{|q|-1}) ]
-   where the dealer's polynomial has constant term s. *)
-op fresh_sharing : int list -> share_t -> share_t list.
+(* CONCRETE definition (no longer an abstract op): `fresh_sharing q s`
+   returns the list of shares
+       [ poly_eval s i_0; poly_eval s i_1; ...; poly_eval s i_{|q|-1} ]
+   where the dealer's polynomial has constant term `s` (encoded in the
+   `share_t` representative). With this definition, malicious
+   instantiations that emit garbage shares are RULED OUT BY TYPE:
+   `fresh_sharing` is uniquely determined by `poly_eval`, and any
+   `poly_eval` that satisfies the Lagrange-inverse identity below
+   (`shamir_correct`) automatically makes `fresh_sharing` the unique
+   correct sharing.
+
+   Closes the abstraction-gap critique in Agent 2's HIGH finding
+   ("`fresh_sharing` could be a malicious adversary"). *)
+op fresh_sharing (q : int list) (s : share_t) : share_t list =
+  List.map (poly_eval s) q.
 
 (* ===================================================================
    Shamir layer — algebraic axioms.
