@@ -58,38 +58,49 @@ require import Pulsar_N1.
 (* ===================================================================
    L2 — Protocol-extended args.
 
-   `sign_full_args_t` carries the wire-level fields
-   (`sk_abs`, `msg_abs` in Sign_Layout's per-value abstract types)
-   bundled with the abstract protocol-level inputs the libjade
-   sign entry point conceptually sees:
-     - sk_n1     : Pulsar_N1.share_t (the abstract secret key)
-     - m_n1      : Pulsar_N1.message_t (the abstract message)
-     - ctx_n1    : Pulsar_N1.ctx_t (the FIPS 204 §3.7 context)
-     - rho_rnd_n1: Pulsar_N1.randomness_t (per-call randomness)
+   `sign_full_args_t` carries THREE distinct categories of field, in
+   this order (Agent 1 C3 closure):
 
-   ctx_n1 and rho_rnd_n1 are GHOST fields: they don't appear in
-   memory (only sk and m do via the wire layout). They constrain
-   the byte-walk axiom: the extracted libjade sign produces a
-   signature byte string that equals the FIPS 204 ML-DSA-65
-   signature on the four protocol-level inputs.
+     [WIRE]   sgn_wire     : laid out in memory by encode_sign_args;
+                              what the byte-walk axiom reads through
+                              layout_sign_args. Concrete bytes.
+     [MIRROR] sgn_sk_n1,    : protocol-level views of sgn_wire's
+              sgn_m_n1       contents. The wrapper layer binds them
+                              to sgn_wire via the wire projectors
+                              n1_share_to_layout_sign /
+                              n1_msg_to_layout_sign (defined in
+                              Pulsar_N1_Sign_Wrapper.ec).
+     [GHOST]  sgn_ctx_n1,   : protocol-level fields with NO wire
+              sgn_rnd_n1     counterpart. libjade M.sign(ptr_signature,
+                              ptr_m, m_len, ptr_sk) has no ctx/rnd
+                              parameters — the wrapper folds ctx into
+                              mu (FIPS 204 §5.4.1 ExternalMu) and rnd
+                              into K-derived randomness BEFORE calling
+                              libjade. The byte-walk axiom
+                              `sign_body_compute_sig_spec` claims
+                              correctness over the FULL FIPS 204
+                              four-arg Sign_internal — bundling the
+                              ctx/mu and rnd/K bindings into one
+                              statement.
 
-   The wrapper layer is responsible for constructing
-   `sign_full_args_t` honestly — i.e., when it calls libjade
-   M.sign(ptr_signature, ptr_m, m_len, ptr_sk), the ghost ctx_n1
-   and rho_rnd_n1 must reflect the wrapper's actual ctx and
-   randomness choices, AND the wrapper must have encoded ctx into
-   mu and rho_rnd into K-derived randomness correctly before
-   calling libjade.
-   =================================================================== *)
+   `sign_abs_op` (defined below) is the spec target:
+     sign_abs_op full = mldsa_sign_op sk_n1 m_n1 ctx_n1 rnd_n1
 
-(* Fields use `sgn_*` prefix to disambiguate from
-   combine_full_args_t's `full_*` fields (EC's record-field inference
-   refuses to mix fields from different record types in the same
-   `{| ... |}` literal). *)
+   It reads ALL FOUR protocol-level fields (sk/m from MIRROR,
+   ctx/rnd from GHOST) but does NOT consume sgn_wire.
+
+   Field-prefix discipline: every field starts with `sgn_*` to
+   disambiguate from combine_full_args_t's `full_*` fields (EC's
+   record-field inference refuses to mix fields from different
+   record types in the same `{| ... |}` literal). *)
 type sign_full_args_t = {
+  (* [WIRE] *)
   sgn_wire    : Pulsar_N1_Sign_Layout.sign_abs_args_t;
+  (* [MIRROR] — protocol view of sgn_wire's sk_abs, m_abs *)
   sgn_sk_n1   : Pulsar_N1.share_t;
   sgn_m_n1    : Pulsar_N1.message_t;
+  (* [GHOST] — no wire counterpart; bound into byte-walk via libjade-
+     internal mu/K derivation (see GHOST CONTRACT block below) *)
   sgn_ctx_n1  : Pulsar_N1.ctx_t;
   sgn_rnd_n1  : Pulsar_N1.randomness_t;
 }.
@@ -135,43 +146,86 @@ op sign_abs_op (full : sign_full_args_t) : Pulsar_N1.signature_t =
     full.`sgn_ctx_n1 full.`sgn_rnd_n1.
 
 (* ===================================================================
-   GHOST CONTRACT: ctx / rho_rnd binding.
+   GHOST CONTRACT: ctx / rho_rnd binding (Agent 1 C3 split path).
 
-   libjade `M.sign(ptr_signature, ptr_m, m_len, ptr_sk)` does NOT
-   take ctx or rho_rnd directly. The wrapper carries `sgn_ctx_n1`
-   and `sgn_rnd_n1` as ghost protocol fields in `sign_full_args_t`.
+   libjade `M.sign(ptr_signature, ptr_m, m_len, ptr_sk)` takes only
+   (sig, m, sk) — the FOUR-ARG FIPS 204 Sign_internal(sk, M, ctx,
+   rho_rnd) is recovered by INTERNAL DERIVATION inside libjade:
 
-   The remaining `sign_body_compute_sig_spec` obligation includes
-   the claim that the bytes supplied to libjade — specifically:
+     mu      = SHAKE256(tr || M) where tr is in the unpacked sk
+     rho''   = SHAKE256(K || rnd_internal || mu)
+               where rnd_internal is libjade's per-call randomness
+               (zero in deterministic mode; otherwise per the FIPS 204
+               §6.2 rho-derivation specifying SHAKE256 of K and a
+               64-byte randomness input).
 
-     - mu, the FIPS 204 §6.2 message binder, encoding the
-       wrapper-supplied ctx via `SHAKE256(0x00 || ctxlen || ctx || M)`
-       (FIPS 204 §5.4.1 ExternalMu), and
-     - the K-derived randomness that libjade's deterministic
-       rejection-sampling consumes,
+   The CTX field of FIPS 204 §3.7 is folded into mu via the SHAKE input
+   PREFIXED with a 0x00 || |ctx| || ctx header (FIPS 204 §5.4.1
+   ExternalMu): this is the wrapper's responsibility to do BEFORE
+   calling libjade — the wrapper hashes M' = SHAKE-input(M, ctx) and
+   passes M' to libjade. The wrapper similarly seeds rnd_internal
+   from sgn_rnd_n1.
 
-   correspond to FIPS 204 `Sign_internal(sk, M, ctx, rho_rnd_n1)`
-   over the four ghost fields.
+   sign_body_compute_sig_spec BUNDLES three claims into one axiom:
 
-   This is a NAMED REFINEMENT OBLIGATION, not a definitional fact.
-   It is the wrapper's responsibility to construct
-   `sign_full_args_t` such that the wire-level (sk, m) bytes
-   + libjade's internal mu/K derivation together implement the
-   protocol-level Sign_internal on (sgn_sk_n1, sgn_m_n1,
-   sgn_ctx_n1, sgn_rnd_n1).
+     [B1] LIBJADE CORE: given a layout-conforming memory state, the
+          extracted M.sign byte-walk produces FIPS 204 §6.2-§6.3
+          Sign_internal output bytes (i.e., the libjade procedure
+          implements the spec it claims to implement).
 
-   If a future refactor needs to surface this as a stand-alone
-   obligation (rather than folded into the byte-walk), split as:
+     [B2] CTX/MU BINDING: the wrapper's pre-libjade SHAKE(0x00 ||
+          ctxlen || ctx || M) → M' substitution implements the
+          FIPS 204 §5.4.1 ExternalMu derivation. The byte-walk
+          axiom uses ctx implicitly: the `ptr_m` bytes already
+          encode (ctx, M), and libjade's mu computation produces
+          the four-arg FIPS 204 mu.
 
-     axiom sign_body_compute_sig_core      — pure libjade core
-     axiom ctx_rho_binding_contract        — ctx/rho integration
+     [B3] RHO_RND BINDING: libjade's rnd_internal is the wrapper's
+          encoding of sgn_rnd_n1.
 
-   For now, both live inside `sign_body_compute_sig_spec`. The
-   refactor is on the table the moment the libjade core proof
-   starts to close — keeping them bundled until that point
-   avoids the spurious extra axiom and keeps the dependency cone
-   minimal. The split is the right move only when the core piece
-   is being discharged independently.
+   The bundle is RIGHT for now because the libjade byte-walk hasn't
+   landed — splitting would manufacture two synthetic obligations
+   (B1 alone, B2+B3 alone) that aren't independently dischargeable
+   until B1 is closed.
+
+   REFACTOR PATH (executes once libjade byte-walk #3 has a draft):
+
+     axiom sign_body_compute_sig_core :
+       forall mem ptrs (sk : libjade_sk_t)
+              (m : libjade_msg_t) (mu : libjade_mu_t),
+         layout_sk_at mem ptrs.`sk_ptr sk =>
+         layout_msg_at mem ptrs.`m_ptr m =>
+         sign_body_compute_status mem ptrs = 0 =>
+         refine_sig_to_n1_sign (sign_body_compute_sig mem ptrs)
+         = fips204_sign_internal_op (decode_sk sk)
+                                    (decode_m m)
+                                    mu
+                                    (libjade_rho_rnd sk).
+
+     axiom ctx_mu_binding_op :
+       forall (sk : Pulsar_N1.share_t) (m : Pulsar_N1.message_t)
+              (ctx : Pulsar_N1.ctx_t) (rho_rnd : Pulsar_N1.randomness_t),
+         fips204_sign_internal_op
+           (encode_sk_op sk)
+           (encode_m_op m)
+           (external_mu m ctx)
+           (libjade_rho_rnd (encode_sk_op sk))
+         = mldsa_sign_op sk m ctx rho_rnd.
+
+   With those, `sign_body_compute_sig_spec` becomes a LEMMA composing
+   the core + binding axioms via `encode_sign_args`'s layout invariant.
+
+   Right now neither libjade_sk_t nor fips204_sign_internal_op nor
+   external_mu has been introduced (they all live downstream of the
+   byte-walk landing). Surfacing them prematurely would force a
+   placeholder vocabulary that future work has to replace anyway.
+
+   Net of C3 closure:
+     - field-categorisation comments at sign_full_args_t make the
+       wire/mirror/ghost split visible at the type-decl site.
+     - this block names the three bundled claims B1/B2/B3 and gives
+       the concrete refactor signatures.
+     - the refactor itself is GATED on the libjade byte-walk close.
    =================================================================== *)
 
 (* ===================================================================

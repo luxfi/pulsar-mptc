@@ -69,34 +69,56 @@ require import Pulsar_N1.
 (* ===================================================================
    L2 — Protocol-extended args.
 
-   `combine_full_args_t` carries the wire-level fields (`c_tilde_abs`,
-   `t0_abs`, `r2s_abs`) bundled with the abstract protocol-level
-   inputs the combine entry point conceptually sees:
-     - group_pk        : the group public key
-     - m, ctx, rho_rnd : the message, context and per-session
-                         randomness (passed to the centralised
-                         ML-DSA signature)
-     - quorum, shares  : the participating party indices and
-                         their Shamir shares (sufficient to
-                         reconstruct the group secret)
-     - r1s             : the Round-1 commit aggregate (used by
-                         combine to derive c_tilde and the hint)
+   `combine_full_args_t` carries THREE distinct categories of field,
+   in this order (Agent 1 C3 closure):
 
-   These are GHOST fields from the C-level layout's perspective: they
-   do NOT appear in memory (only c_tilde / t0 / r2s do). The
-   wire-level layout predicate only constrains the wire fields. The
-   ghost fields are constrained by the byte-walk axiom: the extracted
-   combine produces a signature that equals the centralised ML-DSA
-   signature of the reconstructed share.
-   =================================================================== *)
+     [WIRE]    full_wire     : laid out in memory by encode_combine_args
+                                (c_tilde_abs, t0_abs, r2s_abs). Concrete
+                                bytes read by the byte-walk axiom
+                                through layout_combine_args.
+     [DERIVED] full_gpk,     : protocol-level fields with a CHECKED
+                                BINDING. The group pubkey must equal
+                                derive_pk(reconstruct quorum shares)
+                                — enforced by protocol_consistency
+                                below; threaded into the byte-walk
+                                axiom precondition (HIGH-1 closure).
+               full_quorum,
+               full_shares
+     [GHOST]   full_m,       : protocol-level fields with NO direct
+               full_ctx,      wire counterpart. They go into the
+               full_rho_rnd,  centralised mldsa_sign_op call via
+               full_r1s       combine_abs_op. The Wrapper's derive_*
+                              ops (derive_c_tilde_wire, etc.) consume
+                              these to derive the WIRE fields, so they
+                              are not "fully ghost" in a holistic
+                              sense — but at the byte-walk axiom's
+                              vocabulary they are pure ghost.
+
+   `combine_abs_op` is the spec target:
+     combine_abs_op full = mldsa_sign_op
+                             (reconstruct full_quorum full_shares)
+                             full_m full_ctx full_rho_rnd
+
+   It reads the DERIVED + GHOST fields but does NOT consume full_wire.
+
+   See `protocol_consistency` below for the explicit DERIVED-field
+   binding (group_pk = derive_pk of reconstructed share). The other
+   protocol-level bindings (c_tilde = SHAKE(...r1s), t0 = derived from
+   gpk) live in Pulsar_N1_Combine_Wrapper.ec because they require
+   wire-projection ops that aren't in scope at the Refinement layer. *)
 
 type combine_full_args_t = {
+  (* [WIRE] *)
   full_wire    : Pulsar_N1_Combine_Layout.combine_abs_args_t;
+  (* [DERIVED] — full_gpk bound to derive_pk(reconstruct quorum shares)
+     via protocol_consistency *)
   full_gpk     : Pulsar_N1.group_pk_t;
-  full_m       : Pulsar_N1.message_t;
-  full_ctx     : Pulsar_N1.ctx_t;
   full_quorum  : int list;
   full_shares  : Pulsar_N1.share_t list;
+  (* [GHOST] — no wire counterpart at this layer; the Wrapper's
+     derive_* ops fold m/ctx/r1s into the wire fields *)
+  full_m       : Pulsar_N1.message_t;
+  full_ctx     : Pulsar_N1.ctx_t;
   full_rho_rnd : Pulsar_N1.randomness_t;
   full_r1s     : Pulsar_N1.round1_t list;
 }.
