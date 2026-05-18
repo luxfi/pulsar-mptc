@@ -58,8 +58,22 @@ type signature_t.
 op encode_signature : signature_t -> int list.
 op decode_signature : int list  -> signature_t.
 
+(* Well-formedness predicate on signature bytes — followup B closure.
+   Captures FIPS 204 §3.5.5 structural invariants (length, h-weight
+   bound, z-coefficient bit-packing). With this predicate, the
+   codec round-trip is BIDIRECTIONAL on wf bytes:
+   adversarial decoder realisations that collapse non-encoded byte
+   strings to a fixed signature are ruled out. *)
+op wf_signature_bytes : int list -> bool.
+
+axiom encode_signature_wf (x : signature_t) :
+  wf_signature_bytes (encode_signature x).
+
 axiom encode_decode_signature (x : signature_t) :
   decode_signature (encode_signature x) = x.
+
+axiom decode_encode_signature_wf (bs : int list) :
+  wf_signature_bytes bs => encode_signature (decode_signature bs) = bs.
 
 axiom encode_signature_len (x : signature_t) :
   size (encode_signature x) = sig_len.

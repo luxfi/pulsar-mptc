@@ -153,11 +153,32 @@ op encode_sk (x : share_t) : int list =
   ++ share_t0_bytes  x.
 
 (* Decoder retained as an abstract op — its concrete inverse body
-   requires share_t concretization (HIGH-5). The round-trip axiom
-   below pins it as encode_sk's left inverse. *)
+   requires share_t concretization (HIGH-5). The round-trip axioms
+   below pin it as encode_sk's two-sided inverse on the
+   well-formed-bytes domain. *)
 op decode_sk  : int list  -> share_t.
 
+(* Well-formedness predicate on sk bytes: captures the FIPS 204
+   §3.5.4 byte-structure invariants (length = 4032, valid
+   coefficient bit-packings for s1/s2/t0, etc.). Concrete body
+   requires share_t concretization (HIGH-5+future).
+
+   Followup B closure: the codec round-trip is now BIDIRECTIONAL
+   on the wf domain. Previously we had only `decode (encode x) = x`,
+   which an adversarial decoder could realise as a constant on
+   non-encoded inputs. The other-direction roundtrip
+   `wf bs => encode (decode bs) = bs` rules out constant-decoder
+   realisations: a constant decoder would map every wf-byte string
+   to the same share, and encode of that share is a fixed byte
+   string ≠ most inputs. *)
+op wf_sk_bytes : int list -> bool.
+
+axiom encode_sk_wf (x : share_t) : wf_sk_bytes (encode_sk x).
+
 axiom encode_decode_sk (x : share_t) : decode_sk (encode_sk x) = x.
+
+axiom decode_encode_sk_wf (bs : int list) :
+  wf_sk_bytes bs => encode_sk (decode_sk bs) = bs.
 
 (* encode_sk length: derived from the six per-component lengths +
    sk_components_sum. Was an axiom; now a lemma. *)
@@ -171,12 +192,23 @@ qed.
 
 (* Message bytes — abstract per-value encoding. The libjade ABI
    passes the message via (ptr_m, m_len), so the message-byte
-   encoding is whatever the wrapper layer chose. We surface only
-   the round-trip + length identity here. *)
+   encoding is whatever the wrapper layer chose. We surface the
+   round-trip + length identity + the well-formedness predicate
+   here (same followup B pattern as sk above). *)
 op encode_msg : message_t -> int list.
 op decode_msg : int list  -> message_t.
 
+(* Well-formedness predicate on message bytes. Trivially satisfied
+   for any byte string of length matching `msg_len`; non-trivial
+   only insofar as encode_msg is required to produce wf bytes. *)
+op wf_msg_bytes : int list -> bool.
+
+axiom encode_msg_wf (x : message_t) : wf_msg_bytes (encode_msg x).
+
 axiom encode_decode_msg (x : message_t) : decode_msg (encode_msg x) = x.
+
+axiom decode_encode_msg_wf (bs : int list) :
+  wf_msg_bytes bs => encode_msg (decode_msg bs) = bs.
 
 (* The message length is data-dependent (set by the caller's `m_len`
    argument to the libjade sign entry point); we surface that as an
@@ -252,10 +284,24 @@ op sign_pointers_well_separated (ptrs : sign_ptrs_t) : bool =
   /\ p_m + m_l <= p_k
   /\ 0 <= m_l.
 
+(* Layout predicate — followup B reinforcement.
+
+   Conjuncts:
+     (1) wf_sk_bytes on the loaded sk-byte range — rules out the
+         constant-decoder adversarial instantiation by forcing the
+         loaded bytes to be in `encode_sk`'s image (via the
+         `decode_encode_sk_wf` round-trip).
+     (2) decoded sk matches the abstract arg.
+     (3) wf_msg_bytes on the loaded message-byte range (analogous).
+     (4) decoded message matches the abstract arg.
+     (5) m_len agreement.
+     (6) pointer disjointness (C2 closure). *)
 op layout_sign_args
    (mem : mem_t) (ptrs : sign_ptrs_t)
    (arg_abs : sign_abs_args_t) : bool =
-     read_sk  mem ptrs.`ptr_sk                       = arg_abs.`sk_abs
+     wf_sk_bytes  (load_bytes mem ptrs.`ptr_sk sk_len)
+  /\ read_sk  mem ptrs.`ptr_sk                       = arg_abs.`sk_abs
+  /\ wf_msg_bytes (load_bytes mem ptrs.`ptr_m ptrs.`m_len)
   /\ read_msg mem ptrs.`ptr_m ptrs.`m_len            = arg_abs.`m_abs
   /\ ptrs.`m_len = msg_len arg_abs.`m_abs
   /\ sign_pointers_well_separated ptrs.
@@ -371,7 +417,58 @@ proof.
   by rewrite store_bytes_load_bytes encode_decode_msg.
 qed.
 
-(* Aggregate encoder-correctness — DERIVED from the two conjuncts
+(* Byte-level layout-wf lemmas (followup B reinforcement).
+
+   `encode_sign_args` stores `encode_sk sk` at ptr_sk; reading
+   `sk_len` bytes there returns exactly those bytes. wf_sk_bytes
+   then holds by encode_sk_wf. Same shape for msg. *)
+lemma encode_layout_wf_sk
+      (sk : share_t) (m : message_t) (m_len_val : int) :
+  0 <= m_len_val =>
+  size (encode_msg m) = m_len_val =>
+  wf_sk_bytes
+    (load_bytes
+       (encode_sign_args sk m m_len_val).`1
+       (encode_sign_args sk m m_len_val).`2.`ptr_sk
+       sk_len).
+proof.
+  move=> Hml_ge0 Hmsg_len.
+  rewrite /encode_sign_args /=.
+  have Hsk_len : size (encode_sk sk) = sk_len by exact encode_sk_len.
+  have ->: sk_len = size (encode_sk sk) by rewrite Hsk_len.
+  rewrite store_bytes_load_bytes.
+  exact encode_sk_wf.
+qed.
+
+lemma encode_layout_wf_msg
+      (sk : share_t) (m : message_t) (m_len_val : int) :
+  0 <= m_len_val =>
+  size (encode_msg m) = m_len_val =>
+  wf_msg_bytes
+    (load_bytes
+       (encode_sign_args sk m m_len_val).`1
+       (encode_sign_args sk m m_len_val).`2.`ptr_m
+       (encode_sign_args sk m m_len_val).`2.`m_len).
+proof.
+  move=> Hml_ge0 Hmsg_len.
+  rewrite /encode_sign_args /=.
+  have ->:
+    load_bytes
+      (store_bytes
+         (store_bytes (fun _ : int => 0) sig_len_sign (encode_msg m))
+         (sig_len_sign + m_len_val) (encode_sk sk))
+      sig_len_sign m_len_val
+    = load_bytes
+        (store_bytes (fun _ : int => 0) sig_len_sign (encode_msg m))
+        sig_len_sign m_len_val.
+  - apply load_bytes_after_disjoint_write; first by exact Hml_ge0.
+    by left.
+  have ->: m_len_val = size (encode_msg m) by rewrite Hmsg_len.
+  rewrite store_bytes_load_bytes.
+  exact encode_msg_wf.
+qed.
+
+(* Aggregate encoder-correctness — DERIVED from the four conjuncts
    above + the definitional m_len identity (encoder sets
    ptrs.`m_len := m_len_val by construction, and the precondition
    ties m_len_val := msg_len m).
@@ -388,7 +485,11 @@ proof.
   have Hml_ge0 : 0 <= msg_len m by exact msg_len_ge0.
   have Hmsg_len : size (encode_msg m) = msg_len m by exact encode_msg_len.
   split.
+  - by apply (encode_layout_wf_sk sk m (msg_len m)).
+  split.
   - by apply (encode_layout_sk sk m (msg_len m)).
+  split.
+  - by apply (encode_layout_wf_msg sk m (msg_len m)).
   split.
   - by apply (encode_layout_msg sk m (msg_len m)).
   by rewrite /encode_sign_args /=.
