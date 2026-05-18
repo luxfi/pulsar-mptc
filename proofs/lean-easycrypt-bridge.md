@@ -175,6 +175,72 @@ abstract and so axiomatizes the property directly. On the Lean
 side this is implicit in the `Ring` / `Polynomial`-coefficient
 instances and never needs an explicit theorem.
 
+### Axiom 5: `Pulsar_N1.threshold_partial_response_identity`
+
+**EasyCrypt statement** (`proofs/easycrypt/Pulsar_N1.ec`, v8):
+
+```ec
+axiom threshold_partial_response_identity :
+  forall (Q : int list) (shares : share_t list)
+         (c_tilde : c_tilde_n1_t) (rho_rnd : randomness_t) (mu_val : mu_t),
+    uniq Q =>
+    size shares = size Q =>
+    poly_degree (reconstruct Q shares) < size Q =>
+    shares = List.map (poly_eval (reconstruct Q shares)) Q =>
+    lagrange_aggregate_responses Q
+      (List.map (per_party_partial_response c_tilde rho_rnd mu_val) shares)
+    = mldsa_compute_z
+        (unpack_sk (reconstruct Q shares))
+        mu_val rho_rnd.
+```
+
+**Lean counterpart**
+(`~/work/lux/proofs/lean/Crypto/Threshold_Lagrange.lean:121`,
+theorem `threshold_partial_response_identity`):
+
+```lean
+theorem threshold_partial_response_identity
+    (f : F[X]) {ι : Type*} [DecidableEq ι] (s : Finset ι) (v : ι → F)
+    (hvs : Set.InjOn v s) (degree_f_lt : f.degree < s.card)
+    (y : ι → F) (c : F)
+    (z : ι → F) (hz : z = y + c • fun i => f.eval (v i)) :
+    (Lagrange.interpolate s v z).eval 0 =
+      (Lagrange.interpolate s v y).eval 0 + c * f.eval 0
+```
+
+**Type correspondence**
+
+| Lean | EasyCrypt | Meaning |
+|---|---|---|
+| `F[X]` | (abstracted into `share_t`) | secret-sharing polynomial |
+| `s : Finset ι` | `Q : int list` (with `uniq Q`) | quorum |
+| `v : ι → F` (with `Set.InjOn v s`) | implicit in `uniq Q` | party indexing |
+| `degree_f_lt : f.degree < s.card` | `poly_degree (reconstruct Q shares) < size Q` | sharing-polynomial degree bound |
+| `z = y + c • fun i => f.eval (v i)` (per party) | `per_party_partial_response c_tilde rho_rnd mu_val (poly_eval (reconstruct Q shares) i)` | per-party response |
+| `Lagrange.interpolate s v z .eval 0` | `lagrange_aggregate_responses Q [per_party_PR_i]` | quorum aggregation at 0 |
+| `+ c * f.eval 0` | folded into the abstract `mldsa_compute_z` on the reconstructed share | centralised z |
+
+**Used by**
+`Pulsar_N1_Combine_Refinement.combine_body_z_spec` (v8, now a
+derived lemma) — bridges the combine-side z-stage byte-walk to the
+Lean Lagrange theorem. The `combine_body_partial_responses_spec`
+narrow axiom + `combine_body_z_via_aggregation_spec` structural
+axiom + this bridge compose to derive `combine_body_z_spec`.
+
+**Honest framing**
+
+The EC axiom integrates THREE facts:
+1. The Lean theorem's algebraic identity (interpolate-z = interpolate-y + c·f(0));
+2. The implicit y-aggregation: `mldsa_compute_z`'s y_central
+   equals the Lagrange-aggregation of the per-party y_i values used
+   in `per_party_partial_response`;
+3. The structural decomposition `mldsa_compute_z = y_central + c · s_central`.
+
+(2) and (3) are not separately mechanized — they are folded into
+the EC axiom's RHS via the abstract `mldsa_compute_z` op. Future
+narrowing would expose y_aggregation as a separate identity and
+split this bridge into smaller pieces.
+
 ## What this bridge does NOT do
 
 It does **not** provide a mechanical proof-object exchange. The EC
@@ -222,13 +288,19 @@ grep gate (see Future Work).
 ## Honest summary
 
 The trust footprint of the extracted N1 byte-equality theorem,
-including the bridge:
+including the bridge (v8):
 
-* Implementation-refinement axioms (EC, byte-walks): **2**.
-  Tracked under issues #3 + #4.
-* Algebraic-content axioms bridged to Lean: **4** (Axioms 1-4
+* Implementation-refinement axioms (EC, byte-walks): **4 stage-level
+  (z + h on combine/sign) + 1 c_tilde dependency sub-stage w on
+  combine/sign + 1 c_tilde dependency w on sign + 1 narrow combine
+  partial-response extraction**. The combine z-stage primitive is
+  replaced by the partial-response axiom + threshold_partial_response_identity
+  bridge.
+* Algebraic-content axioms bridged to Lean: **5** (Axioms 1-5
   above). Each has a corresponding Lean theorem cited inline.
+  Axiom 5 (threshold_partial_response_identity) was added in v8
+  to discharge the combine z-stage aggregation.
 * Module-contract axioms in the extracted N1 corollary: **0**.
 
-Total dependency cone for the concrete extracted theorem:
-2 byte-walks + 4 Lean-bridged algebraic identities.
+The full per-version per-axiom inventory lives in
+`proofs/easycrypt/Pulsar_N1_Extracted.ec` and `../SUBMISSION.md`.

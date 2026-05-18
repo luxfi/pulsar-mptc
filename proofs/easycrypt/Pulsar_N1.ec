@@ -569,6 +569,74 @@ op mldsa_compute_z :
 op mldsa_compute_h :
   unpacked_sk_t -> mu_t -> randomness_t -> h_n1_t.
 
+(* ===================================================================
+   Threshold response layer — FROST-style partial responses + Lagrange
+   aggregation. Used by Pulsar combine to fold Round-2 messages into
+   the final ML-DSA z output.
+
+   `partial_response_t` is the per-party response value
+     z_i = y_i + c · s_i
+   computed by party i given:
+     - the common c_tilde challenge (broadcast at Round 2),
+     - the per-call randomness (rho_rnd),
+     - the message binder mu,
+     - the party's secret share s_i.
+
+   `lagrange_aggregate_responses Q [z_i ...]` combines per-party
+   responses over a quorum Q via the standard Lagrange-at-zero
+   interpolation (lambda_i coefficients for the quorum).
+
+   The threshold partial-response identity below states that this
+   aggregation equals the centralised ML-DSA `mldsa_compute_z` on the
+   reconstructed share — i.e., the FROST/Pulsar correctness for the
+   z stage. The identity is Lean-bridged to
+   `Crypto.Threshold.Lagrange.threshold_partial_response_identity`
+   (`lean/Crypto/Threshold_Lagrange.lean:121`).
+   =================================================================== *)
+
+type partial_response_t.
+
+op per_party_partial_response :
+  c_tilde_n1_t -> randomness_t -> mu_t -> share_t -> partial_response_t.
+
+op lagrange_aggregate_responses :
+  int list -> partial_response_t list -> z_n1_t.
+
+(* Lean-bridged: threshold_partial_response_identity.
+
+   Lean side (`Crypto.Threshold.Lagrange.threshold_partial_response_identity`,
+   lean/Crypto/Threshold_Lagrange.lean:121) proves:
+     given a polynomial f, quorum s, points v with `Set.InjOn v s`,
+     `f.degree < s.card`, masks y, challenge c, and
+     `z = y + c • fun i => f.eval (v i)`:
+       (Lagrange.interpolate s v z).eval 0
+       = (Lagrange.interpolate s v y).eval 0 + c · f.eval 0
+
+   EC formulation: at the share_t level, the polynomial f is the
+   secret share `reconstruct Q shares`; the per-party shares are
+   `poly_eval (reconstruct Q shares) i` for i ∈ Q; per-party
+   partial responses are `per_party_partial_response c_tilde rho_rnd
+   mu_val share_i`. Aggregating those equals `mldsa_compute_z` on
+   the reconstructed share's unpacked form.
+
+   The 4 preconditions mirror the Lean theorem's hypotheses:
+     - `uniq Q`              ↔ `Set.InjOn v s` (distinct party indices)
+     - `size shares = size Q` ↔ shape match
+     - `poly_degree < size Q` ↔ `f.degree < s.card`
+     - shares = honest poly evaluations ↔ Lean's setup `z = y + c•f(v)`. *)
+axiom threshold_partial_response_identity :
+  forall (Q : int list) (shares : share_t list)
+         (c_tilde : c_tilde_n1_t) (rho_rnd : randomness_t) (mu_val : mu_t),
+    uniq Q =>
+    size shares = size Q =>
+    poly_degree (reconstruct Q shares) < size Q =>
+    shares = List.map (poly_eval (reconstruct Q shares)) Q =>
+    lagrange_aggregate_responses Q
+      (List.map (per_party_partial_response c_tilde rho_rnd mu_val) shares)
+    = mldsa_compute_z
+        (unpack_sk (reconstruct Q shares))
+        mu_val rho_rnd.
+
 op run_signing_components
    (usk : unpacked_sk_t) (mu_val : mu_t) (rho_rnd : randomness_t)
    : c_tilde_n1_t * z_n1_t * h_n1_t =
@@ -917,6 +985,11 @@ declare axiom combine_body_axiom :
             /\ accept_signing_attempt
                  (reconstruct quorum{1} shares{1})
                  m{1} ctx{1} rho_rnd{1}
+            /\ uniq quorum{1}
+            /\ size shares{1} = size quorum{1}
+            /\ poly_degree (reconstruct quorum{1} shares{1}) < size quorum{1}
+            /\ shares{1} = List.map
+                 (poly_eval (reconstruct quorum{1} shares{1})) quorum{1}
           ==> ={res} ].
 
 (* Functional-spec hypothesis on the single-party module `S`.          *)
@@ -1108,6 +1181,9 @@ lemma pulsar_n1_byte_equality :
             /\ accept_signing_attempt
                  (reconstruct quorum{1} shares{1})
                  m{1} ctx{1} rho_rnd{1}
+            /\ poly_degree (reconstruct quorum{1} shares{1}) < size quorum{1}
+            /\ shares{1} = List.map
+                 (poly_eval (reconstruct quorum{1} shares{1})) quorum{1}
         ==> ={res} ].
 proof.
   (* Chain via SinglePartyRun(FIPS204Sign).run as the bridge module.    *)
@@ -1124,20 +1200,24 @@ proof.
         /\ accept_signing_attempt
              (reconstruct quorum{1} shares{1})
              m{1} ctx{1} rho_rnd{1}
+        /\ poly_degree (reconstruct quorum{1} shares{1}) < size quorum{1}
+        /\ shares{1} = List.map
+             (poly_eval (reconstruct quorum{1} shares{1})) quorum{1}
      ==> ={res})
     (={group_pk, shares, quorum, m, ctx, rho_rnd}
         /\ accept_signing_attempt
              (reconstruct quorum{1} shares{1})
              m{1} ctx{1} rho_rnd{1}
      ==> ={res}).
-  + move=> &1 &2 [#] 6-> uQ szq Hgpk Haccept.
+  + move=> &1 &2 [#] 6-> uQ szq Hgpk Haccept Hdeg Hhonest.
     by exists (group_pk{2}, shares{2}, quorum{2}, m{2}, ctx{2}, rho_rnd{2}).
   + done.
   + (* Step A: ThresholdRun(T).run ~ SinglePartyRun(FIPS204Sign).run    *)
     proc.
     (* Step A1: replace T.combine on the LHS by CombineAbs.combine via   *)
     (* the section-local refinement axiom. Threads gpk-consistency +     *)
-    (* accept-path through the transitivity's middle precondition.       *)
+    (* accept-path + threshold invariants through the transitivity's     *)
+    (* middle precondition.                                              *)
     transitivity{1}
       { sess <- witness;
         r1s  <- [];
@@ -1150,13 +1230,18 @@ proof.
           /\ accept_signing_attempt
                (reconstruct quorum{1} shares{1})
                m{1} ctx{1} rho_rnd{1}
+          /\ uniq quorum{1}
+          /\ size shares{1} = size quorum{1}
+          /\ poly_degree (reconstruct quorum{1} shares{1}) < size quorum{1}
+          /\ shares{1} = List.map
+               (poly_eval (reconstruct quorum{1} shares{1})) quorum{1}
         ==> ={sig})
       (={group_pk, shares, quorum, m, ctx, rho_rnd} ==> ={sig}).
     + smt().
     + done.
     + (* T.combine ~ CombineAbs.combine via the axiom (other code is the *)
-      (* same on both sides). Both gpk-consistency and accept-path are   *)
-      (* carried by the transitivity's first-leg postcondition.          *)
+      (* same on both sides). gpk-consistency + accept-path + threshold  *)
+      (* invariants are carried by the transitivity's first-leg post.    *)
       wp.
       call combine_body_axiom.
       by auto.

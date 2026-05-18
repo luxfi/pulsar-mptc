@@ -127,6 +127,25 @@ lemma combine_wrapper_bridge :
     gpk = Pulsar_N1.derive_pk (Pulsar_N1.reconstruct quorum shares) =>
     Pulsar_N1.accept_signing_attempt
       (Pulsar_N1.reconstruct quorum shares) m ctx rho_rnd =>
+    (* v8: threshold interpolation well-formedness bundle. The four
+       conjuncts mirror the Lean Lagrange theorem's preconditions and
+       are required to discharge the `threshold_partial_response_identity`
+       bridge in the z-stage derivation:
+         1. uniq quorum                         (distinct party indices)
+         2. size shares = size quorum           (shape match)
+         3. poly_degree < size quorum           (degree bound)
+         4. shares = poly_eval reconstruction   (honest sharing)
+       Conjuncts (1) and (2) are conventional threshold-protocol
+       preconditions present in the wrapper context since earlier
+       commits; conjuncts (3) and (4) are new in v8 and propagate up
+       to the top-level `pulsar_n1_byte_equality`. A future v9 may
+       refactor these four into a single `threshold_interpolation_wf`
+       predicate; for v8 they remain expanded to minimise proof churn.
+       *)
+    uniq quorum =>
+    size shares = size quorum =>
+    Pulsar_N1.poly_degree (Pulsar_N1.reconstruct quorum shares) < size quorum =>
+    shares = List.map (Pulsar_N1.poly_eval (Pulsar_N1.reconstruct quorum shares)) quorum =>
     let (mem, ptrs, full) =
       encode_combine_args gpk m ctx quorum shares rho_rnd r1s r2s in
     refine_sig_to_n1
@@ -136,7 +155,7 @@ lemma combine_wrapper_bridge :
     = Pulsar_N1.mldsa_sign_op
         (Pulsar_N1.reconstruct quorum shares) m ctx rho_rnd.
 proof.
-  move=> gpk m ctx quorum shares rho_rnd r1s r2s Hgpk Haccept /=.
+  move=> gpk m ctx quorum shares rho_rnd r1s r2s Hgpk Haccept Huniq Hsize Hdeg Hhonest /=.
   rewrite /encode_combine_args /=.
   have Hlay :
     Pulsar_N1_Combine_Layout.layout_combine_args
@@ -156,6 +175,11 @@ proof.
                     (n1_inputs_to_combine_full gpk m ctx quorum shares
                                                rho_rnd r1s r2s).
   - by rewrite /protocol_consistency /n1_inputs_to_combine_full /=.
+  have Hthresh : threshold_protocol_invariants
+                   (n1_inputs_to_combine_full gpk m ctx quorum shares
+                                              rho_rnd r1s r2s).
+  - rewrite /threshold_protocol_invariants /n1_inputs_to_combine_full /=.
+    by smt().
   have Hacc :
     Pulsar_N1.accept_signing_attempt
       (Pulsar_N1.reconstruct
@@ -182,7 +206,7 @@ proof.
                                        rho_rnd r1s r2s))).`2
       (n1_inputs_to_combine_full gpk m ctx quorum shares
                                  rho_rnd r1s r2s)
-      Hlay Hconsist Hacc.
+      Hlay Hconsist Hthresh Hacc.
   rewrite Hspec /combine_abs_op /n1_inputs_to_combine_full /=.
   done.
 qed.
@@ -260,20 +284,29 @@ lemma combine_wrapper_equiv_CombineAbs :
             /\ Pulsar_N1.accept_signing_attempt
                  (Pulsar_N1.reconstruct quorum{1} shares{1})
                  m{1} ctx{1} rho_rnd{1}
+            /\ uniq quorum{1}
+            /\ size shares{1} = size quorum{1}
+            /\ Pulsar_N1.poly_degree
+                 (Pulsar_N1.reconstruct quorum{1} shares{1}) < size quorum{1}
+            /\ shares{1} = List.map
+                  (Pulsar_N1.poly_eval
+                     (Pulsar_N1.reconstruct quorum{1} shares{1}))
+                  quorum{1}
         ==> ={res} ].
 proof.
   proc.
   inline Pulsar_N1.CombineAbs.combine Pulsar_N1.FIPS204Sign.sign.
-  wp; skip => /> &1 Haccept.
+  wp; skip => /> &1 Haccept Huniq Hsize Hdeg Hhonest.
   (* After `=> />` the equational `={...}` and gpk-consistency
-     conjuncts are consumed (eq_refl on gpk). Haccept survives as a
-     hypothesis. Apply combine_wrapper_bridge with eq_refl for the
-     gpk-precondition and Haccept for the accept-path precondition. *)
+     conjuncts are consumed (eq_refl on gpk). The remaining
+     hypotheses (accept-path + 4 threshold invariants) are passed
+     to combine_wrapper_bridge to discharge the Lean Lagrange
+     bridge preconditions in the z-stage derivation. *)
   exact: (combine_wrapper_bridge
             (Pulsar_N1.derive_pk (Pulsar_N1.reconstruct quorum{1} shares{1}))
             m{1} ctx{1} quorum{1}
             shares{1} rho_rnd{1} r1s{1} r2s{1}
-            (eq_refl _) Haccept).
+            (eq_refl _) Haccept Huniq Hsize Hdeg Hhonest).
 qed.
 
 (* ===================================================================

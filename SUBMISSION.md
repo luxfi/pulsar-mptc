@@ -222,14 +222,41 @@ mu and w1.
 
 | Category | Count | Notes |
 |---|---|---|
-| Stage-level byte-walk axioms | 4 | combine/sign × {z, h} |
+| Stage-level byte-walk axioms | 3 | `sign_body_z_spec`, `combine_body_h_spec`, `sign_body_h_spec` (combine z-stage moved to Lean bridge in v8) |
+| Narrow combine-side extraction | 2 | `combine_body_z_via_aggregation_spec` (structural — extracted z is Lagrange aggregation of partial responses) + `combine_body_partial_responses_spec` (per-party partial responses match centralised) |
 | c_tilde dependency sub-stage axioms | 2 | combine/sign × {w} only — w1 sub-stage further decomposed via HighBits in v7 |
 | Derived c_tilde lemmas | 2 | `combine_body_c_tilde_spec`, `sign_body_c_tilde_spec` |
 | Derived mu lemmas | 2 | `combine_body_mu_spec`, `sign_body_mu_spec` (v6) |
 | Derived w1 lemmas | 2 | `combine_body_w1_spec`, `sign_body_w1_spec` (v7) |
+| Derived combine z lemma | 1 | `combine_body_z_spec` (v8 — was primitive; now derived via Lean bridge) |
 | Accepted-path no-reject axioms | 2 | unchanged |
-| Lean-bridged algebraic axioms | 4 | unchanged |
+| Lean-bridged algebraic axioms | 5 | +`threshold_partial_response_identity` (v8, Axiom 5 of bridge doc) |
 | Codec roundtrip / layout axioms | existing + 3 | includes `pack_unpack_n1_signature_roundtrip` (v4) + `combine_body_mu_input_spec` and `sign_body_mu_input_spec` (v6, FIPS 204 §5.4.1 ExternalMu byte layouts) |
+
+**v8 — combine z-stage Lean-bridged**: `combine_body_z_spec` is no
+longer a primitive axiom; it is a derived lemma composing two
+narrower combine-side facts (`combine_body_z_via_aggregation_spec`
+on the aggregation shape, `combine_body_partial_responses_spec` on
+per-party byte-walk) with the Lean Lagrange theorem
+`Crypto.Threshold.Lagrange.threshold_partial_response_identity`
+(`lean/Crypto/Threshold_Lagrange.lean:121`). The Lean theorem's
+preconditions (uniq quorum, size match, polynomial degree bound,
+honest sharing — collectively the **threshold interpolation
+well-formedness** bundle) are now propagated as preconditions of
+`pulsar_n1_byte_equality` and `pulsar_n1_byte_equality_extracted`.
+The first two conjuncts (`uniq quorum`, `size shares = size quorum`)
+were already present in the wrapper context; v8 threads the
+remaining two (degree bound, honest evaluation) through to the
+top-level equivalence statements so the bridge backstops the
+derivation.
+
+This is not full mechanized closure of the z stage. Trust has
+moved from one stage-level byte-walk axiom (combine z) to one
+narrower partial-response extraction axiom (a byte-walk) plus a
+proven Lean theorem (the algebra). The next narrow target on this
+side is `combine_body_partial_responses_spec` itself — a byte-walk
+proving that the round-2 messages decode to per-party
+`per_party_partial_response` values.
 
 Detail on the byte-walk + sub-stage axioms:
 
@@ -540,7 +567,10 @@ Evidence delivered:
 |---|---|---|---|---|
 | `combine_body_w_spec` | byte-walk / polynomial | §6.2 | A·y at accepted κ + threshold aggregation | split into ExpandA, ExpandMask, mat_vec_mul + Lean Lagrange bridge for combine |
 | `sign_body_w_spec` | byte-walk / polynomial | §6.2 | A·y at accepted κ | split into ExpandA, ExpandMask, mat_vec_mul |
-| `combine_body_z_spec` | byte-walk / response | §6.2 | Lagrange aggregation of z_i | Lean bridge `Crypto.Threshold.Lagrange.threshold_partial_response_identity` |
+| `combine_body_z_spec` | **DERIVED LEMMA (v8)** | §6.2 | n/a | replaced by `combine_body_partial_responses_spec` + `threshold_partial_response_identity` Lean bridge |
+| `combine_body_z_via_aggregation_spec` | byte-walk / aggregation shape (v8) | §6.2 | extracted z's Lagrange shape | mechanical structural identity |
+| `combine_body_partial_responses_spec` | byte-walk / per-party PR (v8) | §6.2 | per-party z_i extraction | narrow byte-walk through round-2 message parsing |
+| `threshold_partial_response_identity` | Lean-bridged algebraic (v8) | §6.2 (FROST) | Lagrange-interpolation response identity | discharged in `lean/Crypto/Threshold_Lagrange.lean:121` |
 | `sign_body_z_spec` | byte-walk / response | §6.2 | y + c·s1 at accepted κ | reduce via vec ops + accepted-κ model |
 | `combine_body_h_spec` | byte-walk / hints | §6.2 | MakeHint over aggregated w_low/w_high | bridge to `MLDSA65_Functional.vec_k_make_hint` |
 | `sign_body_h_spec` | byte-walk / hints | §6.2 | same as combine sans aggregation | same bridge |

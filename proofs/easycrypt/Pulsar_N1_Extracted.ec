@@ -32,11 +32,13 @@ require import Pulsar_N1.
    The concrete extracted N1 byte-equality corollary.
 
    Trust boundary of this corollary (v7):
-     - 4 stage-level byte-walk axioms in the refinement files
-       (z + h on combine and sign):
-         combine_body_z_spec  (Lagrange+decompose  — roadmap S3+S5)
+     - 3 stage-level byte-walk axioms in the refinement files
+       (combine z-stage moved to Lean bridge in v8):
          combine_body_h_spec  (MakeHint stage      — roadmap S7)
          sign_body_z_spec, sign_body_h_spec
+     - 2 narrow combine z-stage axioms (v8):
+         combine_body_z_via_aggregation_spec  (structural shape)
+         combine_body_partial_responses_spec  (per-party byte-walk)
      - 2 c_tilde-stage sub-axioms (NARROW, w only — w1 sub-stage
        decomposed in v7 via HighBits structural split):
          combine_body_w_spec, sign_body_w_spec
@@ -66,24 +68,27 @@ require import Pulsar_N1.
         section-local inside Pulsar_N1; this corollary
         does NOT depend on them, instead using the
         wrapper-bridge equivs which are real lemmas).
-     - 4 Lean-bridged algebraic axioms (Lagrange/Shamir;
+     - 5 Lean-bridged algebraic axioms (Lagrange/Shamir +
+       threshold_partial_response_identity (v8);
        see proofs/lean-easycrypt-bridge.md).
 
    Headline trust footprint:
      Was (v4): 6 stage-level byte-walks
-     Was (v5): 4 stage-level + 4 c_tilde dependency sub-stage (mu + w1)
-     Was (v6): 4 stage-level + 2 c_tilde dependency sub-stage (w1)
+     Was (v5): 4 stage-level + 4 c_tilde dep sub-stage (mu + w1)
+     Was (v6): 4 stage-level + 2 c_tilde dep sub-stage (w1)
              + 2 codec layout (mu_input)
-     Now (v7): 4 stage-level (z + h)
-             + 2 c_tilde dependency sub-stage (w only — HighBits structural)
+     Was (v7): 4 stage-level + 2 c_tilde dep sub-stage (w)
+             + 2 codec layout
+     Now (v8): 3 stage-level (sign z + combine/sign h)
+             + 2 combine z extraction (v8 — aggregation shape + PR)
+             + 2 c_tilde dep sub-stage (w only)
              + 2 codec layout (mu_input)
-             = 6 byte-walk axioms + 2 codec layout axioms
-     Continued axiom decomposition. Now `*_body_w1_spec`,
-     `*_body_mu_spec`, and `*_body_c_tilde_spec` are all derived
-     lemmas on both sides. The remaining axioms (`*_body_w_spec`,
-     `*_body_z_spec`, `*_body_h_spec`, `*_body_mu_input_spec`)
-     are narrower than what they replaced but remain axiomatic
-     (NOT full mechanized closure).
+             + 5 Lean-bridged algebraic (+1 in v8)
+     Continued axiom decomposition. `combine_body_z_spec` (v8),
+     `*_body_w1_spec` (v7), `*_body_mu_spec` (v6), and
+     `*_body_c_tilde_spec` (v5) are all derived lemmas now. The
+     remaining axioms are narrower than what they replaced but
+     remain axiomatic (NOT full mechanized closure).
    =================================================================== *)
 
 lemma pulsar_n1_byte_equality_extracted :
@@ -98,6 +103,12 @@ lemma pulsar_n1_byte_equality_extracted :
       /\ Pulsar_N1.accept_signing_attempt
            (Pulsar_N1.reconstruct quorum{1} shares{1})
            m{1} ctx{1} rho_rnd{1}
+      /\ Pulsar_N1.poly_degree
+           (Pulsar_N1.reconstruct quorum{1} shares{1}) < size quorum{1}
+      /\ shares{1} = List.map
+           (Pulsar_N1.poly_eval
+              (Pulsar_N1.reconstruct quorum{1} shares{1}))
+           quorum{1}
     ==> ={res}
   ].
 proof.

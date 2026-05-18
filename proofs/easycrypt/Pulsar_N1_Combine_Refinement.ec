@@ -279,6 +279,44 @@ op combine_body_compute_w :
   Pulsar_N1_Combine_Layout.combine_ptrs_t ->
   Pulsar_N1.w_value_t.
 
+(* === v8: z-stage Lean-bridged aggregation infrastructure =========
+   The extracted combine procedure aggregates Round-2 partial
+   responses via Lagrange. We surface this as an explicit op so the
+   z-stage byte-walk obligation decomposes into:
+     (1) the extracted body's z = lagrange_aggregate_responses(Q, [z_i]) — STRUCTURAL
+     (2) the extracted body's per-party z_i values match the centralised
+         per_party_partial_response — NARROW BYTE-WALK
+     (3) lagrange_aggregate of per-party central PRs = mldsa_compute_z
+         on reconstructed share — LEAN-BRIDGED ALGEBRAIC IDENTITY
+         (`Pulsar_N1.threshold_partial_response_identity`)
+   The composition gives `combine_body_z_spec` as a derived lemma. *)
+op combine_body_compute_partial_responses :
+  Pulsar_N1_Memory.mem_t ->
+  Pulsar_N1_Combine_Layout.combine_ptrs_t ->
+  Pulsar_N1.partial_response_t list.
+
+(* Threshold protocol invariants — preconditions of the Lean
+   Lagrange theorem applied to combine_full_args_t. Bundles four
+   conjuncts:
+     - `uniq full_quorum` — distinct party indices in the quorum
+     - `size full_shares = size full_quorum` — shape match
+     - `poly_degree (reconstruct ...) < size full_quorum` — the
+       sharing polynomial degree is strictly less than the quorum size
+     - `full_shares = map (poly_eval (reconstruct ...)) full_quorum` —
+       honest sharing (each party's share is the polynomial evaluation
+       at its party index)
+   Mirrors `Crypto.Threshold.Lagrange.threshold_partial_response_identity`'s
+   preconditions (`Set.InjOn v s`, `f.degree < s.card`, honest-sharing
+   setup `z = y + c•f(v)`). *)
+op threshold_protocol_invariants (full : combine_full_args_t) : bool =
+  let s_recon =
+    Pulsar_N1.reconstruct full.`full_quorum full.`full_shares in
+  uniq full.`full_quorum
+  /\ size full.`full_shares = size full.`full_quorum
+  /\ Pulsar_N1.poly_degree s_recon < size full.`full_quorum
+  /\ full.`full_shares
+     = List.map (Pulsar_N1.poly_eval s_recon) full.`full_quorum.
+
 op combine_body_compute_w1
    (mem_pre : Pulsar_N1_Memory.mem_t)
    (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
@@ -509,7 +547,13 @@ proof.
   by rewrite Hmu Hw1.
 qed.
 
-axiom combine_body_z_spec :
+(* combine_body_z_via_aggregation_spec: STRUCTURAL claim about the
+   extracted body's z. The extracted combine computes z as the
+   Lagrange aggregation (over `full_quorum`) of the per-party partial
+   responses it reads from Round-2 messages. Narrower than the prior
+   bundled `combine_body_z_spec` axiom — concerns only the shape of
+   the aggregation, not its alignment with the centralised z. *)
+axiom combine_body_z_via_aggregation_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
          (full : combine_full_args_t),
@@ -518,11 +562,75 @@ axiom combine_body_z_spec :
     protocol_consistency full =>
     combine_body_compute_status mem_pre ptrs = 0 =>
     combine_body_compute_z mem_pre ptrs
+    = Pulsar_N1.lagrange_aggregate_responses
+        full.`full_quorum
+        (combine_body_compute_partial_responses mem_pre ptrs).
+
+(* combine_body_partial_responses_spec: NARROW byte-walk. The
+   extracted body's per-party partial responses (read from the
+   Round-2 messages) equal the centralised `per_party_partial_response`
+   computation for each party's share. The `c_tilde` argument is
+   what the extracted combine reads at its c_tilde_ptr input; the
+   message binder is the centralised `compute_mu m ctx`; the
+   randomness is the protocol-level `full_rho_rnd`. *)
+axiom combine_body_partial_responses_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+         (full : combine_full_args_t),
+    Pulsar_N1_Combine_Layout.layout_combine_args
+      mem_pre ptrs (wire_args_of_full full) =>
+    protocol_consistency full =>
+    combine_body_compute_status mem_pre ptrs = 0 =>
+    combine_body_compute_partial_responses mem_pre ptrs
+    = List.map
+        (Pulsar_N1.per_party_partial_response
+           (combine_body_compute_c_tilde mem_pre ptrs)
+           full.`full_rho_rnd
+           (Pulsar_N1.compute_mu full.`full_m full.`full_ctx))
+        full.`full_shares.
+
+(* combine_body_z_spec — was a primary axiom in v4-v7; now DERIVED
+   in v8 from the two new narrower axioms (z_via_aggregation +
+   partial_responses_spec) composed with the Lean-bridged
+   `Pulsar_N1.threshold_partial_response_identity`.
+
+   The threshold_protocol_invariants precondition (uniq Q,
+   size-match, degree bound, honest sharing) is required by the
+   Lean Lagrange theorem and is propagated up to the wrapper
+   bridge / pulsar_n1_byte_equality, where the honest-quorum
+   construction discharges it. *)
+lemma combine_body_z_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+         (full : combine_full_args_t),
+    Pulsar_N1_Combine_Layout.layout_combine_args
+      mem_pre ptrs (wire_args_of_full full) =>
+    protocol_consistency full =>
+    threshold_protocol_invariants full =>
+    combine_body_compute_status mem_pre ptrs = 0 =>
+    combine_body_compute_z mem_pre ptrs
     = Pulsar_N1.mldsa_compute_z
         (Pulsar_N1.unpack_sk
            (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares))
         (Pulsar_N1.compute_mu full.`full_m full.`full_ctx)
         full.`full_rho_rnd.
+proof.
+  move=> mem_pre ptrs full Hlay Hconsist Hthresh Hstatus.
+  have Hagg :=
+    combine_body_z_via_aggregation_spec mem_pre ptrs full
+      Hlay Hconsist Hstatus.
+  have Hpr :=
+    combine_body_partial_responses_spec mem_pre ptrs full
+      Hlay Hconsist Hstatus.
+  rewrite Hagg Hpr.
+  move: Hthresh; rewrite /threshold_protocol_invariants /=.
+  move=> [#] Huniq Hsize Hdeg Hhonest.
+  apply Pulsar_N1.threshold_partial_response_identity.
+  + exact Huniq.
+  + exact Hsize.
+  + exact Hdeg.
+  + exact Hhonest.
+qed.
 
 axiom combine_body_h_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
@@ -552,6 +660,7 @@ lemma combine_body_compute_components_spec :
     Pulsar_N1_Combine_Layout.layout_combine_args
       mem_pre ptrs (wire_args_of_full full) =>
     protocol_consistency full =>
+    threshold_protocol_invariants full =>
     combine_body_compute_status mem_pre ptrs = 0 =>
     combine_body_compute_components mem_pre ptrs
     = Pulsar_N1.run_signing_components
@@ -560,9 +669,9 @@ lemma combine_body_compute_components_spec :
         (Pulsar_N1.compute_mu full.`full_m full.`full_ctx)
         full.`full_rho_rnd.
 proof.
-  move=> mem_pre ptrs full Hlay Hconsist Hstatus.
+  move=> mem_pre ptrs full Hlay Hconsist Hthresh Hstatus.
   have Hc := combine_body_c_tilde_spec mem_pre ptrs full Hlay Hconsist Hstatus.
-  have Hz := combine_body_z_spec       mem_pre ptrs full Hlay Hconsist Hstatus.
+  have Hz := combine_body_z_spec       mem_pre ptrs full Hlay Hconsist Hthresh Hstatus.
   have Hh := combine_body_h_spec       mem_pre ptrs full Hlay Hconsist Hstatus.
   rewrite /combine_body_compute_components
           /Pulsar_N1.run_signing_components.
@@ -583,14 +692,15 @@ lemma combine_body_compute_sig_spec :
     Pulsar_N1_Combine_Layout.layout_combine_args
       mem_pre ptrs (wire_args_of_full full) =>
     protocol_consistency full =>
+    threshold_protocol_invariants full =>
     combine_body_compute_status mem_pre ptrs = 0 =>
     refine_sig_to_n1 (combine_body_compute_sig mem_pre ptrs)
     = combine_abs_op full.
 proof.
-  move=> mem_pre ptrs full Hlay Hconsist Hstatus.
+  move=> mem_pre ptrs full Hlay Hconsist Hthresh Hstatus.
   have Hcomp :=
     combine_body_compute_components_spec mem_pre ptrs full
-      Hlay Hconsist Hstatus.
+      Hlay Hconsist Hthresh Hstatus.
   (* After δ-expanding refine_sig_to_n1 (identity coercion) and
      combine_body_compute_sig / combine_abs_op / mldsa_sign_op /
      sign_internal_loop, both sides reduce (via ζ on the let-
@@ -664,6 +774,7 @@ lemma combine_body_spec :
     Pulsar_N1_Combine_Layout.layout_combine_args
       mem_pre ptrs (wire_args_of_full full) =>
     protocol_consistency full =>
+    threshold_protocol_invariants full =>
     Pulsar_N1.accept_signing_attempt
       (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares)
       full.`full_m full.`full_ctx full.`full_rho_rnd =>
@@ -673,12 +784,12 @@ lemma combine_body_spec :
          ptrs.`Pulsar_N1_Combine_Layout.sig_out_ptr)
     = combine_abs_op full.
 proof.
-  move=> mem_pre ptrs full Hlay Hconsist Haccept.
+  move=> mem_pre ptrs full Hlay Hconsist Hthresh Haccept.
   have Hstatus :=
     combine_no_reject_on_accepted_honest_layout mem_pre ptrs full Hlay Haccept.
   rewrite /combine_body_fn.
   rewrite Pulsar_N1_Combine_Layout.read_after_write_signature.
-  by apply combine_body_compute_sig_spec.
+  by apply (combine_body_compute_sig_spec mem_pre ptrs full Hlay Hconsist Hthresh Hstatus).
 qed.
 
 (* L3a: only sig_out_ptr range is modified. PROVED — defined as a
@@ -718,6 +829,7 @@ lemma packed_bytes_eq_CombineAbs :
     Pulsar_N1_Combine_Layout.layout_combine_args
       mem_pre ptrs (wire_args_of_full full) =>
     protocol_consistency full =>
+    threshold_protocol_invariants full =>
     Pulsar_N1.accept_signing_attempt
       (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares)
       full.`full_m full.`full_ctx full.`full_rho_rnd =>
@@ -727,8 +839,8 @@ lemma packed_bytes_eq_CombineAbs :
          ptrs.`Pulsar_N1_Combine_Layout.sig_out_ptr)
     = combine_abs_op full.
 proof.
-  move=> mem_pre ptrs full Hlay Hconsist Haccept.
-  by apply (combine_body_spec mem_pre ptrs full Hlay Hconsist Haccept).
+  move=> mem_pre ptrs full Hlay Hconsist Hthresh Haccept.
+  by apply (combine_body_spec mem_pre ptrs full Hlay Hconsist Hthresh Haccept).
 qed.
 
 (* L3 composite: from combine_body_spec it follows immediately that
@@ -742,6 +854,7 @@ lemma combine_body_writes_signature :
     Pulsar_N1_Combine_Layout.layout_combine_args
       mem_pre ptrs (wire_args_of_full full) =>
     protocol_consistency full =>
+    threshold_protocol_invariants full =>
     Pulsar_N1.accept_signing_attempt
       (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares)
       full.`full_m full.`full_ctx full.`full_rho_rnd =>
@@ -806,16 +919,33 @@ qed.
                `Pulsar_N1.compute_mu`. `combine_body_mu_spec`
                becomes a derived lemma. c_tilde dependency sub-stage axiom
                count goes 2 → 1 on this file (w1 only).
-           v7 (this commit): w1 sub-stage axiom DECOMPOSED via
-               HighBits structural split. `combine_body_w1_spec`
-               is replaced by a narrower `combine_body_w_spec`
-               (about the polynomial vector w BEFORE
-               HighBits/decompose), plus the structural
-               `high_bits_of_w` definition shared with
+           v7: w1 sub-stage axiom DECOMPOSED via HighBits structural
+               split. `combine_body_w1_spec` is replaced by a
+               narrower `combine_body_w_spec` (about the polynomial
+               vector w BEFORE HighBits/decompose), plus the
+               structural `high_bits_of_w` definition shared with
                `Pulsar_N1.central_w1`. `combine_body_w1_spec`
-               becomes a derived lemma. c_tilde dependency sub-stage axiom
-               count stays 1 on this file but is now NARROWER
-               (about w, not w1).
+               becomes a derived lemma.
+           v8 (this commit): combine z-stage DERIVED via Lean
+               Lagrange bridge. `combine_body_z_spec` is no longer
+               a primitive axiom — it is a derived lemma composing:
+                 - `combine_body_z_via_aggregation_spec` (narrow
+                   structural: extracted z is Lagrange aggregation
+                   of partial responses over the quorum),
+                 - `combine_body_partial_responses_spec` (narrow
+                   byte-walk: per-party partial responses extracted
+                   from round-2 messages match the centralised
+                   `per_party_partial_response`),
+                 - `Pulsar_N1.threshold_partial_response_identity`
+                   (Lean-bridged algebraic identity discharged in
+                   `lean/Crypto/Threshold_Lagrange.lean:121`).
+               Bridge preconditions (threshold interpolation
+               well-formedness: uniq quorum, size match, degree
+               bound, honest sharing) propagated up through
+               combine_wrapper_bridge → pulsar_n1_byte_equality →
+               pulsar_n1_byte_equality_extracted. This is NOT full
+               mechanized closure of z — trust is split between
+               the narrow extraction axioms and the Lean theorem.
 
      ops (DEFINITIONS — no proof obligation):
        wire_args_of_full     (record projection)

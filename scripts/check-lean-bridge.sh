@@ -53,6 +53,7 @@ declare -a BRIDGE=(
     "add_share_zeroR|proofs/easycrypt/Pulsar_N4.ec|AddCommMonoid||"
     "reconstruct_linear|proofs/easycrypt/Pulsar_N4.ec|combine_distributes_over_sum|combine_distributes_over_sum|Threshold_Lagrange.lean"
     "shamir_correct|proofs/easycrypt/Pulsar_N4.ec|shamir_correct_at_target|shamir_correct_at_target|Pulsar/Shamir.lean"
+    "threshold_partial_response_identity|proofs/easycrypt/Pulsar_N1.ec|threshold_partial_response_identity|threshold_partial_response_identity|Threshold_Lagrange.lean"
 )
 
 echo "==> Lean ↔ EC Shamir bridge guard"
@@ -164,5 +165,5 @@ if [[ $FAIL -ne 0 ]]; then
     echo "    correspondence / file layout changed."
     exit 2
 fi
-echo "    [ok]   all 4 axiom citations present + Lean-side names verified"
+echo "    [ok]   all ${#BRIDGE[@]} axiom citations present + Lean-side names verified"
 exit 0
