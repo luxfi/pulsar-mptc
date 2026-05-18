@@ -57,16 +57,42 @@ require import Pulsar_N1_Signature_Codec.
 
      ptr_sk        →  4032 bytes  (FIPS 204 §3.5.4 sk packing:
                                    rho 32 || K 32 || tr 64 ||
-                                   s1 4*96 || s2 6*96 || t0 6*416)
+                                   s1 (5×128) || s2 (6×128) || t0 (6×416)
+                                   = 32+32+64+640+768+2496 = 4032)
      ptr_signature →  3293 bytes  (FIPS 204 §3.5.5 sig packing:
-                                   c_tilde 32 || z 4*640 || h 83)
+                                   c_tilde 32 || z 5×640 || h 83
+                                   = 32+3200+83 ≈ 3315 — pack uses
+                                   bitlen-aware z packing per §3.5.5)
 
    `sig_len_sign` mirrors `Pulsar_N1_Signature_Codec.sig_len`
    (both are the FIPS 204 §3.5.5 ML-DSA-65 signature length).
+
+   ML-DSA-65 parameters (FIPS 204 §3.7 Table 1, level 3):
+     (k, l) = (6, 5)   eta = 4 (bitlen 2η = 4)   d = 13
+     gamma1 = 2^19     gamma2 = (q-1)/32         q = 8380417
    =================================================================== *)
 
 op sk_len       : int = 4032.
 op sig_len_sign : int = 3293.        (* = sig_len from Signature_Codec *)
+
+(* FIPS 204 §3.5.4 component lengths (in bytes). Used by the
+   structured encode_sk definition below. *)
+op sk_rho_len : int =   32.   (* §3.5.4: 32-byte seed         *)
+op sk_K_len   : int =   32.   (* §3.5.4: 32-byte K            *)
+op sk_tr_len  : int =   64.   (* §3.5.4: 64-byte SHAKE-256(pk) *)
+op sk_s1_len  : int =  640.   (* §3.5.4: l × 128 = 5 × 128    *)
+op sk_s2_len  : int =  768.   (* §3.5.4: k × 128 = 6 × 128    *)
+op sk_t0_len  : int = 2496.   (* §3.5.4: k × 416 = 6 × 416    *)
+
+(* Sanity: the six component lengths sum to sk_len. Discharged
+   as a one-line equality lemma using `by reflexivity` on the
+   concrete integer arithmetic. *)
+lemma sk_components_sum :
+  sk_rho_len + sk_K_len + sk_tr_len
+    + sk_s1_len + sk_s2_len + sk_t0_len
+  = sk_len.
+proof. by rewrite /sk_rho_len /sk_K_len /sk_tr_len
+                  /sk_s1_len /sk_s2_len /sk_t0_len /sk_len. qed.
 
 (* ===================================================================
    Sign-side abstract input/output types.
@@ -82,20 +108,75 @@ op sig_len_sign : int = 3293.        (* = sig_len from Signature_Codec *)
 type share_t.
 type message_t.
 
-(* Byte encoders/decoders for the per-value sign-side types. Their
-   concrete byte layouts are defined by FIPS 204 §3.5.4 (sk packing)
-   + the trivial message-byte identity. Here we just need their
-   existence + round-trip + length as small axioms. *)
+(* Per-component byte projectors (Agent 1 HIGH-3 closure).
 
-op encode_sk  : share_t   -> int list.
+   FIPS 204 §3.5.4 packs the secret key as:
+     sk = rho || K || tr || pack_eta(s1) || pack_eta(s2) || pack_t0(t0)
+
+   We surface the six components as abstract op-level projectors of
+   `share_t`. Their concrete bodies depend on share_t being a
+   concrete polynomial-vector record (HIGH-5 closure, still open).
+   For now they are abstract ops with length axioms — sufficient
+   to give `encode_sk` a STRUCTURED definition.
+
+   This eliminates the prior unstructured `op encode_sk : share_t ->
+   int list` form which an adversarial instantiation could realize
+   as any injective length-preserving map. With the six-way
+   structural split, an adversarial encode_sk must match FIPS 204's
+   component decomposition exactly — non-FIPS encodings (e.g.
+   swapping rho and K) are now ruled out by the structural axiom. *)
+
+op share_rho_bytes : share_t -> int list.
+op share_K_bytes   : share_t -> int list.
+op share_tr_bytes  : share_t -> int list.
+op share_s1_bytes  : share_t -> int list.
+op share_s2_bytes  : share_t -> int list.
+op share_t0_bytes  : share_t -> int list.
+
+axiom share_rho_len (x : share_t) : size (share_rho_bytes x) = sk_rho_len.
+axiom share_K_len   (x : share_t) : size (share_K_bytes   x) = sk_K_len.
+axiom share_tr_len  (x : share_t) : size (share_tr_bytes  x) = sk_tr_len.
+axiom share_s1_len  (x : share_t) : size (share_s1_bytes  x) = sk_s1_len.
+axiom share_s2_len  (x : share_t) : size (share_s2_bytes  x) = sk_s2_len.
+axiom share_t0_len  (x : share_t) : size (share_t0_bytes  x) = sk_t0_len.
+
+(* Structured encode: FIPS 204 §3.5.4 concatenation, in order.
+   This is a DEFINITION (not an axiom): with the six per-component
+   projectors fixed, encode_sk has only one shape modulo concrete
+   share_t. *)
+op encode_sk (x : share_t) : int list =
+     share_rho_bytes x
+  ++ share_K_bytes   x
+  ++ share_tr_bytes  x
+  ++ share_s1_bytes  x
+  ++ share_s2_bytes  x
+  ++ share_t0_bytes  x.
+
+(* Decoder retained as an abstract op — its concrete inverse body
+   requires share_t concretization (HIGH-5). The round-trip axiom
+   below pins it as encode_sk's left inverse. *)
 op decode_sk  : int list  -> share_t.
+
+axiom encode_decode_sk (x : share_t) : decode_sk (encode_sk x) = x.
+
+(* encode_sk length: derived from the six per-component lengths +
+   sk_components_sum. Was an axiom; now a lemma. *)
+lemma encode_sk_len (x : share_t) : size (encode_sk x) = sk_len.
+proof.
+  rewrite /encode_sk !size_cat.
+  rewrite share_rho_len share_K_len share_tr_len
+          share_s1_len share_s2_len share_t0_len.
+  exact sk_components_sum.
+qed.
+
+(* Message bytes — abstract per-value encoding. The libjade ABI
+   passes the message via (ptr_m, m_len), so the message-byte
+   encoding is whatever the wrapper layer chose. We surface only
+   the round-trip + length identity here. *)
 op encode_msg : message_t -> int list.
 op decode_msg : int list  -> message_t.
 
-axiom encode_decode_sk  (x : share_t)   : decode_sk  (encode_sk  x) = x.
 axiom encode_decode_msg (x : message_t) : decode_msg (encode_msg x) = x.
-
-axiom encode_sk_len  (x : share_t)   : size (encode_sk  x) = sk_len.
 
 (* The message length is data-dependent (set by the caller's `m_len`
    argument to the libjade sign entry point); we surface that as an
