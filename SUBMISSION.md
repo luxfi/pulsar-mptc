@@ -23,8 +23,9 @@ chain stays auditable.
 | Repository | <https://github.com/luxfi/pulsar-mptc> |
 | Submission tag | `submission-` (cut from `main` at deadline) |
 | Spec PDF | `spec/pulsar.pdf` (built via `scripts/build.sh`) |
-| License | Apache-2.0 (see `LICENSE`) |
-| Patent posture | See `SECURITY.md` — Lux Industries grants a royalty-free patent license on the submitted construction to any MPTC-class N1/N4 implementer |
+| License | Apache-2.0 (code) — see `LICENSE` |
+| Patent posture | **Royalty-free grant** — see `PATENTS.md` (public-facing grant text) and `docs/patent-claims.md` (attorney-prep claim drafts). Lux Industries grants a worldwide, royalty-free, irrevocable patent license to any FIPS 204 ML-DSA-conformant implementation under Apache-2.0 or compatible OSI license, OR any NIST MPTC / PQC / ACVP submission, validation, or interoperability test. Defensive termination mirrors Apache-2.0 §3 and extends to all NIST-standardized PQ signature schemes. |
+| Tier | **Tier 1**: Threshold ML-DSA-65 (this submission). **Tier 2**: SLH-DSA (FIPS 205) single-party compatibility — out of scope for v0.1. **Tier 3**: Threshold SLH-DSA — experimental research profile, not in this submission. |
 
 ## Headline claim
 
@@ -64,18 +65,25 @@ verified by three independent ML-DSA implementations
 A reviewer with limited time should read in this order:
 
 1. **`SUBMISSION.md`** (this file) — submission metadata and headline
-2. **`spec/pulsar.pdf`** — full algorithm specification
+2. **`NIST-SUBMISSION.md`** — one-page executive summary
+3. **`spec/pulsar.pdf`** — full algorithm specification
    - §1 Introduction + §2 System model
    - §3 Parameters (ML-DSA-44 / 65 / 87)
    - §4 Protocol (DKG, Round-1, Round-2, Combine, Reshare)
    - §5 Security games (EUF-CMA threshold, identifiable abort)
    - §6 Output-interchangeability proof (the Class N1 claim)
    - §7 NIST MPTC category mapping
-3. **`README.md`** — repository layout and how to reproduce vectors
-4. **`vectors/README.md`** — KAT format + cross-validation gates
-5. **`BLOCKERS.md`** — what the construction does NOT
-   claim (e.g. v0.1 cross-committee reshare without external state
-   binding, identifiable-abort attribution under network partitions)
+4. **`PROOF-CLAIMS.md`** — what's proved vs what's not (narrow claim)
+5. **`AXIOM-INVENTORY.md`** — residual EC trust base, per-axiom closure plan
+6. **`TRUSTED-COMPUTING-BASE.md`** — EC/Jasmin/OCaml TCB
+7. **`FIPS-TRACEABILITY.md`** — op/lemma → FIPS 204 § map
+8. **`docs/evaluation.md`** — performance + correctness + CT + sec-param evidence
+9. **`PATENTS.md`** — royalty-free patent grant text
+10. **`README.md`** — repository layout and how to reproduce
+11. **`vectors/README.md`** — KAT format + cross-validation gates
+12. **`BLOCKERS.md`** — what the construction does NOT
+    claim (e.g. v0.1 cross-committee reshare without external state
+    binding, identifiable-abort attribution under network partitions)
 
 ## What to run
 
