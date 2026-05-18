@@ -316,12 +316,22 @@ proof. by rewrite /sign_abs_op /Pulsar_N1.mldsa_sign_op. qed.
 (* Extracted intermediates feeding c_tilde — surfaced so the
    c_tilde-stage byte-walk decomposes along the FIPS 204 §6.2
    "SHAKE(mu || w1Encode(w1))" boundary. Mirrors the combine-side
-   extracted intermediates `combine_body_compute_mu` and
-   `combine_body_compute_w1`. *)
-op sign_body_compute_mu :
+   extracted intermediates.
+
+   `sign_body_compute_mu` is now STRUCTURAL: factored as a SHAKE
+   over the libjade body's ExternalMu input buffer
+   (`sign_body_mu_input`). On the libjade sign side this maps
+   directly to the SHAKE call libjade makes during mu derivation. *)
+op sign_body_mu_input :
   Pulsar_N1_Memory.mem_t ->
   Pulsar_N1_Sign_Layout.sign_ptrs_t ->
-  Pulsar_N1.mu_t.
+  Pulsar_N1.mu_shake_input_t.
+
+op sign_body_compute_mu
+   (mem_pre : Pulsar_N1_Memory.mem_t)
+   (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+   : Pulsar_N1.mu_t =
+  Pulsar_N1.shake256_to_mu (sign_body_mu_input mem_pre ptrs).
 
 op sign_body_compute_w1 :
   Pulsar_N1_Memory.mem_t ->
@@ -404,11 +414,21 @@ op sign_body_fn (mem_pre : Pulsar_N1_Memory.mem_t)
    *)
 
 (* === c_tilde-stage sub-axioms (NARROW), mirror of combine =====
-   Each strictly narrower than the prior `sign_body_c_tilde_spec`
-   bundle. The SHAKE composition is encoded structurally in both
-   `sign_body_compute_c_tilde` and `Pulsar_N1.mldsa_compute_c_tilde`
-   (both use `shake_mu_w1`), not as an axiom. *)
-axiom sign_body_mu_spec :
+   After v6: mu sub-stage axiom decomposed into a byte-layout claim
+   (classified under FIPS 204 codec layouts). sign_body_mu_spec is
+   a derived lemma. *)
+axiom sign_body_mu_input_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+         (full : sign_full_args_t),
+    Pulsar_N1_Sign_Layout.layout_sign_args
+      mem_pre ptrs (wire_sign_args_of_full full) =>
+    sign_body_compute_status mem_pre ptrs = 0 =>
+    sign_body_mu_input mem_pre ptrs
+    = Pulsar_N1.external_mu_layout full.`sgn_m_n1 full.`sgn_ctx_n1.
+
+(* sign_body_mu_spec — was a primary axiom in v5; now DERIVED. *)
+lemma sign_body_mu_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
          (full : sign_full_args_t),
@@ -417,6 +437,12 @@ axiom sign_body_mu_spec :
     sign_body_compute_status mem_pre ptrs = 0 =>
     sign_body_compute_mu mem_pre ptrs
     = Pulsar_N1.compute_mu full.`sgn_m_n1 full.`sgn_ctx_n1.
+proof.
+  move=> mem_pre ptrs full Hlay Hstatus.
+  have Hinput := sign_body_mu_input_spec mem_pre ptrs full Hlay Hstatus.
+  rewrite /sign_body_compute_mu /Pulsar_N1.compute_mu.
+  by rewrite Hinput.
+qed.
 
 axiom sign_body_w1_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
@@ -732,14 +758,21 @@ qed.
      v2: 1 axiom  (sign_body_compute_sig_spec — packed signature)
      v3: 1 axiom  (sign_body_compute_components_spec — triple)
      v4: 3 axioms (sign_body_{c_tilde,z,h}_spec — per-stage)
-     v5 (this commit):
-         4 axioms — c_tilde stage AXIOM DECOMPOSED (not strictly
-         closed): `sign_body_c_tilde_spec` becomes a derived lemma,
-         replaced by two narrower sub-axioms (sign_body_mu_spec +
-         sign_body_w1_spec). z + h stages remain bundled. mu and
-         w1 specs themselves remain axioms.
+     v5: c_tilde-stage axiom DECOMPOSED — `sign_body_c_tilde_spec`
+         becomes derived; replaced by sign_body_{mu,w1}_spec axioms.
+     v6 (this commit):
+         4 axioms — mu sub-stage axiom further DECOMPOSED:
+         `sign_body_mu_spec` becomes a derived lemma, replaced by
+         a byte-layout axiom `sign_body_mu_input_spec` (FIPS 204
+         §5.4.1 ExternalMu layout, codec category).
+         Remaining byte-walk axioms on this file:
+           sign_body_w1_spec   (c_tilde sub-stage, narrow)
+           sign_body_z_spec    (stage-level)
+           sign_body_h_spec    (stage-level)
+         Plus 1 codec-layout axiom:
+           sign_body_mu_input_spec
 
-   Mirror of the combine-side post-v5 structure.
+   Mirror of the combine-side post-v6 structure.
 
    The separation property is now BY CONSTRUCTION. The byte-walk
    obligation reduces to a claim about pure signature bytes (the

@@ -448,7 +448,28 @@ type unpacked_sk_t.
 type mu_t.
 
 op unpack_sk  : share_t -> unpacked_sk_t.
-op compute_mu : message_t -> ctx_t -> mu_t.
+
+(* FIPS 204 §5.4.1 ExternalMu — DEFINED constructively as a SHAKE
+   over a fixed byte layout. The decomposition lets the refinement
+   files prove their mu-stage sub-axiom as a derived lemma from a
+   narrower BYTE-LAYOUT axiom (the extracted body's SHAKE input
+   buffer matches the FIPS 204 §5.4.1 prefix + ctx + M layout) —
+   no SHAKE semantics in the byte-layout axiom; that step is
+   structural via `shake256_to_mu` (same op on both sides of any
+   equality). *)
+
+(* The byte-layout input to the ExternalMu SHAKE call: per FIPS 204
+   §5.4.1, the layout is `IntegerToBytes(0, 1) || IntegerToBytes(|ctx|, 1)
+   || ctx || M`. Abstract type here; concrete byte serialisation
+   lands when `MLDSA65_Functional` exposes the byte ops at the
+   `bits` level. *)
+type mu_shake_input_t.
+
+op external_mu_layout : message_t -> ctx_t -> mu_shake_input_t.
+op shake256_to_mu      : mu_shake_input_t -> mu_t.
+
+op compute_mu (m : message_t) (ctx : ctx_t) : mu_t =
+  shake256_to_mu (external_mu_layout m ctx).
 
 (* FIPS 204 §3.5.5 signature components surfaced as abstract types:
    c_tilde (32-byte SHAKE digest), z (l-coordinate response vector,

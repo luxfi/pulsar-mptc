@@ -243,14 +243,29 @@ op combine_abs_op (full : combine_full_args_t) : Pulsar_N1.signature_t =
 
 (* Extracted intermediates feeding c_tilde — surfaced so the
    c_tilde-stage byte-walk decomposes along the FIPS 204 §6.2
-   "SHAKE(mu || w1Encode(w1))" boundary. Each is an abstract op
-   whose value will be constrained by a NARROW sub-axiom (one per
-   intermediate, each strictly narrower than the prior bundled
-   `combine_body_c_tilde_spec` axiom). *)
-op combine_body_compute_mu :
+   "SHAKE(mu || w1Encode(w1))" boundary.
+
+   `combine_body_compute_mu` is now STRUCTURAL: factored as a SHAKE
+   over the extracted body's ExternalMu input buffer
+   (`combine_body_mu_input`). The mu_spec on the combine side is a
+   derived lemma from a narrower BYTE-LAYOUT axiom
+   (`combine_body_mu_input_spec`, classified under FIPS 204 codec
+   layouts), not a primitive axiom. NOTE: combine itself does not
+   internally compute mu — combine reads c_tilde as a wire input
+   from the threshold protocol. `combine_body_mu_input` is the
+   witness byte buffer the protocol used to derive the c_tilde
+   input; the byte-layout axiom states it matches the FIPS 204
+   ExternalMu layout for (m, ctx). *)
+op combine_body_mu_input :
   Pulsar_N1_Memory.mem_t ->
   Pulsar_N1_Combine_Layout.combine_ptrs_t ->
-  Pulsar_N1.mu_t.
+  Pulsar_N1.mu_shake_input_t.
+
+op combine_body_compute_mu
+   (mem_pre : Pulsar_N1_Memory.mem_t)
+   (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+   : Pulsar_N1.mu_t =
+  Pulsar_N1.shake256_to_mu (combine_body_mu_input mem_pre ptrs).
 
 op combine_body_compute_w1 :
   Pulsar_N1_Memory.mem_t ->
@@ -360,24 +375,38 @@ op combine_body_fn (mem_pre : Pulsar_N1_Memory.mem_t)
    Each conditioned on layout + protocol_consistency + status = 0. *)
 
 (* === c_tilde-stage sub-axioms (NARROW) =====================
-   Each sub-axiom constrains ONE extracted intermediate. They are
-   strictly narrower than the removed `combine_body_c_tilde_spec`
-   axiom — that axiom bundled the mu derivation, the w1 derivation,
-   AND the SHAKE composition into one claim; here they are
-   separated and the SHAKE composition is encoded as a STRUCTURAL
-   DEFINITION (in both `combine_body_compute_c_tilde` and
-   `Pulsar_N1.mldsa_compute_c_tilde`), not an axiom.
+   After v6: the mu sub-stage axiom is itself decomposed. Trust
+   localises to a byte-layout axiom (the extracted SHAKE input
+   buffer matches the FIPS 204 §5.4.1 ExternalMu layout), not the
+   mu VALUE. Classified under FIPS 204 codec layouts, not the
+   byte-walk category.
 
-   combine_body_mu_spec:
-     The extracted body's mu intermediate matches the centralised
-     ExternalMu derivation `compute_mu m ctx`. Tracked #4 sub-claim.
+   combine_body_mu_input_spec (FIPS 204 codec layout):
+     The extracted SHAKE input buffer that produced the protocol-
+     level mu used in c_tilde derivation matches the FIPS 204
+     §5.4.1 ExternalMu byte layout for (m, ctx). Narrower than
+     `combine_body_mu_spec` — no SHAKE semantics, just byte
+     layout. Tracked #4 sub-claim.
 
-   combine_body_w1_spec:
+   combine_body_w1_spec (byte-walk, sub-stage):
      The extracted body's w1 intermediate (the high-bits polynomial
      vector at the accepting kappa) matches the centralised
      `central_w1` op evaluated on the reconstructed share's
      unpacked sk + mu + rho_rnd. Tracked #4 sub-claim. *)
-axiom combine_body_mu_spec :
+axiom combine_body_mu_input_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+         (full : combine_full_args_t),
+    Pulsar_N1_Combine_Layout.layout_combine_args
+      mem_pre ptrs (wire_args_of_full full) =>
+    protocol_consistency full =>
+    combine_body_compute_status mem_pre ptrs = 0 =>
+    combine_body_mu_input mem_pre ptrs
+    = Pulsar_N1.external_mu_layout full.`full_m full.`full_ctx.
+
+(* combine_body_mu_spec — was a primary axiom in v5; now DERIVED in
+   v6 via the SHAKE structural composition. *)
+lemma combine_body_mu_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
          (full : combine_full_args_t),
@@ -387,6 +416,13 @@ axiom combine_body_mu_spec :
     combine_body_compute_status mem_pre ptrs = 0 =>
     combine_body_compute_mu mem_pre ptrs
     = Pulsar_N1.compute_mu full.`full_m full.`full_ctx.
+proof.
+  move=> mem_pre ptrs full Hlay Hconsist Hstatus.
+  have Hinput :=
+    combine_body_mu_input_spec mem_pre ptrs full Hlay Hconsist Hstatus.
+  rewrite /combine_body_compute_mu /Pulsar_N1.compute_mu.
+  by rewrite Hinput.
+qed.
 
 axiom combine_body_w1_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
@@ -712,18 +748,23 @@ qed.
                Pulsar_N1.pack_n1_signature.
            v4: 3 per-stage axioms — one per FIPS 204 §6.2
                inner-loop output component.
-           v5 (this commit): c_tilde-stage axiom DECOMPOSED — the
-               primitive `combine_body_c_tilde_spec` axiom is
-               replaced by 2 strictly-narrower sub-axioms (mu and
-               w1), plus a structural definition (`shake_mu_w1`)
-               common to both extracted and centralised sides.
+           v5: c_tilde-stage axiom DECOMPOSED — the primitive
+               `combine_body_c_tilde_spec` axiom replaced by 2
+               strictly-narrower sub-axioms (mu and w1), plus a
+               structural definition (`shake_mu_w1`) common to
+               both extracted and centralised sides.
                `combine_body_c_tilde_spec` becomes a derived lemma.
-               NOT full mechanized closure of the c_tilde path:
-               mu and w1 specs remain axioms. Stage-level axiom
-               count goes 3 → 2 on this file; total axioms (stage
-               + sub-stage) goes 3 → 4. Trade is smaller surface
-               area per axiom; `combine_body_c_tilde_spec` is now
-               provable (not primitive).
+               NOT full mechanized closure: mu and w1 specs remain
+               axioms.
+           v6 (this commit): mu sub-stage axiom further DECOMPOSED.
+               `combine_body_mu_spec` is replaced by a narrower
+               byte-layout axiom `combine_body_mu_input_spec`
+               (FIPS 204 §5.4.1 ExternalMu byte-layout, classified
+               under codec layouts not byte-walks), plus the
+               structural `shake256_to_mu` definition shared with
+               `Pulsar_N1.compute_mu`. `combine_body_mu_spec`
+               becomes a derived lemma. c_tilde sub-stage axiom
+               count goes 2 → 1 on this file (w1 only).
 
      ops (DEFINITIONS — no proof obligation):
        wire_args_of_full     (record projection)
@@ -788,16 +829,21 @@ qed.
      v2: 1 axiom  (combine_body_compute_sig_spec — packed signature)
      v3: 1 axiom  (combine_body_compute_components_spec — triple)
      v4: 3 axioms (combine_body_{c_tilde,z,h}_spec — per-stage)
-     v5 (this commit):
-         4 axioms — c_tilde stage AXIOM DECOMPOSED (not strictly
-         closed): `combine_body_c_tilde_spec` becomes a derived
-         lemma, replaced by two strictly narrower sub-axioms:
-           combine_body_mu_spec   (extracted mu = compute_mu m ctx)
-           combine_body_w1_spec   (extracted w1 = central_w1 (...))
-         z and h stages still bundled:
-           combine_body_z_spec, combine_body_h_spec
-         The mu and w1 specs themselves remain axioms; closing
-         them is the next narrowing step (mu first — narrowest).
+     v5: c_tilde-stage axiom DECOMPOSED — `combine_body_c_tilde_spec`
+         becomes derived; replaced by combine_body_mu_spec +
+         combine_body_w1_spec axioms.
+     v6 (this commit):
+         4 axioms — mu sub-stage axiom further DECOMPOSED:
+         `combine_body_mu_spec` becomes a derived lemma, replaced
+         by a byte-layout axiom `combine_body_mu_input_spec`
+         (FIPS 204 §5.4.1 ExternalMu layout, codec category).
+         Remaining byte-walk axioms on this file:
+           combine_body_w1_spec   (c_tilde sub-stage, narrow)
+           combine_body_z_spec    (stage-level)
+           combine_body_h_spec    (stage-level)
+         Plus 1 codec-layout axiom:
+           combine_body_mu_input_spec
+         w1 is the next narrowing target (still bundled).
 
    Concrete attack surface per axiom (post-v5):
      combine_body_mu_spec ↦ FIPS 204 §5.4.1 ExternalMu derivation

@@ -31,26 +31,30 @@ require import Pulsar_N1.
 (* ===================================================================
    The concrete extracted N1 byte-equality corollary.
 
-   Trust boundary of this corollary (v5):
+   Trust boundary of this corollary (v6):
      - 4 stage-level byte-walk axioms in the refinement files
-       (z + h on combine and sign; c_tilde stage axiom DECOMPOSED
-       into narrower mu+w1 sub-stage sub-axioms — see below — and
-       *_body_c_tilde_spec is now a derived lemma):
-         combine_body_z_spec          (Lagrange+decompose  — roadmap S3+S5)
-         combine_body_h_spec          (MakeHint stage      — roadmap S7)
+       (z + h on combine and sign):
+         combine_body_z_spec  (Lagrange+decompose  — roadmap S3+S5)
+         combine_body_h_spec  (MakeHint stage      — roadmap S7)
          sign_body_z_spec, sign_body_h_spec
-     - 4 c_tilde-stage sub-axioms (NARROW; each strictly smaller
-       than the prior bundled c_tilde axiom they replace):
-         combine_body_mu_spec, combine_body_w1_spec
-         sign_body_mu_spec,    sign_body_w1_spec
-       Compose to give the derived lemmas
-       `combine_body_c_tilde_spec` and `sign_body_c_tilde_spec`
-       under the structural SHAKE composition via
-       `Pulsar_N1.shake_mu_w1` (same op on both sides).
+     - 2 c_tilde-stage sub-axioms (NARROW, w1 only — mu sub-stage
+       decomposed further in v6):
+         combine_body_w1_spec, sign_body_w1_spec
+       Compose with the derived `*_body_mu_spec` lemmas to give
+       the derived `*_body_c_tilde_spec` lemmas under the structural
+       SHAKE composition via `Pulsar_N1.shake_mu_w1`.
+     - 2 FIPS 204 §5.4.1 ExternalMu byte-layout axioms (v6, NARROW;
+       classified under codec layouts, not byte-walks):
+         combine_body_mu_input_spec, sign_body_mu_input_spec
+       Each asserts the extracted SHAKE-input buffer matches the
+       FIPS 204 byte layout for (m, ctx) — pure byte-layout claim,
+       no SHAKE semantics. Compose via the structural
+       `shake256_to_mu` op to give the derived `*_body_mu_spec`
+       lemmas.
      - 1 codec roundtrip axiom in Pulsar_N1
          pack_unpack_n1_signature_roundtrip
-       Slots into the existing "~21 per-type FIPS 204 codec
-       round-trip" category. Pack-injectivity is a derived lemma
+       Slots into the FIPS 204 codec round-trip category.
+       Pack-injectivity is a derived lemma
        (pack_n1_signature_injective), not an axiom.
      - 0 ABI bridge identity axioms in either wrapper file
        (both wrapper bridges are lemmas).
@@ -64,18 +68,16 @@ require import Pulsar_N1.
 
    Headline trust footprint:
      Was (v4): 6 stage-level byte-walks
-     Now (v5): 4 stage-level + 4 narrow sub-stage = 8 axioms total
-     This is axiom DECOMPOSITION, not full mechanized closure:
-     - The top-level c_tilde byte-walk axioms (`combine_body_c_tilde_spec`,
-       `sign_body_c_tilde_spec`) are no longer primitive axioms —
-       they are derived lemmas.
-     - The underlying trust is now localized to FOUR narrower
-       sub-axioms (combine/sign × {mu, w1}). Each is strictly smaller
-       than what it replaces.
-     - The c_tilde path is NOT fully closed in the strict sense;
-       *_mu_spec and *_w1_spec remain axioms. Closing those is the
-       next narrowing step (mu is the cleanest target — single
-       SHAKE call, no aggregation).
+     Was (v5): 4 stage-level + 4 c_tilde sub-stage (mu + w1)
+     Now (v6): 4 stage-level (z + h)
+             + 2 c_tilde sub-stage (w1 only)
+             + 2 FIPS 204 byte-layout (mu_input, codec category)
+             = 6 stage/sub-stage byte-walk axioms
+             + 2 codec layout axioms
+     This is continued axiom decomposition — mu and c_tilde specs
+     are now both derived lemmas. The remaining axioms are smaller
+     and more attackable than what they replace, but the obligations
+     remain axiomatic (NOT full mechanized closure).
    =================================================================== *)
 
 lemma pulsar_n1_byte_equality_extracted :
