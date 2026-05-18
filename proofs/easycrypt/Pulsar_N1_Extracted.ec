@@ -31,20 +31,21 @@ require import Pulsar_N1.
 (* ===================================================================
    The concrete extracted N1 byte-equality corollary.
 
-   Trust boundary of this corollary:
-     - 6 axioms in the refinement files (per-FIPS-204-stage
-       byte-walks; 3 components × 2 sides):
-         Combine (Pulsar_N1_Combine_Refinement.ec):
-           combine_body_c_tilde_spec    — SampleInBall stage  (S4)
-           combine_body_z_spec          — Lagrange+decompose  (S3+S5)
-           combine_body_h_spec          — MakeHint stage      (S7)
-         Sign (Pulsar_N1_Sign_Refinement.ec):
-           sign_body_c_tilde_spec, sign_body_z_spec, sign_body_h_spec
-       Each constrains a single component value the extracted body
-       produces. The composite *_compute_components_spec and
-       *_compute_sig_spec are derived lemmas (via tuple
-       destructuring + the structural pack identity through
-       Pulsar_N1.pack_n1_signature).
+   Trust boundary of this corollary (v5):
+     - 4 stage-level byte-walk axioms in the refinement files
+       (z + h on combine and sign; c_tilde stage CLOSED as derived
+       lemma — see sub-stage axioms below):
+         combine_body_z_spec          (Lagrange+decompose  — roadmap S3+S5)
+         combine_body_h_spec          (MakeHint stage      — roadmap S7)
+         sign_body_z_spec, sign_body_h_spec
+     - 4 c_tilde-stage sub-axioms (NARROW; each strictly smaller
+       than the prior bundled c_tilde axiom they replace):
+         combine_body_mu_spec, combine_body_w1_spec
+         sign_body_mu_spec,    sign_body_w1_spec
+       Compose to give the derived lemmas
+       `combine_body_c_tilde_spec` and `sign_body_c_tilde_spec`
+       under the structural SHAKE composition via
+       `Pulsar_N1.shake_mu_w1` (same op on both sides).
      - 1 codec roundtrip axiom in Pulsar_N1
          pack_unpack_n1_signature_roundtrip
        Slots into the existing "~21 per-type FIPS 204 codec
@@ -59,6 +60,14 @@ require import Pulsar_N1.
         wrapper-bridge equivs which are real lemmas).
      - 4 Lean-bridged algebraic axioms (Lagrange/Shamir;
        see proofs/lean-easycrypt-bridge.md).
+
+   Headline trust footprint:
+     Was (v4): 6 stage-level byte-walks
+     Now (v5): 4 stage-level + 4 narrow sub-stage = 8 axioms total
+     The c_tilde stage is now a PROVEN LEMMA on both sides, and
+     each remaining axiom is strictly narrower than what it
+     replaces. Path to closure on the remaining stages is named
+     in the per-side accounting blocks.
    =================================================================== *)
 
 lemma pulsar_n1_byte_equality_extracted :

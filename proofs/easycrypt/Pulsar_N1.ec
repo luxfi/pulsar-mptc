@@ -470,24 +470,47 @@ type h_n1_t.
    stage. Each component op captures the centralised single-party
    output of one inner-loop stage on accept:
 
-     mldsa_compute_c_tilde  c_tilde from SampleInBall(SHAKE(mu || w1))
-                            — corresponds to roadmap S4.
+     mldsa_compute_c_tilde  c_tilde = SHAKE(mu || w1Encode(w1))
+                            — corresponds to roadmap S4. STRUCTURAL
+                            DEFINITION (not abstract): factored
+                            through `central_w1` and `shake_mu_w1`
+                            so the c_tilde-stage byte-walk decomposes
+                            into mu-spec + w1-spec sub-axioms.
      mldsa_compute_z        z = y + c·s1 after kappa converges
                             — roadmap S3 (Lagrange-aggregation, when
                               viewed from the threshold side) + S5
-                              (w_prime + decompose).
+                              (w_prime + decompose). STILL ABSTRACT.
      mldsa_compute_h        h = MakeHint(w_low_agg, w_high_agg)
-                            — roadmap S7.
+                            — roadmap S7. STILL ABSTRACT.
 
-   Splitting the previously triple-returning `run_signing_components`
-   into three named ops is the structural step that lets the
-   refinement files split their byte-walk axioms per-stage as well.
-   `run_signing_components` is then DEFINED as the tuple of the
-   three — its identity collapses to component identities under
-   tuple destructuring, the load-bearing fact downstream lemmas
-   consume. *)
-op mldsa_compute_c_tilde :
-  unpacked_sk_t -> mu_t -> randomness_t -> c_tilde_n1_t.
+   The c_tilde-stage decomposition (this file) lets the refinement
+   files prove their c_tilde axiom as a derived lemma from two
+   narrower sub-axioms (extracted mu = compute_mu; extracted w1 =
+   central_w1). The z- and h-stage decompositions are future work
+   (z requires the Lean Lagrange-aggregation bridge; h depends on
+   MakeHint over aggregated low/high vectors). *)
+
+(* w1 — the high-bits polynomial vector at the accepting kappa.
+   Abstract type captures whatever value the centralised ML-DSA
+   inner loop produces for w1Encode's input on accept. The
+   structural bridge to MLDSA65_Functional.HighBits / vec_k_use_hint
+   is future work; here we surface only the abstract value. *)
+type w1_value_t.
+
+op central_w1 :
+  unpacked_sk_t -> mu_t -> randomness_t -> w1_value_t.
+
+(* SHAKE-based c_tilde derivation: c_tilde = SHAKE256(mu ||
+   w1Encode(w1), 32) per FIPS 204 §6.2. Abstract here; concrete
+   identity with `MLDSA65_Functional.sample_in_ball`'s SHAKE input
+   stage is bridge work. *)
+op shake_mu_w1 :
+  mu_t -> w1_value_t -> c_tilde_n1_t.
+
+op mldsa_compute_c_tilde
+   (usk : unpacked_sk_t) (mu_val : mu_t) (rho_rnd : randomness_t)
+   : c_tilde_n1_t =
+  shake_mu_w1 mu_val (central_w1 usk mu_val rho_rnd).
 
 op mldsa_compute_z :
   unpacked_sk_t -> mu_t -> randomness_t -> z_n1_t.

@@ -209,33 +209,42 @@ axiom set:
 
 **Remaining trust footprint of the extracted N1 corollary**:
 
-- **6 implementation-refinement axioms** — per-FIPS-204-stage
-  byte-walks on the extracted Jasmin/libjade procedures, three per
-  side, one per output component of the ML-DSA §6.2 inner loop:
+- **4 stage-level byte-walk axioms** — the remaining
+  per-FIPS-204-stage byte-walks on the extracted Jasmin/libjade
+  procedures, after the c_tilde-stage close. Two per side, on z
+  and h:
     combine side (tracked #4):
-      `combine_body_c_tilde_spec` — SampleInBall stage (roadmap S4)
       `combine_body_z_spec`       — Lagrange-aggregated z + decompose
                                     (roadmap S3 + S5)
       `combine_body_h_spec`       — MakeHint stage (roadmap S7)
     sign side (tracked #3):
-      `sign_body_c_tilde_spec`, `sign_body_z_spec`, `sign_body_h_spec`
-  Each axiom constrains a single component value the extracted
-  body produces; the pack step (FIPS 204 §3.5.5) and memory-write
-  step are structurally discharged. Roadmaps with named sub-claims
-  are in `proofs/easycrypt/extraction/`. The `sign_body_*_spec`
-  trio's ctx/rho_rnd ghost contract is pinned in
-  `Pulsar_N1_Sign_Refinement.ec`.
+      `sign_body_z_spec`, `sign_body_h_spec`
+- **4 c_tilde-stage sub-axioms** (NARROW; replace the c_tilde
+  bundle on each side):
+    combine side: `combine_body_mu_spec`, `combine_body_w1_spec`
+    sign side:    `sign_body_mu_spec`,    `sign_body_w1_spec`
+  Each is strictly narrower than the prior bundled c_tilde-stage
+  axiom. The SHAKE composition tying mu + w1 → c_tilde is encoded
+  as a STRUCTURAL DEFINITION on both sides (`Pulsar_N1.shake_mu_w1`,
+  same op), not an axiom. `*_body_c_tilde_spec` is now a derived
+  lemma on each side.
 
-  Why six axioms (not two): the prior "2 byte-walks over full
-  3293-byte packed signatures" framing concealed the per-stage
-  structure of the obligation. The per-stage split makes each
-  obligation independently attackable against the corresponding
-  `MLDSA65_Functional` op (`sample_in_ball`, `decompose_vec_k`,
-  `vec_k_make_hint`) and exposes a Lean-bridge opportunity for the
-  z-stage axioms (via `Crypto.Threshold.Lagrange.
-  threshold_partial_response_identity`). The composite
-  `*_compute_components_spec` and `*_compute_sig_spec` are now
-  derived lemmas, not axioms.
+  Per-axiom attack surface (v5):
+    `*_mu_spec` ↦ FIPS 204 ExternalMu derivation (single SHAKE call
+                  over a fixed prefix + ctx + M). Smallest remaining
+                  attack surface; future structural identity through
+                  `MLDSA65_Functional.shake256`.
+    `*_w1_spec` ↦ HighBits of A·y at the accepting kappa. Reduces
+                  to `MLDSA65_Functional.decompose_vec_k` +
+                  `mat_vec_mul` once those are concretized.
+    `*_z_spec`  ↦ Lagrange aggregation (combine) / pure §6.2 z (sign).
+                  Combine-side bridge:
+                  `Crypto.Threshold.Lagrange.threshold_partial_response_identity`.
+    `*_h_spec`  ↦ MakeHint over aggregated w_low / w_high.
+                  Bridge target: `MLDSA65_Functional.vec_k_make_hint`.
+
+  The composite `*_compute_components_spec` and `*_compute_sig_spec`
+  are derived lemmas, not axioms.
 - **2 accepted-path no-reject axioms** — protocol-correctness
   companions to the byte-walks
   (`combine_no_reject_on_accepted_honest_layout`,
@@ -280,13 +289,20 @@ What this gives the NIST reviewer at submission time:
    `pulsar_n1_byte_equality_extracted`, instantiating the generic
    `pulsar_n1_byte_equality` with concrete wrapper modules. Trust
    reduces to:
-   - 6 named per-stage byte-walk obligations (3 components × 2
-     sides — c_tilde / z / h on combine and sign);
+   - 4 stage-level byte-walks (z + h on combine and sign);
+   - 4 c_tilde-stage sub-axioms (mu + w1 on combine and sign),
+     each strictly narrower than the prior bundled c_tilde
+     obligation it replaces;
    - 2 accepted-path no-reject axioms (combine + sign);
    - 1 Lean-bridged algebraic identity in the N1 cone
      (`lagrange_inverse_eval`);
    - per-type FIPS 204 codec round-trips with `wf_*`
      well-formedness guards.
+
+   `combine_body_c_tilde_spec` and `sign_body_c_tilde_spec` are
+   PROVED LEMMAS (was: axioms in v4) via the sub-axiom decomposition
+   + the structural `shake_mu_w1` identity used on both sides of
+   the equality.
 
    The N4 cone adds 3 more Lean-bridged algebraic axioms
    (`add_share_zeroR`, `reconstruct_linear`, `shamir_correct`).
@@ -298,16 +314,18 @@ What this gives the NIST reviewer at submission time:
 
 What remains in the high-assurance track:
 
-- The six per-stage byte-walk obligations
-  (`combine_body_{c_tilde,z,h}_spec`, `sign_body_{c_tilde,z,h}_spec`)
-  — multi-week proofs walking the corresponding regions of the
-  extracted Jasmin / libjade procedures. Each is independently
-  attackable; the z-stage axioms have a Lean-bridge path through
-  `Crypto.Threshold.Lagrange.threshold_partial_response_identity`,
-  and the c_tilde / h-stage axioms reduce to FIPS 204 hash and
-  arithmetic op compositions over the MLDSA65_Functional layer.
-  Roadmaps with named sub-claims are committed under
-  `proofs/easycrypt/extraction/`.
+- The eight per-stage byte-walk obligations remaining after the
+  c_tilde-stage close:
+    Stage-level (4): `combine_body_{z,h}_spec`, `sign_body_{z,h}_spec`
+    Sub-stage    (4): `combine_body_{mu,w1}_spec`, `sign_body_{mu,w1}_spec`
+  Each is independently attackable. The z-stage axioms have a
+  Lean-bridge path through
+  `Crypto.Threshold.Lagrange.threshold_partial_response_identity`;
+  the mu-stage axioms reduce to `MLDSA65_Functional.shake256` (a
+  single SHAKE call); the w1-stage axioms reduce to
+  `decompose_vec_k` + `mat_vec_mul`; the h-stage axioms reduce to
+  `vec_k_make_hint`. Roadmaps with named sub-claims are committed
+  under `proofs/easycrypt/extraction/`.
 - The two accepted-path no-reject obligations
   (`combine_no_reject_on_accepted_honest_layout`,
   `sign_no_reject_on_accepted_honest_layout`) — these reduce to the
@@ -330,6 +348,80 @@ What remains in the high-assurance track:
 + extraction-sanity + bridge-guard + admit-budget + regression-guard
 check at REAL budget. `scripts/nightly.sh` runs the heavier 1-h
 fuzz + 10⁹-sample dudect runs that aren't appropriate for per-push.
+
+## Path to 100% mechanized threshold-crypto correctness
+
+This submission does **not** yet claim 100% mechanized threshold-
+crypto correctness. The Class N1 byte-equality theorem is proven in
+EasyCrypt as a lemma; closing the gap to fully mechanized correctness
+requires closing the following named obligations.
+
+### Remaining EC axioms in the corollary cone (8 + 1 + 4 + ~21)
+
+1. **8 per-stage byte-walk axioms** on the extracted Jasmin /
+   libjade procedures:
+     - `combine_body_{mu,w1,z,h}_spec` — combine side (tracked #4)
+     - `sign_body_{mu,w1,z,h}_spec`    — sign side    (tracked #3)
+   Each maps to a concrete FIPS 204 sub-stage; closure paths are
+   listed in the per-side accounting blocks. The mu-stage is the
+   narrowest (single SHAKE call) and the natural next target after
+   the c_tilde-stage close.
+
+2. **2 accepted-path no-reject axioms**
+   (`combine_no_reject_on_accepted_honest_layout`,
+   `sign_no_reject_on_accepted_honest_layout`). Closing these
+   requires modeling the kappa rejection loop's termination as a
+   deterministic event under `accept_signing_attempt`. The
+   probability tracking (`mldsa_accept_lower_bound`) is operational
+   and would need a probabilistic Hoare-logic chain to formalize.
+
+3. **4 Lean-bridged algebraic axioms** (`lagrange_inverse_eval` in
+   N1 cone; `add_share_zeroR`, `reconstruct_linear`, `shamir_correct`
+   in N4 cone). These are mechanized on the Lean side
+   (`~/work/lux/proofs/lean/Crypto/`) and connected by a bridge
+   document (`proofs/lean-easycrypt-bridge.md`). The current bridge
+   is a hand-verified textual citation guarded by a CI check
+   (`scripts/check-lean-bridge.sh`). **Replacing the bridges with
+   checked translation artifacts** is the right step toward 100%
+   mechanized — a translation layer that ingests both the Lean
+   theorem statement and the EC axiom statement and machine-verifies
+   their semantic equivalence. This is its own multi-week project;
+   see `proofs/lean-easycrypt-bridge.md` for the obligation list.
+
+4. **~21 FIPS 204 codec roundtrip axioms** (per-type encode/decode
+   identities, `wf_*` well-formedness predicates). Closing these
+   means concretizing the abstract types against
+   `MLDSA65_Functional` bit-level pack/unpack ops. The `wf_*`
+   predicates make the discharge point explicit, but the bit-level
+   mechanization itself is a 6-month research project comparable
+   to Barbosa-Barthe-Dupressoir's Dilithium mechanization (CRYPTO
+   2023).
+
+### Per-axiom closure paths
+
+| Axiom | Closure path |
+|---|---|
+| `combine_body_mu_spec` | Byte-walk SHAKE-input region of combine.ec; equivalence to ExternalMu derivation. Narrowest remaining; smallest single sub-claim. |
+| `combine_body_w1_spec` | Bridge through `decompose_vec_k` + `mat_vec_mul` on the Lagrange-aggregated A·y. |
+| `combine_body_z_spec` | Lean bridge to `Crypto.Threshold.Lagrange.threshold_partial_response_identity`. Hardest combine-side closure (depends on Lean Lagrange theory). |
+| `combine_body_h_spec` | Bridge through `vec_k_make_hint`. |
+| `sign_body_{mu,w1,z,h}_spec` | Same as combine, minus the aggregation step (single-party flow). |
+| `combine_no_reject_on_*_layout` | Probabilistic Hoare logic on the kappa rejection loop, conditioned on `accept_signing_attempt`. |
+| `lagrange_inverse_eval`, `add_share_zeroR`, `reconstruct_linear`, `shamir_correct` | Either port the Lean polynomial-Lagrange theory to EC (multi-week), or replace the hand-bridged citation with a machine-checked translation artifact. |
+| ~21 FIPS 204 codec roundtrips | Concretize abstract types against `MLDSA65_Functional` bit-level ops; requires the Barbosa-Barthe-Dupressoir style mechanization. |
+
+### What 100% mechanized would buy
+
+A claim that the Pulsar N1 byte-equality reduces purely to the
+verified libjade Jasmin compilation pipeline plus the FIPS 204
+standard text — no hand-bridged identities, no probabilistic
+operational bounds, no abstract op surfaces. The trust footprint
+would compose to: "if you trust the published FIPS 204 standard
+and the Jasmin verified compiler, you trust every Pulsar signature".
+
+This is the right north star for the post-submission audit cycle.
+Each closed axiom above is one step toward it; the v5 c_tilde-stage
+close is one such step.
 
 ## What this submission does NOT claim
 

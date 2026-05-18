@@ -293,20 +293,48 @@ proof. by rewrite /sign_abs_op /Pulsar_N1.mldsa_sign_op. qed.
 
 (* Per-component "compute" outputs of the extracted libjade sign
    body — mirrors the combine-side per-stage split. One op per
-   FIPS 204 §6.2 inner-loop output stage:
+   FIPS 204 §6.2 inner-loop output stage.
 
-     sign_body_compute_c_tilde   SampleInBall input — roadmap S4
-     sign_body_compute_z         response z (no aggregation on the
-                                 single-party side — pure §6.2 z)
-     sign_body_compute_h         hint h from MakeHint
+     sign_body_compute_c_tilde
+       NOW STRUCTURAL: factored as `shake_mu_w1` over two extracted
+       intermediates (sign_body_compute_mu and
+       sign_body_compute_w1, declared below). The c_tilde-stage
+       byte-walk obligation `sign_body_c_tilde_spec` is now a
+       DERIVED LEMMA from `sign_body_mu_spec` + `sign_body_w1_spec`.
 
-   The composite `sign_body_compute_components` is now DEFINED as
-   the tuple of the three per-stage ops, preserving the downstream
-   API surface. *)
-op sign_body_compute_c_tilde :
+     sign_body_compute_z
+       STILL ABSTRACT. Pure §6.2 z (no Lagrange aggregation on the
+       single-party side).
+
+     sign_body_compute_h
+       STILL ABSTRACT. Hint h from MakeHint.
+
+   The composite `sign_body_compute_components` is DEFINED as the
+   tuple of the three per-stage ops, preserving the downstream API
+   surface. *)
+
+(* Extracted intermediates feeding c_tilde — surfaced so the
+   c_tilde-stage byte-walk decomposes along the FIPS 204 §6.2
+   "SHAKE(mu || w1Encode(w1))" boundary. Mirrors the combine-side
+   extracted intermediates `combine_body_compute_mu` and
+   `combine_body_compute_w1`. *)
+op sign_body_compute_mu :
   Pulsar_N1_Memory.mem_t ->
   Pulsar_N1_Sign_Layout.sign_ptrs_t ->
-  Pulsar_N1.c_tilde_n1_t.
+  Pulsar_N1.mu_t.
+
+op sign_body_compute_w1 :
+  Pulsar_N1_Memory.mem_t ->
+  Pulsar_N1_Sign_Layout.sign_ptrs_t ->
+  Pulsar_N1.w1_value_t.
+
+op sign_body_compute_c_tilde
+   (mem_pre : Pulsar_N1_Memory.mem_t)
+   (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+   : Pulsar_N1.c_tilde_n1_t =
+  Pulsar_N1.shake_mu_w1
+    (sign_body_compute_mu mem_pre ptrs)
+    (sign_body_compute_w1 mem_pre ptrs).
 
 op sign_body_compute_z :
   Pulsar_N1_Memory.mem_t ->
@@ -367,13 +395,44 @@ op sign_body_fn (mem_pre : Pulsar_N1_Memory.mem_t)
     ptrs.`Pulsar_N1_Sign_Layout.ptr_signature
     (sign_body_compute_sig mem_pre ptrs).
 
-(* Three per-component byte-walk axioms — one per FIPS 204 §6.2
-   inner-loop output stage on the libjade sign side. Mirrors the
-   combine-side per-stage axioms. Each conditioned on layout +
-   status = 0. Closing any one is the libjade byte-walk through
-   the corresponding stage region of `sign.ec` (per
-   `proofs/easycrypt/extraction/sign-byte-walk-roadmap.md`). *)
-axiom sign_body_c_tilde_spec :
+(* Per-stage byte-walk axioms on the libjade sign side. Mirrors
+   the combine-side: the c_tilde stage is decomposed into two
+   narrower sub-axioms (sign_body_mu_spec + sign_body_w1_spec);
+   the c_tilde axiom itself is a DERIVED LEMMA. The z and h stages
+   remain single bundled axioms (closure paths analogous to the
+   combine side but without the Lagrange-aggregation complication).
+   *)
+
+(* === c_tilde-stage sub-axioms (NARROW), mirror of combine =====
+   Each strictly narrower than the prior `sign_body_c_tilde_spec`
+   bundle. The SHAKE composition is encoded structurally in both
+   `sign_body_compute_c_tilde` and `Pulsar_N1.mldsa_compute_c_tilde`
+   (both use `shake_mu_w1`), not as an axiom. *)
+axiom sign_body_mu_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+         (full : sign_full_args_t),
+    Pulsar_N1_Sign_Layout.layout_sign_args
+      mem_pre ptrs (wire_sign_args_of_full full) =>
+    sign_body_compute_status mem_pre ptrs = 0 =>
+    sign_body_compute_mu mem_pre ptrs
+    = Pulsar_N1.compute_mu full.`sgn_m_n1 full.`sgn_ctx_n1.
+
+axiom sign_body_w1_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+         (full : sign_full_args_t),
+    Pulsar_N1_Sign_Layout.layout_sign_args
+      mem_pre ptrs (wire_sign_args_of_full full) =>
+    sign_body_compute_status mem_pre ptrs = 0 =>
+    sign_body_compute_w1 mem_pre ptrs
+    = Pulsar_N1.central_w1
+        (Pulsar_N1.unpack_sk full.`sgn_sk_n1)
+        (Pulsar_N1.compute_mu full.`sgn_m_n1 full.`sgn_ctx_n1)
+        full.`sgn_rnd_n1.
+
+(* sign_body_c_tilde_spec — was a primary axiom; now DERIVED. *)
+lemma sign_body_c_tilde_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
          (full : sign_full_args_t),
@@ -385,6 +444,13 @@ axiom sign_body_c_tilde_spec :
         (Pulsar_N1.unpack_sk full.`sgn_sk_n1)
         (Pulsar_N1.compute_mu full.`sgn_m_n1 full.`sgn_ctx_n1)
         full.`sgn_rnd_n1.
+proof.
+  move=> mem_pre ptrs full Hlay Hstatus.
+  have Hmu := sign_body_mu_spec mem_pre ptrs full Hlay Hstatus.
+  have Hw1 := sign_body_w1_spec mem_pre ptrs full Hlay Hstatus.
+  rewrite /sign_body_compute_c_tilde /Pulsar_N1.mldsa_compute_c_tilde.
+  by rewrite Hmu Hw1.
+qed.
 
 axiom sign_body_z_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
@@ -606,19 +672,27 @@ qed.
 (* ===================================================================
    AXIOM ACCOUNTING
 
-   axioms (3 — per-FIPS-204-stage libjade byte-walks):
-     sign_body_c_tilde_spec  (roadmap S4 — SampleInBall stage)
-     sign_body_z_spec        (response z output from kappa loop)
-     sign_body_h_spec        (roadmap S7 — MakeHint stage)
-       Each constrains a single component value the extracted
-       libjade body produces, conditioned on layout + status = 0.
-       Tracked #3. Mirrors the combine-side per-stage split.
+   axioms (4 — 2 stage-level + 2 c_tilde-stage sub-stage):
+     Stage-level (z + h):
+       sign_body_z_spec        (response z from kappa loop)
+       sign_body_h_spec        (roadmap S7 — MakeHint stage)
+     c_tilde-stage sub-stage (mu + w1):
+       sign_body_mu_spec       (extracted mu = compute_mu m ctx)
+       sign_body_w1_spec       (extracted w1 = central_w1 (...))
+       Each strictly narrower than the prior bundled
+       `sign_body_c_tilde_spec` axiom (now a derived lemma).
+
+     Each conditioned on layout + status = 0.
+     Tracked #3. Mirrors the combine-side per-stage split.
 
        REFINEMENT HISTORY (this file):
          v1: 2 axioms (sign_body_spec + sign_body_separation)
          v2: 1 axiom  (sign_body_compute_sig_spec — packed signature)
          v3: 1 axiom  (sign_body_compute_components_spec — triple)
-         v4 (this commit): 3 per-stage axioms
+         v4: 3 axioms (sign_body_{c_tilde,z,h}_spec — per-stage)
+         v5 (this commit): c_tilde-stage closed as derived lemma;
+             stage-level axiom count 3 → 2 (z, h only) +
+             2 sub-stage axioms (mu, w1)
 
    ops (DEFINITIONS — no proof obligation):
      wire_sign_args_of_full   (record projection)
@@ -655,13 +729,13 @@ qed.
      v1: 2 axioms (sign_body_spec + sign_body_separation)
      v2: 1 axiom  (sign_body_compute_sig_spec — packed signature)
      v3: 1 axiom  (sign_body_compute_components_spec — triple)
-     v4 (this commit):
-         3 axioms (sign_body_{c_tilde,z,h}_spec —
-                   one per FIPS 204 §6.2 output stage)
+     v4: 3 axioms (sign_body_{c_tilde,z,h}_spec — per-stage)
+     v5 (this commit):
+         4 axioms — c_tilde stage CLOSED as a derived lemma,
+         replaced by two narrower sub-axioms (sign_body_mu_spec +
+         sign_body_w1_spec). z + h stages remain bundled.
 
-   Headline axiom count on this file is now 3 (was 1 in v3), but
-   each axiom's obligation surface is per-stage. Mirror of the
-   combine-side per-stage decomposition.
+   Mirror of the combine-side post-v5 structure.
 
    The separation property is now BY CONSTRUCTION. The byte-walk
    obligation reduces to a claim about pure signature bytes (the

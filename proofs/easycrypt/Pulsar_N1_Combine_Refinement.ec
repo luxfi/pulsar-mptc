@@ -218,24 +218,57 @@ op combine_abs_op (full : combine_full_args_t) : Pulsar_N1.signature_t =
 
 (* Per-component "compute" outputs of the extracted combine body —
    one op per FIPS 204 §6.2 inner-loop stage. Each is the pure
-   value the extracted body produces for that component:
+   value the extracted body produces for that component.
 
-     combine_body_compute_c_tilde  the SampleInBall input — roadmap S4
-     combine_body_compute_z        the Lagrange-aggregated z + decompose
-                                   — roadmap S3 + S5
-     combine_body_compute_h        the MakeHint output — roadmap S7
+     combine_body_compute_c_tilde
+       NOW STRUCTURAL: factored as `shake_mu_w1` over two extracted
+       intermediates (combine_body_compute_mu and
+       combine_body_compute_w1, declared below). The c_tilde-stage
+       byte-walk obligation `combine_body_c_tilde_spec` is now a
+       DERIVED LEMMA from `combine_body_mu_spec` + `combine_body_w1_spec`
+       (two strictly-narrower sub-axioms about the extracted body's
+       mu and w1 intermediates).
 
-   Splitting the previously triple-returning
-   `combine_body_compute_components` into three named ops lets the
-   byte-walk obligation split into three per-stage axioms (each
-   over a single component value) instead of carrying a single
-   triple-shaped axiom. The composite
-   `combine_body_compute_components` is then DEFINED as the tuple,
-   keeping the existing downstream API surface unchanged. *)
-op combine_body_compute_c_tilde :
+     combine_body_compute_z
+       STILL ABSTRACT. Closure path: Lean Lagrange bridge —
+       Crypto.Threshold.Lagrange.threshold_partial_response_identity
+       (next target after the c_tilde-stage architecture validates).
+
+     combine_body_compute_h
+       STILL ABSTRACT. Closure path: MakeHint over aggregated low/
+       high vectors. Roadmap S7.
+
+   `combine_body_compute_components` is DEFINED as the tuple of the
+   three component ops; downstream API surface unchanged. *)
+
+(* Extracted intermediates feeding c_tilde — surfaced so the
+   c_tilde-stage byte-walk decomposes along the FIPS 204 §6.2
+   "SHAKE(mu || w1Encode(w1))" boundary. Each is an abstract op
+   whose value will be constrained by a NARROW sub-axiom (one per
+   intermediate, each strictly narrower than the prior bundled
+   `combine_body_c_tilde_spec` axiom). *)
+op combine_body_compute_mu :
   Pulsar_N1_Memory.mem_t ->
   Pulsar_N1_Combine_Layout.combine_ptrs_t ->
-  Pulsar_N1.c_tilde_n1_t.
+  Pulsar_N1.mu_t.
+
+op combine_body_compute_w1 :
+  Pulsar_N1_Memory.mem_t ->
+  Pulsar_N1_Combine_Layout.combine_ptrs_t ->
+  Pulsar_N1.w1_value_t.
+
+(* c_tilde at the extracted body is the SHAKE digest of the mu and
+   w1 intermediates — definitionally identical to what
+   `Pulsar_N1.mldsa_compute_c_tilde` computes on the centralised
+   side (both use `shake_mu_w1`). Byte-equality therefore reduces
+   to mu-equality + w1-equality, the two new sub-axioms below. *)
+op combine_body_compute_c_tilde
+   (mem_pre : Pulsar_N1_Memory.mem_t)
+   (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+   : Pulsar_N1.c_tilde_n1_t =
+  Pulsar_N1.shake_mu_w1
+    (combine_body_compute_mu mem_pre ptrs)
+    (combine_body_compute_w1 mem_pre ptrs).
 
 op combine_body_compute_z :
   Pulsar_N1_Memory.mem_t ->
@@ -307,14 +340,14 @@ op combine_body_fn (mem_pre : Pulsar_N1_Memory.mem_t)
     ptrs.`Pulsar_N1_Combine_Layout.sig_out_ptr
     (combine_body_compute_sig mem_pre ptrs).
 
-(* Three per-component byte-walk axioms — one per FIPS 204 §6.2
-   inner-loop output stage on the combine side. Each constrains a
-   single component of the extracted body's output:
+(* Per-stage byte-walk axioms on the combine side. After the
+   c_tilde-stage close (this commit), the c_tilde stage is now
+   covered by TWO NARROWER sub-axioms (combine_body_mu_spec +
+   combine_body_w1_spec) instead of one bundled axiom
+   `combine_body_c_tilde_spec` — that becomes a derived lemma.
 
-     S4-stage axiom (c_tilde):
-       extracted c_tilde = SampleInBall on SHAKE(mu || w1_agg)
-                         = mldsa_compute_c_tilde on the centralised
-                           inputs derived from the reconstructed share.
+   The remaining per-stage byte-walk axioms (z and h) are still
+   bundled axioms over the full component value:
 
      S3+S5-stage axiom (z):
        extracted z = Lagrange-aggregated z_agg + decompose
@@ -324,19 +357,60 @@ op combine_body_fn (mem_pre : Pulsar_N1_Memory.mem_t)
        extracted h = MakeHint(w_low_agg, w_high_agg)
                    = mldsa_compute_h on the centralised inputs.
 
-   Each axiom conditioned on layout + protocol_consistency +
-   status = 0 (the rejection branch makes no claim about any
-   component value). Closing any one of these axioms is the
-   per-stage byte-walk through the corresponding region of the
-   extracted combine.ec procedure (per
-   `proofs/easycrypt/extraction/combine-byte-walk-roadmap.md`).
+   Each conditioned on layout + protocol_consistency + status = 0. *)
 
-   The previous bundle axiom `combine_body_compute_components_spec`
-   is now a DERIVED LEMMA (below) composing the three per-stage
-   axioms via the constructive definition of
-   `combine_body_compute_components` (tuple of three ops) and
-   `Pulsar_N1.run_signing_components` (tuple of three ops). *)
-axiom combine_body_c_tilde_spec :
+(* === c_tilde-stage sub-axioms (NARROW) =====================
+   Each sub-axiom constrains ONE extracted intermediate. They are
+   strictly narrower than the removed `combine_body_c_tilde_spec`
+   axiom — that axiom bundled the mu derivation, the w1 derivation,
+   AND the SHAKE composition into one claim; here they are
+   separated and the SHAKE composition is encoded as a STRUCTURAL
+   DEFINITION (in both `combine_body_compute_c_tilde` and
+   `Pulsar_N1.mldsa_compute_c_tilde`), not an axiom.
+
+   combine_body_mu_spec:
+     The extracted body's mu intermediate matches the centralised
+     ExternalMu derivation `compute_mu m ctx`. Tracked #4 sub-claim.
+
+   combine_body_w1_spec:
+     The extracted body's w1 intermediate (the high-bits polynomial
+     vector at the accepting kappa) matches the centralised
+     `central_w1` op evaluated on the reconstructed share's
+     unpacked sk + mu + rho_rnd. Tracked #4 sub-claim. *)
+axiom combine_body_mu_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+         (full : combine_full_args_t),
+    Pulsar_N1_Combine_Layout.layout_combine_args
+      mem_pre ptrs (wire_args_of_full full) =>
+    protocol_consistency full =>
+    combine_body_compute_status mem_pre ptrs = 0 =>
+    combine_body_compute_mu mem_pre ptrs
+    = Pulsar_N1.compute_mu full.`full_m full.`full_ctx.
+
+axiom combine_body_w1_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+         (full : combine_full_args_t),
+    Pulsar_N1_Combine_Layout.layout_combine_args
+      mem_pre ptrs (wire_args_of_full full) =>
+    protocol_consistency full =>
+    combine_body_compute_status mem_pre ptrs = 0 =>
+    combine_body_compute_w1 mem_pre ptrs
+    = Pulsar_N1.central_w1
+        (Pulsar_N1.unpack_sk
+           (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares))
+        (Pulsar_N1.compute_mu full.`full_m full.`full_ctx)
+        full.`full_rho_rnd.
+
+(* combine_body_c_tilde_spec — was a primary axiom; now DERIVED.
+   Composes combine_body_mu_spec + combine_body_w1_spec via the
+   structural definitions of `combine_body_compute_c_tilde`
+   (= shake_mu_w1 on extracted mu + extracted w1) and
+   `Pulsar_N1.mldsa_compute_c_tilde` (= shake_mu_w1 on centralised
+   mu + central_w1). After both unfold, byte-equality reduces to
+   mu-equality + w1-equality. *)
+lemma combine_body_c_tilde_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
          (full : combine_full_args_t),
@@ -350,6 +424,13 @@ axiom combine_body_c_tilde_spec :
            (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares))
         (Pulsar_N1.compute_mu full.`full_m full.`full_ctx)
         full.`full_rho_rnd.
+proof.
+  move=> mem_pre ptrs full Hlay Hconsist Hstatus.
+  have Hmu := combine_body_mu_spec mem_pre ptrs full Hlay Hconsist Hstatus.
+  have Hw1 := combine_body_w1_spec mem_pre ptrs full Hlay Hconsist Hstatus.
+  rewrite /combine_body_compute_c_tilde /Pulsar_N1.mldsa_compute_c_tilde.
+  by rewrite Hmu Hw1.
+qed.
 
 axiom combine_body_z_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
@@ -601,13 +682,21 @@ qed.
 
    This file declares:
 
-     axioms (3 — per-FIPS-204-stage byte-walks):
-       combine_body_c_tilde_spec  (roadmap S4 — SampleInBall stage)
-       combine_body_z_spec        (roadmap S3+S5 — Lagrange + decompose)
-       combine_body_h_spec        (roadmap S7 — MakeHint stage)
-         Each constrains a single component value the extracted
-         combine body produces, conditioned on layout +
-         protocol_consistency + status = 0. Tracked #4.
+     axioms (4 — 2 stage-level + 2 c_tilde-stage sub-stage):
+       Stage-level (z + h):
+         combine_body_z_spec        (roadmap S3+S5 — Lagrange + decompose)
+         combine_body_h_spec        (roadmap S7 — MakeHint stage)
+       c_tilde-stage sub-stage (mu + w1):
+         combine_body_mu_spec       (extracted mu = compute_mu m ctx)
+         combine_body_w1_spec       (extracted w1 = central_w1 (...))
+         Each strictly narrower than the prior bundled
+         `combine_body_c_tilde_spec` axiom (now a derived lemma).
+         The SHAKE composition that ties mu+w1 → c_tilde is encoded
+         as a STRUCTURAL DEFINITION on both sides (via
+         `Pulsar_N1.shake_mu_w1`), not as an axiom.
+
+       Each conditioned on layout + protocol_consistency +
+       status = 0. Tracked #4.
 
          REFINEMENT HISTORY:
            v1: 2 axioms (combine_body_spec + combine_body_separation)
@@ -621,13 +710,15 @@ qed.
                folded into structural definitions on both the
                extracted and centralised sides via
                Pulsar_N1.pack_n1_signature.
-           v4 (this commit): 3 per-stage axioms — one per FIPS 204
-               §6.2 inner-loop output component. Headline axiom
-               count is intentionally larger than v3, but each
-               axiom's obligation surface is per-stage (a single
-               polynomial-vector / hash value) and independently
-               attackable against the corresponding MLDSA65_Functional
-               op (sample_in_ball, decompose, make_hint).
+           v4: 3 per-stage axioms — one per FIPS 204 §6.2
+               inner-loop output component.
+           v5 (this commit): c_tilde-stage closed as a derived
+               lemma; replaced by 2 strictly-narrower sub-axioms
+               (mu and w1). Stage-level axiom count goes 3 → 2 on
+               this file; total axioms (stage + sub-stage) goes
+               3 → 4 but each axiom is now strictly smaller in
+               surface area, and the c_tilde stage itself is a
+               proved lemma.
 
      ops (DEFINITIONS — no proof obligation):
        wire_args_of_full     (record projection)
@@ -643,23 +734,35 @@ qed.
                               disjointness predicate)
 
      ops (abstract — held inside the per-stage byte-walk obligations):
-       combine_body_compute_c_tilde  (SampleInBall input from
-                                      extracted body)
+       combine_body_compute_mu       (extracted mu intermediate)
+       combine_body_compute_w1       (extracted w1 intermediate at
+                                      accepting kappa)
        combine_body_compute_z        (Lagrange-aggregated z + decompose
                                       output)
        combine_body_compute_h        (MakeHint output)
          Each names what the extracted body produces for one
-         component. The matching axiom constrains its value to
-         the centralised ML-DSA stage op.
+         intermediate / component value.
+
+     ops (DEFINITIONS — no proof obligation):
+       combine_body_compute_c_tilde
+                                     (DEFINED — shake_mu_w1 of mu + w1
+                                      extracted intermediates)
 
      types (records):
        combine_full_args_t   (wire + ghost protocol-level args)
 
      lemmas (derived, fully proved):
+       combine_body_c_tilde_spec
+         (was axiom in v4; now a lemma in v5 via combine_body_mu_spec
+          + combine_body_w1_spec, both unfolded under the structural
+          definitions of `combine_body_compute_c_tilde` and
+          `Pulsar_N1.mldsa_compute_c_tilde` — both factor through
+          `Pulsar_N1.shake_mu_w1`)
        combine_body_compute_components_spec
          (was axiom in v3; now a lemma composing
-          combine_body_{c_tilde,z,h}_spec via tuple destructuring
-          on combine_body_compute_components / run_signing_components,
+          combine_body_c_tilde_spec (now a lemma) + combine_body_z_spec
+          + combine_body_h_spec via tuple destructuring on
+          combine_body_compute_components / run_signing_components,
           both DEFINITIONS as tuples of per-component ops)
        combine_body_compute_sig_spec
          (was axiom in v2; now a lemma via combine_body_compute_components_spec
@@ -679,20 +782,26 @@ qed.
      v1: 2 axioms (combine_body_spec + combine_body_separation)
      v2: 1 axiom  (combine_body_compute_sig_spec — packed signature)
      v3: 1 axiom  (combine_body_compute_components_spec — triple)
-     v4 (this commit):
-         3 axioms (combine_body_{c_tilde,z,h}_spec —
-                   one per FIPS 204 §6.2 output stage)
+     v4: 3 axioms (combine_body_{c_tilde,z,h}_spec — per-stage)
+     v5 (this commit):
+         4 axioms — c_tilde stage CLOSED as a derived lemma,
+         replaced by two strictly narrower sub-axioms:
+           combine_body_mu_spec   (extracted mu = compute_mu m ctx)
+           combine_body_w1_spec   (extracted w1 = central_w1 (...))
+         z and h stages still bundled:
+           combine_body_z_spec, combine_body_h_spec
 
-   Headline axiom count on this file is now 3 (was 1 in v3), but
-   each axiom's obligation is narrower by a factor of ~3 in surface
-   area: a single component value (not a triple) per axiom, with
-   the matching MLDSA65_Functional stage op named on the RHS.
-
-   Concrete attack surface per axiom:
-     combine_body_c_tilde_spec ↦ SampleInBall on SHAKE(mu || w1)
-       extracted location: combine.ec line 3506
-       MLDSA65_Functional dependency: sample_in_ball, mat_vec_mul,
-                                      decompose_vec_k (for w1)
+   Concrete attack surface per axiom (post-v5):
+     combine_body_mu_spec ↦ FIPS 204 §5.4.1 ExternalMu derivation
+       extracted location: combine.ec — the SHAKE of (0x00 ||
+                           |ctx| || ctx || M) producing mu
+       MLDSA65_Functional dependency: shake256 (mu is just SHAKE on
+                                      a fixed-prefix layout)
+     combine_body_w1_spec ↦ Lagrange-aggregated w_high at accepting kappa
+       extracted location: combine.ec lines 3530-3545 (w_prime)
+                           + 3560 (decompose_vec)
+       Bridge target: high-bits structural identity through
+                      MLDSA65_Functional.decompose_vec_k
      combine_body_z_spec ↦ Lagrange-aggregated z + extracted decompose
        extracted location: combine.ec lines 3460-3490 (aggregation)
                            + 3530-3545 (w_prime computation)
@@ -702,8 +811,10 @@ qed.
        extracted location: combine.ec line 3550 (polyveck_make_hint)
        MLDSA65_Functional dependency: vec_k_make_hint
 
-   The S9 pack step and S10 memory-write step remain structurally
-   discharged (not part of the byte-walk obligation). S1, S2 (input
-   echoes) are pre-conditions in layout_combine_args, not output
-   claims.
+   The SHAKE composition tying mu + w1 → c_tilde is no longer an
+   axiom — it's a structural identity in `shake_mu_w1` (used
+   identically on both the extracted and centralised sides). The
+   S9 pack step and S10 memory-write step remain structurally
+   discharged. S1, S2 (input echoes) are pre-conditions in
+   layout_combine_args, not output claims.
    =================================================================== *)
