@@ -346,6 +346,24 @@ proof.
 qed.
 
 (* -------------------------------------------------------------------- *)
+(* Public-key derivation from secret share.                              *)
+(* -------------------------------------------------------------------- *)
+(* `derive_pk : share_t -> group_pk_t` is the FIPS 204 key-derivation     *)
+(* op: for a freshly-sampled secret seed, derive_pk returns the matching *)
+(* public verification key (rho || t1 in FIPS 204 §3.5.4 terms). For the *)
+(* Shamir-reconstructed share of a Pulsar quorum, this is the group's    *)
+(* public key the DKG committed to in Round-3.                            *)
+(*                                                                       *)
+(* Declared at top level (BEFORE section ClassN1) so the section-local   *)
+(* `combine_body_axiom` precondition can reference it.                    *)
+(*                                                                       *)
+(* `fips204_verify` is the matching public-key verifier (FIPS 204         *)
+(* Verify_internal).                                                      *)
+op derive_pk : share_t -> group_pk_t.
+op fips204_verify : group_pk_t -> message_t -> ctx_t
+                    -> signature_t -> bool.
+
+(* -------------------------------------------------------------------- *)
 (* Pulsar threshold oracle interface                                  *)
 (* -------------------------------------------------------------------- *)
 
@@ -472,9 +490,20 @@ declare module T <: Pulsar_Threshold.
 (* `Combine.M.pulsar_combine`, then replace this declare axiom with    *)
 (* a lemma whose body reduces to                                       *)
 (* `Pulsar_N1_Combine_Refinement.combine_body_spec`).                  *)
+(* The precondition `group_pk{1} = derive_pk (reconstruct quorum{1}     *)
+(* shares{1})` is the protocol-consistency obligation (Agent 1 HIGH-1   *)
+(* closure): the byte-walk refinement file's atomic axiom               *)
+(* `combine_body_compute_sig_spec` requires the ghost full_gpk field    *)
+(* to be the derived pubkey of the reconstructed share. The honest      *)
+(* threshold caller always satisfies this (the DKG-committed group     *)
+(* pubkey IS the derived pubkey of the secret). Adversarial callers    *)
+(* who supply mismatched gpk fall outside this axiom's claim — the     *)
+(* refinement makes no guarantee about the extracted output in that    *)
+(* case. Threaded into `pulsar_n1_byte_equality`'s precondition below. *)
 declare axiom combine_body_axiom :
   equiv [ T.combine ~ CombineAbs.combine :
             ={arg}
+            /\ group_pk{1} = derive_pk (reconstruct quorum{1} shares{1})
           ==> ={res} ].
 
 (* Functional-spec hypothesis on the single-party module `S`.          *)
@@ -656,6 +685,7 @@ lemma pulsar_n1_byte_equality :
             ={group_pk, shares, quorum, m, ctx, rho_rnd}
             /\ uniq quorum{1}
             /\ size shares{1} = size quorum{1}
+            /\ group_pk{1} = derive_pk (reconstruct quorum{1} shares{1})
         ==> ={res} ].
 proof.
   (* Chain via SinglePartyRun(FIPS204Sign).run as the bridge module.    *)
@@ -668,10 +698,11 @@ proof.
     (={group_pk, shares, quorum, m, ctx, rho_rnd}
         /\ uniq quorum{1}
         /\ size shares{1} = size quorum{1}
+        /\ group_pk{1} = derive_pk (reconstruct quorum{1} shares{1})
      ==> ={res})
     (={group_pk, shares, quorum, m, ctx, rho_rnd}
      ==> ={res}).
-  + move=> &1 &2 [#] 6-> uQ szq.
+  + move=> &1 &2 [#] 6-> uQ szq Hgpk.
     by exists (group_pk{2}, shares{2}, quorum{2}, m{2}, ctx{2}, rho_rnd{2}).
   + done.
   + (* Step A: ThresholdRun(T).run ~ SinglePartyRun(FIPS204Sign).run    *)
@@ -685,12 +716,15 @@ proof.
         c_tilde <- witness;
         sig <@ CombineAbs.combine(group_pk, m, ctx, quorum, shares,
                                   rho_rnd, r1s, r2s); }
-      (={group_pk, shares, quorum, m, ctx, rho_rnd} ==> ={sig})
+      (={group_pk, shares, quorum, m, ctx, rho_rnd}
+          /\ group_pk{1} = derive_pk (reconstruct quorum{1} shares{1})
+        ==> ={sig})
       (={group_pk, shares, quorum, m, ctx, rho_rnd} ==> ={sig}).
     + smt().
     + done.
     + (* T.combine ~ CombineAbs.combine via the axiom (other code is the *)
-      (* same on both sides).                                              *)
+      (* same on both sides). The gpk-consistency precondition the axiom *)
+      (* needs is carried by the transitivity's first-leg postcondition. *)
       wp.
       call combine_body_axiom.
       by auto.
@@ -720,11 +754,12 @@ end section ClassN1.
 (* commented future obligation -- the body is a direct corollary of    *)
 (* `pulsar_n1_byte_equality` plus FIPS 204 verifier correctness on    *)
 (* outputs produced by FIPS 204 Sign (standard libjade theorem).        *)
+(*                                                                       *)
+(* The ops `derive_pk` and `fips204_verify` themselves are declared      *)
+(* BEFORE section ClassN1 above (so `combine_body_axiom`'s precondition  *)
+(* can reference `derive_pk`). They are reachable from any downstream    *)
+(* file that imports `Pulsar_N1`.                                        *)
 (* -------------------------------------------------------------------- *)
-
-op derive_pk : share_t -> group_pk_t.
-op fips204_verify : group_pk_t -> message_t -> ctx_t
-                    -> signature_t -> bool.
 
 (* The verifier-compatibility corollary (Pr[verify ∘ ThresholdRun] = 1)
    is a direct consequence of `pulsar_n1_byte_equality` plus libjade

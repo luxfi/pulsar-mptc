@@ -105,6 +105,30 @@ op wire_args_of_full (full : combine_full_args_t)
    : Pulsar_N1_Combine_Layout.combine_abs_args_t =
   full.`full_wire.
 
+(* Protocol consistency predicate (Agent 1 HIGH-1 closure).
+
+   `combine_full_args_t` carries `full_gpk` as a GHOST field that
+   `combine_abs_op` doesn't consume — combine_abs_op uses
+   `reconstruct quorum shares`, ignoring full_gpk entirely. An
+   adversarial caller can therefore construct a
+   `combine_full_args_t` with a `full_gpk` UNRELATED to
+   `reconstruct quorum shares` and the byte-walk axiom would still
+   claim that the extracted output equals
+   `mldsa_sign_op (reconstruct ...) ...` — yielding a "valid
+   threshold signature" under any chosen group public key.
+
+   `protocol_consistency` rules out the inconsistent
+   constructions by requiring the ghost group pubkey to be the
+   actual derived pubkey of the reconstructed share. Conjoined
+   into the byte-walk axiom's precondition; `n1_inputs_to_combine_full`
+   (in Pulsar_N1_Combine_Wrapper.ec) satisfies it by construction
+   when the caller honestly passes (gpk = derive_pk(reconstruct
+   quorum shares), shares). *)
+op protocol_consistency (full : combine_full_args_t) : bool =
+  full.`full_gpk =
+  Pulsar_N1.derive_pk
+    (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares).
+
 (* ===================================================================
    Signature-type coercion — IDENTITY.
 
@@ -225,6 +249,7 @@ axiom combine_body_compute_sig_spec :
          (full : combine_full_args_t),
     Pulsar_N1_Combine_Layout.layout_combine_args
       mem_pre ptrs (wire_args_of_full full) =>
+    protocol_consistency full =>
     combine_body_compute_status mem_pre ptrs = 0 =>
     refine_sig_to_n1 (combine_body_compute_sig mem_pre ptrs)
     = combine_abs_op full.
@@ -270,13 +295,14 @@ lemma combine_body_spec :
          (full : combine_full_args_t),
     Pulsar_N1_Combine_Layout.layout_combine_args
       mem_pre ptrs (wire_args_of_full full) =>
+    protocol_consistency full =>
     refine_sig_to_n1
       (Pulsar_N1_Combine_Layout.read_signature_at
          (combine_body_fn mem_pre ptrs)
          ptrs.`Pulsar_N1_Combine_Layout.sig_out_ptr)
     = combine_abs_op full.
 proof.
-  move=> mem_pre ptrs full Hlay.
+  move=> mem_pre ptrs full Hlay Hconsist.
   have Hstatus :=
     combine_no_reject_on_honest_layout mem_pre ptrs full Hlay.
   rewrite /combine_body_fn.
@@ -312,34 +338,36 @@ proof.
 qed.
 
 (* L4: packed_signature(...) = CombineAbs.combine(...)
-   DERIVED as a lemma from combine_body_spec via congruence. *)
+   DERIVED as a lemma from combine_body_spec via congruence.
+   Threads the protocol_consistency hypothesis through. *)
 lemma packed_bytes_eq_CombineAbs :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
          (full : combine_full_args_t),
     Pulsar_N1_Combine_Layout.layout_combine_args
       mem_pre ptrs (wire_args_of_full full) =>
+    protocol_consistency full =>
     refine_sig_to_n1
       (Pulsar_N1_Combine_Layout.read_signature_at
          (combine_body_fn mem_pre ptrs)
          ptrs.`Pulsar_N1_Combine_Layout.sig_out_ptr)
     = combine_abs_op full.
 proof.
-  move=> mem_pre ptrs full Hlay.
-  by apply (combine_body_spec mem_pre ptrs full Hlay).
+  move=> mem_pre ptrs full Hlay Hconsist.
+  by apply (combine_body_spec mem_pre ptrs full Hlay Hconsist).
 qed.
 
 (* L3 composite: from combine_body_spec it follows immediately that
-   running the extracted body on any layout-conforming memory state
-   yields a memory state whose sig_out_ptr decodes to the abstract
-   signature. This is the lemma `Pulsar_N1.combine_body_axiom`
-   imports. *)
+   running the extracted body on any layout-conforming, protocol-
+   consistent memory state yields a memory state whose sig_out_ptr
+   decodes to the abstract signature. *)
 lemma combine_body_writes_signature :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
          (full : combine_full_args_t),
     Pulsar_N1_Combine_Layout.layout_combine_args
       mem_pre ptrs (wire_args_of_full full) =>
+    protocol_consistency full =>
     refine_sig_to_n1
       (Pulsar_N1_Combine_Layout.read_signature_at
          (combine_body_fn mem_pre ptrs)

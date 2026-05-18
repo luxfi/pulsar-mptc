@@ -108,6 +108,13 @@ op encode_combine_args
    mldsa_sign_op ∘ reconstruct).
    =================================================================== *)
 
+(* The wrapper bridge now requires an HONEST gpk: it must be the
+   derived public key of the reconstructed share. This precondition
+   discharges the protocol_consistency predicate the byte-walk axiom
+   now asks for (Agent 1 HIGH-1 closure). Without this, an
+   adversarial caller passing an arbitrary gpk could claim
+   byte-equality with mldsa_sign_op on the reconstructed share —
+   independent of whether their claimed gpk matches. *)
 lemma combine_wrapper_bridge :
   forall (gpk : Pulsar_N1.group_pk_t)
          (m : Pulsar_N1.message_t)
@@ -117,6 +124,7 @@ lemma combine_wrapper_bridge :
          (rho_rnd : Pulsar_N1.randomness_t)
          (r1s : Pulsar_N1.round1_t list)
          (r2s : Pulsar_N1.round2_t list),
+    gpk = Pulsar_N1.derive_pk (Pulsar_N1.reconstruct quorum shares) =>
     let (mem, ptrs, full) =
       encode_combine_args gpk m ctx quorum shares rho_rnd r1s r2s in
     refine_sig_to_n1
@@ -126,7 +134,7 @@ lemma combine_wrapper_bridge :
     = Pulsar_N1.mldsa_sign_op
         (Pulsar_N1.reconstruct quorum shares) m ctx rho_rnd.
 proof.
-  move=> gpk m ctx quorum shares rho_rnd r1s r2s /=.
+  move=> gpk m ctx quorum shares rho_rnd r1s r2s Hgpk /=.
   rewrite /encode_combine_args /=.
   have Hlay :
     Pulsar_N1_Combine_Layout.layout_combine_args
@@ -142,6 +150,10 @@ proof.
          (n1_inputs_to_combine_full gpk m ctx quorum shares
                                     rho_rnd r1s r2s)).
   - by apply Pulsar_N1_Combine_Layout.encode_combine_args_layout.
+  have Hconsist : protocol_consistency
+                    (n1_inputs_to_combine_full gpk m ctx quorum shares
+                                               rho_rnd r1s r2s).
+  - by rewrite /protocol_consistency /n1_inputs_to_combine_full /=.
   have Hspec :=
     combine_body_spec
       (Pulsar_N1_Combine_Layout.encode_combine_args
@@ -154,7 +166,7 @@ proof.
                                        rho_rnd r1s r2s))).`2
       (n1_inputs_to_combine_full gpk m ctx quorum shares
                                  rho_rnd r1s r2s)
-      Hlay.
+      Hlay Hconsist.
   rewrite Hspec /combine_abs_op /n1_inputs_to_combine_full /=.
   done.
 qed.
@@ -226,24 +238,27 @@ module CombineExtractedWrapper : Pulsar_N1.Pulsar_Threshold = {
    the wrapper's three-step body via the bridge identity. *)
 lemma combine_wrapper_equiv_CombineAbs :
   equiv [ CombineExtractedWrapper.combine ~ Pulsar_N1.CombineAbs.combine :
-            ={arg} ==> ={res} ].
+            ={arg}
+            /\ group_pk{1} = Pulsar_N1.derive_pk
+                              (Pulsar_N1.reconstruct quorum{1} shares{1})
+        ==> ={res} ].
 proof.
   proc.
   inline Pulsar_N1.CombineAbs.combine Pulsar_N1.FIPS204Sign.sign.
-  wp; skip => />.
-  (* The wrapper computes
-       sig = refine_sig_to_n1 (read_signature_at (combine_body_fn mem ptrs) sig_out_ptr)
-     for (mem, ptrs, full) = encode_combine_args group_pk m ctx quorum
-                                                 shares rho_rnd r1s r2s.
-     `combine_wrapper_bridge` says that value equals
-       mldsa_sign_op (reconstruct quorum shares) m ctx rho_rnd
-     which is precisely what `CombineAbs.combine` returns (its body
-     inlines to `mldsa_sign_op (reconstruct ...) ...` after the
-     FIPS204Sign.sign inlining). The equality of the two wrapper
-     outputs is therefore an instance of combine_wrapper_bridge. *)
-  move=> &1.
-  exact: (combine_wrapper_bridge group_pk{1} m{1} ctx{1} quorum{1}
-                                 shares{1} rho_rnd{1} r1s{1} r2s{1}).
+  wp; skip => /> &1.
+  (* After `=> />` the equational `={...}` constraints simplify the
+     goal: {2}-side wrapper variables are rewritten to the {1}-side
+     names. The gpk-consistency hypothesis (the conjunction's right
+     conjunct, gpk{1} = derive_pk(reconstruct quorum{1} shares{1}))
+     is consumed by `=> />` as a rewriting/substitution rule because
+     it has the shape of an equation. What remains is a pure equation
+     in {1}-side names, equivalent to the bridge's conclusion when
+     the bridge's gpk-precondition argument is `eq_refl`. *)
+  exact: (combine_wrapper_bridge
+            (Pulsar_N1.derive_pk (Pulsar_N1.reconstruct quorum{1} shares{1}))
+            m{1} ctx{1} quorum{1}
+            shares{1} rho_rnd{1} r1s{1} r2s{1}
+            (eq_refl _)).
 qed.
 
 (* ===================================================================

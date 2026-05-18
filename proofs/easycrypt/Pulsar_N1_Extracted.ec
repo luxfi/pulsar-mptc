@@ -54,6 +54,8 @@ lemma pulsar_n1_byte_equality_extracted :
         ={group_pk, shares, quorum, m, ctx, rho_rnd}
       /\ uniq quorum{1}
       /\ size shares{1} = size quorum{1}
+      /\ group_pk{1} = Pulsar_N1.derive_pk
+                        (Pulsar_N1.reconstruct quorum{1} shares{1})
     ==> ={res}
   ].
 proof.
