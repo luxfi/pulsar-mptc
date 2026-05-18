@@ -214,6 +214,16 @@ module CombineExtractedWrapper : Pulsar_N1.Pulsar_Threshold = {
    Procedure-level equiv against the abstract CombineAbs.
    =================================================================== *)
 
+(* Procedure-level equiv against CombineAbs — explicit proof.
+
+   Earlier version closed via `smt(combine_wrapper_bridge)`. Per
+   the cryptographer review (HIGH-6): SMT close hid whether the
+   let-destructured tuple from `encode_combine_args` actually
+   unified with `combine_wrapper_bridge`'s universally-quantified
+   shape. Replaced with an explicit witness chain: introduce both
+   sides' arguments, apply `combine_wrapper_bridge` at the exact
+   shape produced by encode_combine_args, and close by rewriting
+   the wrapper's three-step body via the bridge identity. *)
 lemma combine_wrapper_equiv_CombineAbs :
   equiv [ CombineExtractedWrapper.combine ~ Pulsar_N1.CombineAbs.combine :
             ={arg} ==> ={res} ].
@@ -221,7 +231,19 @@ proof.
   proc.
   inline Pulsar_N1.CombineAbs.combine Pulsar_N1.FIPS204Sign.sign.
   wp; skip => />.
-  smt(combine_wrapper_bridge).
+  (* The wrapper computes
+       sig = refine_sig_to_n1 (read_signature_at (combine_body_fn mem ptrs) sig_out_ptr)
+     for (mem, ptrs, full) = encode_combine_args group_pk m ctx quorum
+                                                 shares rho_rnd r1s r2s.
+     `combine_wrapper_bridge` says that value equals
+       mldsa_sign_op (reconstruct quorum shares) m ctx rho_rnd
+     which is precisely what `CombineAbs.combine` returns (its body
+     inlines to `mldsa_sign_op (reconstruct ...) ...` after the
+     FIPS204Sign.sign inlining). The equality of the two wrapper
+     outputs is therefore an instance of combine_wrapper_bridge. *)
+  move=> &1.
+  exact: (combine_wrapper_bridge group_pk{1} m{1} ctx{1} quorum{1}
+                                 shares{1} rho_rnd{1} r1s{1} r2s{1}).
 qed.
 
 (* ===================================================================

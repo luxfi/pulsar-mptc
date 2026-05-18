@@ -186,10 +186,17 @@ lemma sign_wrapper_equiv_FIPS204Sign :
   equiv [ SignExtractedWrapper.sign ~ Pulsar_N1.FIPS204Sign.sign :
             ={arg} ==> ={res} ].
 proof.
+  (* Explicit proof — mirror of combine_wrapper_equiv_CombineAbs.
+     Earlier version closed via `smt(sign_wrapper_bridge)`. Per the
+     cryptographer review HIGH-6, the SMT close hid whether the
+     bridge lemma's universally-quantified shape actually unified
+     with the wrapper-proc's let-destructured tuple. Explicit
+     witness chain makes the unification visible. *)
   proc.
   inline Pulsar_N1.FIPS204Sign.sign.
   wp; skip => />.
-  smt(sign_wrapper_bridge).
+  move=> &1.
+  exact: (sign_wrapper_bridge sk{1} m{1} ctx{1} rho_rnd{1}).
 qed.
 
 (* ===================================================================
