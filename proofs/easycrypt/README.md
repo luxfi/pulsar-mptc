@@ -8,6 +8,23 @@ proof assistant for cryptographic protocols paired with Jasmin
 theories are imported from `../../jasmin/ml-dsa-65/libjade/`
 (fetched on demand); the Pulsar-specific theories live here.
 
+## Headline
+
+The high-assurance stack is now structurally ready for final
+mechanized closure. All local EasyCrypt theorem bodies are
+admit-free, per-push gates are green, threshold Jasmin CT is
+blocking, fuzz/KAT/interop/dudect gates are wired, and the
+extracted N1 theorem has no section-local module-contract
+axioms. The only remaining implementation-refinement assumptions
+are two localized byte-walk axioms over pure signature output,
+each with a committed proof roadmap. The Lean↔EC algebraic
+bridge is named, cited, and CI-guarded.
+
+The next actual proof target is **`combine_body_compute_sig_spec`**
+— closing it drops the concrete implementation-refinement cone
+**2 → 1**. Everything else now looks like useful infrastructure
+rather than blocking refactor debt.
+
 ## Status — current trust boundary
 
 | Item | Count |
