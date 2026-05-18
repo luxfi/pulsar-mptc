@@ -2,12 +2,21 @@
  * Copyright (C) 2025-2026, Lux Industries Inc. All rights reserved.
  * See the file LICENSE for licensing terms.
  *
- * dudect_combine.c — dudect main loop driving pulsarm.Combine
+ * dudect_combine.c — dudect main loop driving pulsar.Combine
  * through the cgo bridge in combine_ct.go.
  *
- * Same structure as dudect_verify.c. We measure cycles for one
- * Combine invocation per sample with one party's Round-2 PartialSig
- * bytes overwritten by caller-supplied bytes.
+ * Same structure as dudect_verify.c. Both dudect classes are
+ * VALID Combine inputs drawn from a pre-built K-entry tape pool:
+ *   class A: tape[0] (fixed)
+ *   class B: tape[rand % K] (varying valid tapes)
+ * Per-sample input is a 4-byte tape index (big-endian uint32).
+ *
+ * Earlier versions used class A = zero-bytes, class B = random
+ * bytes — same anti-pattern as the old verify-side test (both
+ * inputs INVALID, on different rejection paths). The valid-pool
+ * design eliminates the rejection-path artifact; any timing
+ * difference detected here is a real data-dependent path in
+ * Combine, not a commit-mismatch artifact.
  */
 
 #define DUDECT_IMPLEMENTATION
@@ -18,17 +27,32 @@
 #include <string.h>
 
 extern int    pulsar_combine_ct_setup(void);
-extern size_t pulsar_combine_ct_partial_size(void);
+extern size_t pulsar_combine_ct_pool_size(void);
+extern size_t pulsar_combine_ct_input_size(void);
 extern void   pulsar_combine_ct(uint8_t *data);
 
 static size_t g_chunk_size = 0;
+static size_t g_pool_size  = 0;
 
+/*
+ * Populate input_data + classes for one batch. Each per-sample
+ * input is a 4-byte big-endian uint32 tape index.
+ *   class A: index 0 (every sample)
+ *   class B: random uniform index in [0, pool_size)
+ */
 void prepare_inputs(dudect_config_t *cfg, uint8_t *input_data, uint8_t *classes) {
-    randombytes(input_data, cfg->chunk_size * cfg->number_measurements);
     for (size_t i = 0; i < cfg->number_measurements; i++) {
         classes[i] = randombit();
+        uint8_t *slot = input_data + (size_t)i * cfg->chunk_size;
         if (classes[i] == 0) {
-            memset(input_data + (size_t)i * cfg->chunk_size, 0x00, cfg->chunk_size);
+            /* Class A: tape[0] (Welch's t-test requires identical
+             * class-A inputs). Encode index 0 big-endian. */
+            slot[0] = slot[1] = slot[2] = slot[3] = 0;
+        } else {
+            /* Class B: random index — the bridge reduces mod
+             * pool_size. randombytes draws from dudect's RNG,
+             * which is uncorrelated with anything Combine sees. */
+            randombytes(slot, cfg->chunk_size);
         }
     }
 }
@@ -49,9 +73,10 @@ int main(int argc, char **argv) {
         fprintf(stderr, "pulsar_combine_ct_setup failed: rc=%d\n", rc);
         return 1;
     }
-    g_chunk_size = pulsar_combine_ct_partial_size();
-    if (g_chunk_size == 0) {
-        fprintf(stderr, "pulsar_combine_ct_partial_size returned 0\n");
+    g_chunk_size = pulsar_combine_ct_input_size();
+    g_pool_size  = pulsar_combine_ct_pool_size();
+    if (g_chunk_size == 0 || g_pool_size == 0) {
+        fprintf(stderr, "pulsar_combine_ct setup returned 0 sizes\n");
         return 1;
     }
 
@@ -81,8 +106,8 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    fprintf(stderr, "dudect_combine: ML-DSA-65 (n=3,t=2), chunk=%zu bytes, batch=%zu samples, max_batches=%zu\n",
-            g_chunk_size, number_measurements, max_batches);
+    fprintf(stderr, "dudect_combine: ML-DSA-65 (n=3,t=2), chunk=%zu bytes, batch=%zu samples, max_batches=%zu, pool=%zu valid tapes\n",
+            g_chunk_size, number_measurements, max_batches, g_pool_size);
 
     dudect_state_t state = DUDECT_NO_LEAKAGE_EVIDENCE_YET;
     for (size_t batch = 0; batch < max_batches; batch++) {

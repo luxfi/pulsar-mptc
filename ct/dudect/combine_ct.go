@@ -4,18 +4,32 @@
 // combine_ct.go — cgo bridge exposing pulsar.Combine to the C
 // dudect harness in dudect_combine.c.
 //
-// The bridge pre-builds a (Round1Message, Round2Message) tape from a
-// real threshold ceremony, then for every dudect sample replaces ONE
-// party's Round-2 reveal bytes with caller-supplied bytes (fixed for
-// class A, random for class B). Combine then runs over the mutated
-// tape.
+// CT POPULATION (operational framing, NOT a standards mandate):
+// both dudect classes are VALID Combine inputs — independently
+// randomized threshold ceremonies over the SAME shares. The bridge
+// pre-builds a pool of K full (Round1, Round2) tapes by running the
+// threshold protocol K times with different per-party RNG seeds. All
+// K ceremonies produce the SAME final FIPS 204 signature (the
+// reconstruction-aggregator collapses through the same master seed),
+// but the intermediate Round-1 commits + Round-2 (mask, masked)
+// reveals vary across tapes.
 //
-// The targeted leak channel is the partial-signature share bytes —
-// these are the secret-derived bytes that flow into the cSHAKE256
-// commit re-derivation, the GF(257) Lagrange reconstruction, and the
-// final ML-DSA SignTo call. Any data-dependent branch in those paths
-// would surface here as a Welch t-statistic above the dudect
-// threshold.
+// dudect class assignment:
+//   class A: always tape[0]      (byte-identical Combine inputs)
+//   class B: tape[rand % K]      (varying-but-valid Combine inputs)
+//
+// Both classes pass every internal Combine check (MAC verify, commit
+// re-derive, Lagrange reconstruct, FIPS 204 sign). Any timing
+// difference between classes is a real signature-content-dependent
+// timing in the Combine pipeline, not a rejection-path artifact.
+//
+// Earlier versions of this harness used class A = zero bytes and
+// class B = random bytes — both INVALID Round-2 PartialSig — which
+// produced different rejection-path timings (zero bytes pass parse
+// then fail commit-bind; random bytes vary at parse). That was the
+// same anti-pattern the verify-side harness was redesigned out of;
+// the leak was a commit-mismatch-timing artifact, not a Combine CT
+// regression on secret shares.
 //
 // Build (Linux):
 //   GOWORK=off go build -buildmode=c-shared \
@@ -39,10 +53,23 @@ import (
 	"github.com/luxfi/pulsar-mptc/ref/go/pkg/pulsar"
 )
 
-// Long-lived fixture: a real (n=3, t=2) threshold ceremony at
-// ModeP65. The dudect main loop calls pulsar_combine_ct_setup()
-// once, then drives pulsar_combine_ct() with per-sample partial-sig
-// bytes for the target party.
+// Pool size — K independent valid threshold ceremonies over the
+// SAME shares. Larger K = more uniform class-B distribution. 16 is
+// chosen as a balance between setup time (each ceremony runs the
+// full threshold protocol) and uniformity of the class-B mixture.
+const kCombineValidPool = 16
+
+// Per-tape fixture: one full (Round1, Round2) tape from an
+// independent threshold ceremony. The shares + sessionID + attempt
+// stay constant across tapes; only the per-party RNG (hence the
+// commits + reveals) varies.
+type combineTape struct {
+	round1 []*pulsar.Round1Message
+	round2 []*pulsar.Round2Message
+}
+
+// Long-lived fixture: a real (n=3, t=2) threshold setup at ModeP65,
+// plus a pool of kCombineValidPool valid (Round1, Round2) tapes.
 var (
 	cFixtureParams    *pulsar.Params
 	cFixturePub       *pulsar.PublicKey
@@ -51,15 +78,10 @@ var (
 	cFixtureAttempt   uint32
 	cFixtureQuorum    []pulsar.NodeID
 	cFixtureThreshold int
-	cFixtureRound1    []*pulsar.Round1Message
-	cFixtureRound2    []*pulsar.Round2Message
 	cFixtureShares    []*pulsar.KeyShare
-	// cFixtureTargetIdx is the index in Round2 whose PartialSig bytes
-	// the dudect harness rewrites each sample.
-	cFixtureTargetIdx int
-	// cFixtureR2BufLen is the length of PartialSig (128 bytes per
-	// the v0.1 commit-and-reveal layout in threshold.go).
-	cFixtureR2BufLen int
+	// cFixtureTapes is the K-entry valid-tape pool. Each entry is a
+	// full (Round1, Round2) from an independent ceremony.
+	cFixtureTapes [kCombineValidPool]combineTape
 )
 
 //export pulsar_combine_ct_setup
@@ -169,36 +191,42 @@ func pulsar_combine_ct_setup() C.int {
 		}
 	}
 
-	signers := make([]*pulsar.ThresholdSigner, t)
-	for i := 0; i < t; i++ {
-		s, err := pulsar.NewThresholdSigner(params, sid, 1, quorum, shares[i], sessionKeys[shares[i].NodeID], msg, rand.Reader)
-		if err != nil {
-			return 6
+	// Build the K-entry valid-tape pool. Each tape is an independent
+	// run of (Round1, Round2) over the SAME shares, sessionID, attempt,
+	// and message — only the per-party RNG (hence masks + commits +
+	// reveals) differs. Every tape is sanity-checked: Combine must
+	// succeed before the tape is admitted to the pool.
+	for k := 0; k < kCombineValidPool; k++ {
+		signers := make([]*pulsar.ThresholdSigner, t)
+		for i := 0; i < t; i++ {
+			s, err := pulsar.NewThresholdSigner(params, sid, 1, quorum, shares[i],
+				sessionKeys[shares[i].NodeID], msg, rand.Reader)
+			if err != nil {
+				return 6
+			}
+			signers[i] = s
 		}
-		signers[i] = s
-	}
-	sr1 := make([]*pulsar.Round1Message, t)
-	for i, s := range signers {
-		m, err := s.Round1(msg)
-		if err != nil {
-			return 7
+		sr1 := make([]*pulsar.Round1Message, t)
+		for i, s := range signers {
+			m, err := s.Round1(msg)
+			if err != nil {
+				return 7
+			}
+			sr1[i] = m
 		}
-		sr1[i] = m
-	}
-	sr2 := make([]*pulsar.Round2Message, t)
-	for i, s := range signers {
-		m, _, err := s.Round2(sr1)
-		if err != nil {
-			return 8
+		sr2 := make([]*pulsar.Round2Message, t)
+		for i, s := range signers {
+			m, _, err := s.Round2(sr1)
+			if err != nil {
+				return 8
+			}
+			sr2[i] = m
 		}
-		sr2[i] = m
-	}
-
-	// Sanity: Combine succeeds on the un-mutated tape. Without this
-	// check the dudect run could silently measure the time for an
-	// always-rejecting Combine path.
-	if _, err := pulsar.Combine(params, pub, msg, nil, false, sid, 1, quorum, t, sr1, sr2, shares); err != nil {
-		return 9
+		// Sanity: this tape's Combine must succeed.
+		if _, err := pulsar.Combine(params, pub, msg, nil, false, sid, 1, quorum, t, sr1, sr2, shares); err != nil {
+			return 9
+		}
+		cFixtureTapes[k] = combineTape{round1: sr1, round2: sr2}
 	}
 
 	cFixtureParams = params
@@ -208,51 +236,48 @@ func pulsar_combine_ct_setup() C.int {
 	cFixtureAttempt = 1
 	cFixtureQuorum = quorum
 	cFixtureThreshold = t
-	cFixtureRound1 = sr1
-	cFixtureRound2 = sr2
 	cFixtureShares = shares
-	cFixtureTargetIdx = 0
-	cFixtureR2BufLen = len(sr2[0].PartialSig)
 	return 0
 }
 
-//export pulsar_combine_ct_partial_size
+//export pulsar_combine_ct_pool_size
 //
-// Returns the PartialSig byte length. The C harness sizes its
-// per-sample buffer to this width.
-func pulsar_combine_ct_partial_size() C.size_t {
-	return C.size_t(cFixtureR2BufLen)
+// Returns the number of valid tapes in the per-startup pool.
+func pulsar_combine_ct_pool_size() C.size_t {
+	return C.size_t(kCombineValidPool)
+}
+
+//export pulsar_combine_ct_input_size
+//
+// Returns the per-sample input width: 4 bytes (a big-endian uint32
+// tape index, mod kCombineValidPool). The C harness sizes its
+// dudect chunk to this width.
+func pulsar_combine_ct_input_size() C.size_t {
+	return C.size_t(4)
 }
 
 //export pulsar_combine_ct
 //
 // One dudect measurement sample.
 //
-// data points to partial_size bytes that overwrite Round2[target].
-// PartialSig before Combine runs. Combine's return value is
-// discarded — class-B random bytes will produce a commit mismatch
-// and Combine returns an error; that's expected and timing-
-// irrelevant.
+// `data` points to a 4-byte big-endian uint32 tape index; the
+// bridge reduces it mod kCombineValidPool and runs Combine on the
+// indexed (Round1, Round2) tape. Both classes (A: fixed index 0,
+// B: caller-supplied index) drive Combine through the SAME code
+// path on VALID inputs — any timing difference is a real
+// data-dependent signal, not a rejection-path artifact.
 //
-// IMPORTANT: this function must NOT branch on the rewrite payload.
-// The mutation is a pure copy.
+// IMPORTANT: this function must NOT branch on the data beyond the
+// modular reduction. The reduction is constant-time over the
+// 4-byte input.
 func pulsar_combine_ct(data *C.uint8_t) {
 	if cFixtureParams == nil {
 		return
 	}
-	n := cFixtureR2BufLen
-	src := unsafe.Slice((*byte)(unsafe.Pointer(data)), n)
-
-	// Clone Round2 so the tape stays usable across samples. The
-	// inner PartialSig slice is reallocated per sample so the rest of
-	// the harness can keep the original tape pristine.
-	r2 := make([]*pulsar.Round2Message, len(cFixtureRound2))
-	for i, m := range cFixtureRound2 {
-		r2[i] = m
-	}
-	mutated := *cFixtureRound2[cFixtureTargetIdx]
-	mutated.PartialSig = append([]byte{}, src...)
-	r2[cFixtureTargetIdx] = &mutated
+	src := unsafe.Slice((*byte)(unsafe.Pointer(data)), 4)
+	idx := (uint32(src[0])<<24 | uint32(src[1])<<16 | uint32(src[2])<<8 | uint32(src[3])) %
+		uint32(kCombineValidPool)
+	tape := cFixtureTapes[idx]
 
 	_, _ = pulsar.Combine(
 		cFixtureParams,
@@ -264,8 +289,8 @@ func pulsar_combine_ct(data *C.uint8_t) {
 		cFixtureAttempt,
 		cFixtureQuorum,
 		cFixtureThreshold,
-		cFixtureRound1,
-		r2,
+		tape.round1,
+		tape.round2,
 		cFixtureShares,
 	)
 }
