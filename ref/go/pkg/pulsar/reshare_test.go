@@ -30,6 +30,13 @@ func TestReshare_SameCommittee_PubInvariant(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewReshareSession party %d: %v", i, err)
 		}
+		// New-committee-only parties (3..4 in this test) MUST be
+		// told the prior pubkey so Round3 can stamp it deterministically
+		// rather than emitting Pub: nil for the driver to overwrite.
+		// Old-committee parties auto-derive from MyOldShare.Pub.
+		if oldShare == nil {
+			s.SetPriorGroupPubkey(pub)
+		}
 		sessions[i] = s
 	}
 

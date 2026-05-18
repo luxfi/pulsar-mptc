@@ -44,11 +44,13 @@ import (
 
 // Errors returned by Reshare.
 var (
-	ErrOldCommitteeEmpty = errors.New("pulsar: old committee is empty")
-	ErrNewCommitteeEmpty = errors.New("pulsar: new committee is empty")
-	ErrOldThresholdSmall = errors.New("pulsar: old committee smaller than old threshold")
-	ErrNewThresholdSmall = errors.New("pulsar: new committee smaller than new threshold")
-	ErrShareCount        = errors.New("pulsar: insufficient old-committee shares for reshare")
+	ErrOldCommitteeEmpty   = errors.New("pulsar: old committee is empty")
+	ErrNewCommitteeEmpty   = errors.New("pulsar: new committee is empty")
+	ErrOldThresholdSmall   = errors.New("pulsar: old committee smaller than old threshold")
+	ErrNewThresholdSmall   = errors.New("pulsar: new committee smaller than new threshold")
+	ErrShareCount          = errors.New("pulsar: insufficient old-committee shares for reshare")
+	ErrPriorPubkeyUnknown  = errors.New("pulsar: reshare prior group pubkey not set (new-committee-only party must call SetPriorGroupPubkey)")
+	ErrPriorPubkeyMismatch = errors.New("pulsar: reshare prior group pubkey from SetPriorGroupPubkey != MyOldShare.Pub")
 )
 
 // ReshareSession holds one party's state for a single reshare
@@ -85,6 +87,16 @@ type ReshareSession struct {
 	// deployments MUST pass a beacon).
 	Beacon []byte
 
+	// priorGroupPubkey is the master public key from BEFORE this
+	// reshare. Set via SetPriorGroupPubkey before Round3. For
+	// parties also in the old committee (MyOldShare != nil), the
+	// pubkey is auto-populated from MyOldShare.Pub if this field
+	// is left nil; for new-committee-only parties (joiners),
+	// Round3 returns ErrPriorPubkeyUnknown if this field wasn't
+	// set, refusing to emit a KeyShare with Pub: nil that a
+	// malicious driver could overwrite with an arbitrary pubkey.
+	priorGroupPubkey *PublicKey
+
 	rng io.Reader
 
 	// Internal state.
@@ -92,6 +104,25 @@ type ReshareSession struct {
 	reshareQuorum []NodeID
 	myShares      []shamirShare // f_i(j) for each new committee position
 	round1Cache   []*DKGRound1Msg
+}
+
+// SetPriorGroupPubkey records the master public key from BEFORE
+// this reshare. New-committee-only parties (those without an old
+// share) MUST call this before Round3; the reshare driver injects
+// the pinned prior pubkey here so Round3 can stamp it into the
+// new KeyShare deterministically.
+//
+// For parties also in the old committee, this is optional — Round3
+// falls back to MyOldShare.Pub. When BOTH are set, Round3 verifies
+// they match.
+//
+// NOTE: this records the pubkey; it does NOT cryptographically
+// verify that the per-dealer reshare contributions actually
+// preserve it. Full binding (Pedersen-style commitment to each
+// dealer's zero-secret contribution at Round-1) is a v0.2
+// hardening item (see BLOCKERS.md "reshare pk-binding").
+func (s *ReshareSession) SetPriorGroupPubkey(pk *PublicKey) {
+	s.priorGroupPubkey = pk
 }
 
 // NewReshareSession constructs a new reshare session.
@@ -426,15 +457,37 @@ func (s *ReshareSession) Round3(round1 []*DKGRound1Msg, round2 []*DKGRound2Msg) 
 	aggregate := shamirShare{X: newEval, Y: aggY}
 	shareWire := shareToBytes(aggregate)
 
-	// The new share recovers the SAME byte-sum at x=0 as the old
-	// shares did (Theorem reshare-pkinv): pk is invariant. The pub
-	// is carried via the calling party's old share if available; new-
-	// committee-only parties get pub injected via the reshare driver
-	// (it is a public artifact already pinned on-chain).
+	// Determine the prior group public key — the master pubkey from
+	// BEFORE this reshare. Resolution order:
+	//   1. s.priorGroupPubkey (set by SetPriorGroupPubkey)
+	//   2. s.MyOldShare.Pub (if the party is in the old committee too)
+	//
+	// New-committee-only parties (no MyOldShare) MUST have called
+	// SetPriorGroupPubkey before Round3, otherwise we'd be emitting
+	// a KeyShare with Pub: nil and trusting the reshare driver to
+	// overwrite it with the right value — exactly the gap Agent 4 C4
+	// flagged. When both sources are set, they must agree.
 	var pub *PublicKey
-	if s.MyOldShare != nil {
+	switch {
+	case s.priorGroupPubkey != nil && s.MyOldShare != nil:
+		if !s.priorGroupPubkey.Equal(s.MyOldShare.Pub) {
+			return nil, nil, ErrPriorPubkeyMismatch
+		}
+		pub = s.priorGroupPubkey
+	case s.priorGroupPubkey != nil:
+		pub = s.priorGroupPubkey
+	case s.MyOldShare != nil:
 		pub = s.MyOldShare.Pub
+	default:
+		return nil, nil, ErrPriorPubkeyUnknown
 	}
+
+	// The new share recovers the SAME byte-sum at x=0 as the old
+	// shares did (Theorem reshare-pkinv): pk is invariant by
+	// construction OF AN HONEST RESHARE-QUORUM (every dealer's
+	// per-recipient share polynomial has constant term zero). Full
+	// per-dealer commitment binding to enforce zero-secret contributions
+	// is a v0.2 hardening item.
 	return &KeyShare{
 		NodeID:    s.MyID,
 		EvalPoint: newEval,

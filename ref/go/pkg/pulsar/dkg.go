@@ -79,10 +79,18 @@ type DKGSession struct {
 	rng io.Reader // entropy for c_i
 
 	// Per-round state.
-	myContribution [SeedSize]byte // c_i sampled at Round 1
-	myShares       []shamirShare  // f_i(j) for each committee position j ∈ {1..n}
-	round1Cache    []*DKGRound1Msg
-	myDigest       [32]byte
+	myContribution [SeedSize]byte // c_i sampled at Round 1 — SECRET
+	encapBlindKey  [SeedSize]byte // per-session non-secret blind used
+	//                             // to diversify per-recipient KEM
+	//                             // encapsulation seeds. Sampled fresh
+	//                             // at Round 1; NOT derived from
+	//                             // myContribution (Agent 4 C2:
+	//                             // earlier design fed myContribution
+	//                             // into encapBlind, making KEM ct
+	//                             // bytes a function of the secret).
+	myShares    []shamirShare // f_i(j) for each committee position j ∈ {1..n}
+	round1Cache []*DKGRound1Msg
+	myDigest    [32]byte
 
 	// Output state after Round 3.
 	aggregateShare shamirShare
@@ -195,6 +203,16 @@ func (s *DKGSession) Round1() (*DKGRound1Msg, error) {
 	if _, err := io.ReadFull(s.rng, s.myContribution[:]); err != nil {
 		return nil, ErrShortRand
 	}
+	// Per-session non-secret blind for the per-recipient KEM
+	// encapseed derivation (Agent 4 C2 fix). Sampled fresh from
+	// the same RNG as myContribution; NOT fed into anything that
+	// produces a secret value. Even if encapBlindKey leaks (e.g.
+	// via a coredump after Round-1), no information about
+	// myContribution is exposed because the two are
+	// independently sampled.
+	if _, err := io.ReadFull(s.rng, s.encapBlindKey[:]); err != nil {
+		return nil, ErrShortRand
+	}
 
 	// Per-byte Shamir share of c_i. Coefficient material is
 	// domain-separated by (committee root, my-index, contribution-
@@ -222,8 +240,12 @@ func (s *DKGSession) Round1() (*DKGRound1Msg, error) {
 
 	// KEM-wrap each per-recipient envelope. The encapsulation seed
 	// is derived deterministically from (committee root, dealer,
-	// recipient, contribution-derived blind) so KAT regeneration is
-	// byte-stable.
+	// recipient, per-session NON-SECRET encapBlindKey). KAT
+	// regeneration is still byte-stable per-RNG-seed (the encapBlindKey
+	// is sampled from the same rng); the security improvement vs
+	// the v0.1 design is that encapBlindKey is INDEPENDENT of
+	// myContribution, so a fault injection on the cSHAKE256 call
+	// here cannot leak bits of the secret contribution.
 	envelopes := make(map[NodeID]DKGShareEnvelope, len(s.Committee))
 	for posIdx, recipient := range s.Committee {
 		share := shares[posIdx]
@@ -231,7 +253,7 @@ func (s *DKGSession) Round1() (*DKGRound1Msg, error) {
 
 		// Per-recipient deterministic encapsulation seed material.
 		encapBlind := cshake256(
-			append(append(append([]byte{}, s.myContribution[:]...),
+			append(append(append([]byte{}, s.encapBlindKey[:]...),
 				s.MyID[:]...), recipient[:]...),
 			64,
 			"PULSAR-DKG-ENCAPSEED-V1",
@@ -392,6 +414,12 @@ func (s *DKGSession) Round3(round1 []*DKGRound1Msg, round2 []*DKGRound2Msg) (*DK
 
 	sk, err := KeyFromSeed(s.Params, masterSeed)
 	if err != nil {
+		// Zeroize the reconstructed secret material before returning.
+		// No defer: call-site-local cleanup keeps the secret lifetime
+		// legible.
+		zeroizeSeed(&masterSeed)
+		zeroizeBytes(byteSumBytes)
+		zeroizeBytes(mixInput)
 		return nil, err
 	}
 	s.masterPubkey = sk.Pub
@@ -409,7 +437,7 @@ func (s *DKGSession) Round3(round1 []*DKGRound1Msg, round2 []*DKGRound2Msg) (*DK
 	// after the cSHAKE256 mix. Threshold sign reconstructs this byte-sum
 	// then re-applies the mix to recover masterSeed (see threshold.go).
 	shareWire := shareToBytes(s.aggregateShare)
-	return &DKGOutput{
+	out := &DKGOutput{
 		GroupPubkey: sk.Pub,
 		SecretShare: &KeyShare{
 			NodeID:    s.MyID,
@@ -420,7 +448,16 @@ func (s *DKGSession) Round3(round1 []*DKGRound1Msg, round2 []*DKGRound2Msg) (*DK
 		},
 		TranscriptHash: s.transcript,
 		AbortEvidence:  nil,
-	}, nil
+	}
+	// Wipe the reconstructed master SK + intermediate secret
+	// material. The per-party SecretShare returned in `out` is the
+	// caller's responsibility to manage; this scope's local copies
+	// are wiped here.
+	zeroizePrivateKey(sk)
+	zeroizeSeed(&masterSeed)
+	zeroizeBytes(byteSumBytes)
+	zeroizeBytes(mixInput)
+	return out, nil
 }
 
 // computeRound2Digest returns the canonical 32-byte digest over the
@@ -430,13 +467,20 @@ func (s *DKGSession) Round3(round1 []*DKGRound1Msg, round2 []*DKGRound2Msg) (*DK
 // deterministic across recipients given the dealer's contribution and
 // the recipient's published KEM public key.
 //
-// The digest binds the dealer-NodeID, every recipient's NodeID, the
-// recipient-specific KEM ciphertext, and the recipient-specific
-// sealed payload. An equivocating dealer that ships different
-// (ct, sealed) pairs to different recipients (relative to what they
-// broadcast in this message) is caught by Round-3 digest comparison.
+// The digest binds the committee root, the dealer-NodeID, every
+// recipient's NodeID, the recipient-specific KEM ciphertext, and the
+// recipient-specific sealed payload. An equivocating dealer that
+// ships different (ct, sealed) pairs to different recipients
+// (relative to what they broadcast in this message) is caught by
+// Round-3 digest comparison.
+//
+// committeeRoot binding (post-audit): without it, a colluding
+// dealer + recipient pair sharing the same KEM ciphertext across
+// committees could replay an envelope across DKG sessions; binding
+// the committee root pins the digest to THIS specific committee.
 func (s *DKGSession) computeRound2Digest(ordered []*DKGRound1Msg) [32]byte {
-	parts := [][]byte{}
+	committeeRoot := s.commitCommitteeRoot()
+	parts := [][]byte{committeeRoot[:]}
 	for _, m := range ordered {
 		parts = append(parts, m.NodeID[:])
 		recipKeys := make([]NodeID, 0, len(m.Envelopes))

@@ -415,13 +415,27 @@ func Combine(params *Params, groupPubkey *PublicKey, message []byte, ctx []byte,
 	copy(masterSeed[:], cshake256(mixInput, SeedSize, tagSeedShare))
 
 	// FIPS 204 sign with the reconstructed seed-derived key.
+	// Every error path AND the success path below must explicitly
+	// zeroize the reconstructed secret material (master seed,
+	// byteSum, byteSumBytes, mixInput) before return. No defer:
+	// the calls are inline at each exit point so the secret
+	// lifetime is locally legible.
 	sk, err := KeyFromSeed(params, masterSeed)
 	if err != nil {
+		zeroizeSeed(&masterSeed)
+		zeroizeU16(&byteSum)
+		zeroizeBytes(byteSumBytes)
+		zeroizeBytes(mixInput)
 		return nil, err
 	}
 	// Sanity: the reconstructed pubkey MUST match groupPubkey, else
 	// the aggregator's share set is wrong / tampered.
 	if !sk.Pub.Equal(groupPubkey) {
+		zeroizePrivateKey(sk)
+		zeroizeSeed(&masterSeed)
+		zeroizeU16(&byteSum)
+		zeroizeBytes(byteSumBytes)
+		zeroizeBytes(mixInput)
 		return nil, ErrPubkeyMismatch
 	}
 	// Use deterministic-randomness path so KATs are reproducible.
@@ -429,8 +443,21 @@ func Combine(params *Params, groupPubkey *PublicKey, message []byte, ctx []byte,
 	// randomized=false.
 	sigBytes, err := mldsaSign(params.Mode, sk.Bytes, message, ctx, randomized, rand.Reader)
 	if err != nil {
+		zeroizePrivateKey(sk)
+		zeroizeSeed(&masterSeed)
+		zeroizeU16(&byteSum)
+		zeroizeBytes(byteSumBytes)
+		zeroizeBytes(mixInput)
 		return nil, err
 	}
+	// Success path: signature is OK; wipe every secret-bearing
+	// buffer (the master seed + reconstructed sk + intermediate
+	// reconstruction buffers) before returning.
+	zeroizePrivateKey(sk)
+	zeroizeSeed(&masterSeed)
+	zeroizeU16(&byteSum)
+	zeroizeBytes(byteSumBytes)
+	zeroizeBytes(mixInput)
 	return &Signature{Mode: params.Mode, Bytes: sigBytes}, nil
 }
 
