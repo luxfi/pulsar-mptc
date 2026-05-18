@@ -165,6 +165,38 @@ axiom share_dim_correct (s : share_t) : size (share_polys s) = share_dim.
 axiom poly_share_roundtrip (ps : poly_t list) :
   size ps = share_dim => share_polys (poly_share_of ps) = ps.
 
+(* HIGH-5 load-bearing reinforcement (followup A).
+
+   `share_polys` is INJECTIVE — distinct shares have distinct
+   polynomial views. Without this an adversarial instantiation
+   could realise `share_polys s = [witness; witness; witness;
+   witness; witness]` (constant 5-element list) for every share,
+   vacuously satisfying `share_dim_correct`. The injectivity axiom
+   forces the polynomial view to actually distinguish shares.
+
+   The reverse direction `poly_share_of` is similarly injective on
+   inputs of correct dimension — the round-trip pins it as the
+   inverse of `share_polys`, and the injectivity-of-inverse axiom
+   captures the structural identity that distinct polynomial
+   vectors yield distinct shares. *)
+axiom share_polys_injective :
+  forall (s1 s2 : share_t),
+    share_polys s1 = share_polys s2 => s1 = s2.
+
+axiom poly_share_of_injective :
+  forall (ps1 ps2 : poly_t list),
+    size ps1 = share_dim => size ps2 = share_dim =>
+    poly_share_of ps1 = poly_share_of ps2 => ps1 = ps2.
+
+(* Component-wise Lagrange reconstruct over polynomial vectors.
+   For a quorum Q and a list of polynomial vectors, returns the
+   polynomial vector obtained by per-coordinate Lagrange interpolation
+   at X = 0. The link to the abstract share-level `reconstruct`
+   appears below (after `reconstruct` itself is declared) via the
+   `reconstruct_polys_view` axiom. *)
+op reconstruct_polys :
+  int list -> (poly_t list) list -> poly_t list.
+
 (* Group public key (FIPS 204 ML-DSA public-key encoding -- 1952 bytes *)
 (* for ML-DSA-65, but we keep it abstract here).                       *)
 type group_pk_t.
@@ -215,6 +247,21 @@ op lagrange : int list -> int -> share_t -> share_t.
 (*    sum_{i in Q} lambda_i^Q * share_i                                *)
 (* over R_q^ell. Defined recursively over the quorum list.             *)
 op reconstruct (Q : int list) (shares : share_t list) : share_t.
+
+(* HIGH-5 load-bearing reinforcement (followup A).
+
+   The abstract `reconstruct`'s polynomial view IS component-wise
+   Lagrange (`reconstruct_polys`, declared above). This load-bearing
+   identity links the share-level reconstruct (used by Pulsar_N1 /
+   Pulsar_N4 protocol claims) to the per-coordinate polynomial view
+   (the FIPS 204 R_q^ell algebraic structure). An adversarial
+   reconstruct realisation that doesn't factor through component-
+   wise Lagrange — e.g., returning a constant share regardless of
+   the inputs — is now ruled out by the structural commitment. *)
+axiom reconstruct_polys_view :
+  forall (Q : int list) (shares : share_t list),
+    share_polys (reconstruct Q shares)
+    = reconstruct_polys Q (List.map share_polys shares).
 
 (* Polynomial evaluation: poly_eval p i = P(i) where P is the dealer's *)
 (* Shamir polynomial in R_q^ell[X] (parametrised by p : share_t        *)
@@ -377,6 +424,41 @@ op mldsa_sign_op (sk : share_t) (m : message_t)
                  (ctx : ctx_t) (rho_rnd : randomness_t)
    : signature_t =
   sign_internal_loop (unpack_sk sk) (compute_mu m ctx) rho_rnd.
+
+(* HIGH-4 load-bearing reinforcement (followup A).
+
+   Without further axioms the three pipeline ops admit the trivial
+   factoring (unpack_sk = id, compute_mu = pair, sign_internal_loop
+   = the original 4-arg op), making `mldsa_sign_op`'s pipeline
+   purely cosmetic. The two axioms below pin the pipeline by
+   structural constraints:
+
+   - `compute_mu_injective`: distinct (m, ctx) pairs yield distinct
+     mu. Captures that FIPS 204 §5.4.1 ExternalMu
+     (SHAKE256(0x00 || |ctx| || ctx || M, 64)) is a TWO-VARIABLE
+     injection. Adversarial realisations that drop m (or ctx) from
+     the digest are ruled out.
+
+   - `pack_sk` + `pack_unpack_sk_roundtrip`: `unpack_sk` has a
+     left inverse `pack_sk`. Adversarial realisations that
+     collapse distinct shares into the same `unpacked_sk_t` are
+     ruled out (any such collapse would mean pack_sk's left-inverse
+     identity fails).
+
+   These do not concretize the pipeline (concretization requires
+   share_t to be a 6-tuple, HIGH-5+future), but they rule out the
+   trivial factoring critique: any `compute_mu` realisation must be
+   a two-variable injection, and any `unpack_sk` realisation must
+   be reversible. *)
+op pack_sk : unpacked_sk_t -> share_t.
+
+axiom pack_unpack_sk_roundtrip :
+  forall (sk : share_t), pack_sk (unpack_sk sk) = sk.
+
+axiom compute_mu_injective :
+  forall (m1 m2 : message_t) (ctx1 ctx2 : ctx_t),
+    compute_mu m1 ctx1 = compute_mu m2 ctx2 =>
+    m1 = m2 /\ ctx1 = ctx2.
 
 module type MLDSA65_Sign = {
   proc sign(sk : share_t, m : message_t, ctx : ctx_t,

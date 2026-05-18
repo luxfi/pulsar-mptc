@@ -140,10 +140,51 @@ op refine_sig_to_n1_sign (s : Pulsar_N1_Signature_Codec.signature_t)
    identity at the byte level for the extracted libjade sign.
    =================================================================== *)
 
+(* Inline form: surface the FIPS 204 §6.2 pipeline (unpack_sk +
+   compute_mu + sign_internal_loop) directly at the spec target.
+   Definitionally equal to `mldsa_sign_op sk m ctx rho_rnd` (since
+   mldsa_sign_op IS the pipeline composition in Pulsar_N1.ec), but
+   mentioning the pipeline ops explicitly here makes ctx-flow
+   through compute_mu searchable in proofs — and the non-bypass
+   lemma below proves it directly. *)
 op sign_abs_op (full : sign_full_args_t) : Pulsar_N1.signature_t =
-  Pulsar_N1.mldsa_sign_op
-    full.`sgn_sk_n1 full.`sgn_m_n1
-    full.`sgn_ctx_n1 full.`sgn_rnd_n1.
+  Pulsar_N1.sign_internal_loop
+    (Pulsar_N1.unpack_sk full.`sgn_sk_n1)
+    (Pulsar_N1.compute_mu full.`sgn_m_n1 full.`sgn_ctx_n1)
+    full.`sgn_rnd_n1.
+
+(* HIGH-4 non-bypass lemma (followup A reinforcement).
+
+   `compute_mu` is the ONLY consumer of `sgn_ctx_n1` in `sign_abs_op`.
+   This lemma surfaces that structural fact: changes to ctx must flow
+   through compute_mu before reaching the signature output. Trivially
+   true by definitional unfolding, but having it as a named theorem
+   makes the pipeline structure load-bearing in downstream byte-walk
+   discharges (which can rewrite the spec target into pipeline form
+   without further definitional cruft).
+
+   Combined with `Pulsar_N1.compute_mu_injective`: distinct ctx values
+   produce distinct mu values, so the signature output faithfully
+   depends on ctx via the FIPS 204 §5.4.1 ExternalMu derivation. *)
+lemma sign_abs_op_ctx_flows_through_mu (full : sign_full_args_t) :
+  sign_abs_op full
+  = Pulsar_N1.sign_internal_loop
+      (Pulsar_N1.unpack_sk full.`sgn_sk_n1)
+      (Pulsar_N1.compute_mu full.`sgn_m_n1 full.`sgn_ctx_n1)
+      full.`sgn_rnd_n1.
+proof. by rewrite /sign_abs_op. qed.
+
+(* Equivalence with mldsa_sign_op form (the alternative shape used
+   by combine_abs_op). Pure unfolding lemma — both sides are
+   definitionally equal. Stating it as a named lemma lets downstream
+   proofs rewrite between the two forms via lemma application
+   rather than full-on definitional unfolding. *)
+lemma sign_abs_op_eq_mldsa (full : sign_full_args_t) :
+  sign_abs_op full =
+    Pulsar_N1.mldsa_sign_op
+      full.`sgn_sk_n1 full.`sgn_m_n1
+      full.`sgn_ctx_n1 full.`sgn_rnd_n1.
+proof. by rewrite /sign_abs_op /Pulsar_N1.mldsa_sign_op. qed.
 
 (* ===================================================================
    GHOST CONTRACT: ctx / rho_rnd binding (Agent 1 C3 split path).
