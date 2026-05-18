@@ -267,10 +267,23 @@ op combine_body_compute_mu
    : Pulsar_N1.mu_t =
   Pulsar_N1.shake256_to_mu (combine_body_mu_input mem_pre ptrs).
 
-op combine_body_compute_w1 :
+(* w polynomial-vector intermediate (BEFORE HighBits/decompose) the
+   extracted body produces. For combine, this is the threshold-
+   aggregated w_prime = sum lambda_i * w_i computed from Round-2
+   shares; for sign, this is libjade's A·y at the accepting kappa.
+   `combine_body_compute_w1` is now DEFINED as HighBits applied to
+   this intermediate, matching the structural definition of
+   `Pulsar_N1.central_w1`. *)
+op combine_body_compute_w :
   Pulsar_N1_Memory.mem_t ->
   Pulsar_N1_Combine_Layout.combine_ptrs_t ->
-  Pulsar_N1.w1_value_t.
+  Pulsar_N1.w_value_t.
+
+op combine_body_compute_w1
+   (mem_pre : Pulsar_N1_Memory.mem_t)
+   (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+   : Pulsar_N1.w1_value_t =
+  Pulsar_N1.high_bits_of_w (combine_body_compute_w mem_pre ptrs).
 
 (* c_tilde at the extracted body is the SHAKE digest of the mu and
    w1 intermediates — definitionally identical to what
@@ -424,7 +437,29 @@ proof.
   by rewrite Hinput.
 qed.
 
-axiom combine_body_w1_spec :
+(* Narrower w-polynomial axiom: extracted w polynomial-vector
+   matches the centralised central_w at the same protocol-level
+   inputs. The HighBits step is structural (folded into the
+   definitions of `combine_body_compute_w1` and `central_w1` on
+   both sides), so w-equality lifts to w1-equality by congruence. *)
+axiom combine_body_w_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+         (full : combine_full_args_t),
+    Pulsar_N1_Combine_Layout.layout_combine_args
+      mem_pre ptrs (wire_args_of_full full) =>
+    protocol_consistency full =>
+    combine_body_compute_status mem_pre ptrs = 0 =>
+    combine_body_compute_w mem_pre ptrs
+    = Pulsar_N1.central_w
+        (Pulsar_N1.unpack_sk
+           (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares))
+        (Pulsar_N1.compute_mu full.`full_m full.`full_ctx)
+        full.`full_rho_rnd.
+
+(* combine_body_w1_spec — was a primary axiom in v5/v6; now DERIVED
+   in v7 via the HighBits structural composition. *)
+lemma combine_body_w1_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
          (full : combine_full_args_t),
@@ -438,6 +473,12 @@ axiom combine_body_w1_spec :
            (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares))
         (Pulsar_N1.compute_mu full.`full_m full.`full_ctx)
         full.`full_rho_rnd.
+proof.
+  move=> mem_pre ptrs full Hlay Hconsist Hstatus.
+  have Hw := combine_body_w_spec mem_pre ptrs full Hlay Hconsist Hstatus.
+  rewrite /combine_body_compute_w1 /Pulsar_N1.central_w1.
+  by rewrite Hw.
+qed.
 
 (* combine_body_c_tilde_spec — was a primary axiom; now DERIVED.
    Composes combine_body_mu_spec + combine_body_w1_spec via the
@@ -756,7 +797,7 @@ qed.
                `combine_body_c_tilde_spec` becomes a derived lemma.
                NOT full mechanized closure: mu and w1 specs remain
                axioms.
-           v6 (this commit): mu sub-stage axiom further DECOMPOSED.
+           v6: mu sub-stage axiom further DECOMPOSED.
                `combine_body_mu_spec` is replaced by a narrower
                byte-layout axiom `combine_body_mu_input_spec`
                (FIPS 204 §5.4.1 ExternalMu byte-layout, classified
@@ -765,6 +806,16 @@ qed.
                `Pulsar_N1.compute_mu`. `combine_body_mu_spec`
                becomes a derived lemma. c_tilde sub-stage axiom
                count goes 2 → 1 on this file (w1 only).
+           v7 (this commit): w1 sub-stage axiom DECOMPOSED via
+               HighBits structural split. `combine_body_w1_spec`
+               is replaced by a narrower `combine_body_w_spec`
+               (about the polynomial vector w BEFORE
+               HighBits/decompose), plus the structural
+               `high_bits_of_w` definition shared with
+               `Pulsar_N1.central_w1`. `combine_body_w1_spec`
+               becomes a derived lemma. c_tilde sub-stage axiom
+               count stays 1 on this file but is now NARROWER
+               (about w, not w1).
 
      ops (DEFINITIONS — no proof obligation):
        wire_args_of_full     (record projection)
@@ -832,18 +883,23 @@ qed.
      v5: c_tilde-stage axiom DECOMPOSED — `combine_body_c_tilde_spec`
          becomes derived; replaced by combine_body_mu_spec +
          combine_body_w1_spec axioms.
-     v6 (this commit):
-         4 axioms — mu sub-stage axiom further DECOMPOSED:
-         `combine_body_mu_spec` becomes a derived lemma, replaced
-         by a byte-layout axiom `combine_body_mu_input_spec`
-         (FIPS 204 §5.4.1 ExternalMu layout, codec category).
+     v6: mu sub-stage axiom further DECOMPOSED — `combine_body_mu_spec`
+         becomes derived; replaced by `combine_body_mu_input_spec`
+         byte-layout axiom (codec category).
+     v7 (this commit):
+         4 axioms — w1 sub-stage axiom DECOMPOSED via HighBits:
+         `combine_body_w1_spec` becomes a derived lemma, replaced
+         by `combine_body_w_spec` (narrower — about polynomial
+         vector w before HighBits/decompose).
          Remaining byte-walk axioms on this file:
-           combine_body_w1_spec   (c_tilde sub-stage, narrow)
+           combine_body_w_spec    (c_tilde sub-stage, narrower than w1)
            combine_body_z_spec    (stage-level)
            combine_body_h_spec    (stage-level)
          Plus 1 codec-layout axiom:
            combine_body_mu_input_spec
-         w1 is the next narrowing target (still bundled).
+         Next target: w sub-stage further decomposition via
+         mat_vec_mul + expand_a + expand_mask bridges, or via
+         Lean threshold-aggregation correspondence for combine.
 
    Concrete attack surface per axiom (post-v5):
      combine_body_mu_spec ↦ FIPS 204 §5.4.1 ExternalMu derivation

@@ -223,9 +223,10 @@ mu and w1.
 | Category | Count | Notes |
 |---|---|---|
 | Stage-level byte-walk axioms | 4 | combine/sign × {z, h} |
-| c_tilde sub-stage axioms | 2 | combine/sign × {w1} only — mu sub-stage decomposed |
+| c_tilde sub-stage axioms | 2 | combine/sign × {w} only — w1 sub-stage further decomposed via HighBits in v7 |
 | Derived c_tilde lemmas | 2 | `combine_body_c_tilde_spec`, `sign_body_c_tilde_spec` |
 | Derived mu lemmas | 2 | `combine_body_mu_spec`, `sign_body_mu_spec` (v6) |
+| Derived w1 lemmas | 2 | `combine_body_w1_spec`, `sign_body_w1_spec` (v7) |
 | Accepted-path no-reject axioms | 2 | unchanged |
 | Lean-bridged algebraic axioms | 4 | unchanged |
 | Codec roundtrip / layout axioms | existing + 3 | includes `pack_unpack_n1_signature_roundtrip` (v4) + `combine_body_mu_input_spec` and `sign_body_mu_input_spec` (v6, FIPS 204 §5.4.1 ExternalMu byte layouts) |
@@ -239,15 +240,18 @@ Detail on the byte-walk + sub-stage axioms:
       `combine_body_h_spec`       — MakeHint stage (roadmap S7)
     sign side (tracked #3):
       `sign_body_z_spec`, `sign_body_h_spec`
-- **2 c_tilde sub-stage axioms** (NARROW; w1 only — mu sub-stage
-  decomposed further in v6):
-    combine side: `combine_body_w1_spec`
-    sign side:    `sign_body_w1_spec`
-  Each is strictly narrower than the prior bundled c_tilde axiom.
-  The SHAKE composition tying mu + w1 → c_tilde is encoded as a
-  STRUCTURAL DEFINITION on both sides (`Pulsar_N1.shake_mu_w1`,
-  same op), not an axiom. `*_body_c_tilde_spec` is a derived lemma
-  on each side.
+- **2 c_tilde sub-stage axioms** (NARROW; w only — mu sub-stage
+  decomposed in v6, w1 sub-stage further decomposed in v7 via
+  HighBits structural split):
+    combine side: `combine_body_w_spec`
+    sign side:    `sign_body_w_spec`
+  Each is strictly narrower than the prior `w1_spec`: the w-stage
+  axiom is about the polynomial-vector w BEFORE HighBits/decompose.
+  The HighBits step is encoded as a STRUCTURAL DEFINITION on both
+  sides (`Pulsar_N1.high_bits_of_w`, same op), not an axiom.
+  `*_body_w1_spec` is a derived lemma on each side; combined with
+  the v6 mu-stage decomposition and v5 SHAKE composition,
+  `*_body_c_tilde_spec` is also derived.
 
 - **2 FIPS 204 §5.4.1 ExternalMu byte-layout axioms** (NARROW,
   v6 — slot into the codec layout category):
@@ -259,11 +263,14 @@ Detail on the byte-walk + sub-stage axioms:
   `*_body_mu_spec` is a derived lemma on each side, composed via
   the SHAKE structural identity (`shake256_to_mu`).
 
-  Per-axiom attack surface (v6):
+  Per-axiom attack surface (v7):
     `*_mu_input_spec` ↦ FIPS 204 §5.4.1 byte layout (codec, narrowest).
-    `*_w1_spec`       ↦ HighBits of A·y at the accepting kappa.
-                        Reduces to `MLDSA65_Functional.decompose_vec_k`
-                        + `mat_vec_mul`.
+    `*_w_spec`        ↦ Polynomial vector w = A·y at the accepting
+                        kappa. Reduces to `MLDSA65_Functional.mat_vec_mul`
+                        + `expand_a` + `expand_mask` + an accepted-kappa
+                        selection (loop or fixed-point model).
+                        For combine, also reduces via the Lean Lagrange
+                        bridge for threshold aggregation.
     `*_z_spec`        ↦ Lagrange aggregation (combine) / pure §6.2 z
                         (sign). Combine-side bridge:
                         `Crypto.Threshold.Lagrange.threshold_partial_response_identity`.
@@ -271,8 +278,8 @@ Detail on the byte-walk + sub-stage axioms:
                         Bridge target: `MLDSA65_Functional.vec_k_make_hint`.
 
   The composite `*_compute_components_spec`, `*_compute_sig_spec`,
-  `*_body_c_tilde_spec`, and `*_body_mu_spec` are derived lemmas,
-  not axioms.
+  `*_body_c_tilde_spec`, `*_body_mu_spec`, and `*_body_w1_spec`
+  are derived lemmas, not axioms.
 - **2 accepted-path no-reject axioms** — protocol-correctness
   companions to the byte-walks
   (`combine_no_reject_on_accepted_honest_layout`,
@@ -318,8 +325,8 @@ What this gives the NIST reviewer at submission time:
    `pulsar_n1_byte_equality` with concrete wrapper modules. Trust
    reduces to:
    - 4 stage-level byte-walks (z + h on combine and sign);
-   - 2 c_tilde sub-stage axioms (w1 on combine and sign — mu
-     sub-stage decomposed further);
+   - 2 c_tilde sub-stage axioms (w on combine and sign — w1 step
+     decomposed further via HighBits in v7);
    - 2 FIPS 204 §5.4.1 ExternalMu byte-layout axioms (mu_input
      on combine and sign, classified under codec layouts);
    - 2 accepted-path no-reject axioms (combine + sign);
@@ -328,10 +335,11 @@ What this gives the NIST reviewer at submission time:
    - per-type FIPS 204 codec round-trips with `wf_*`
      well-formedness guards.
 
-   Both `*_body_c_tilde_spec` (v5) and `*_body_mu_spec` (v6) are
-   DERIVED LEMMAS. The c_tilde decomposition + the mu decomposition
-   together leave trust localized to:
-     - The w1 sub-stage axiom (HighBits of A·y, FIPS 204 §6.2)
+   `*_body_c_tilde_spec` (v5), `*_body_mu_spec` (v6), and
+   `*_body_w1_spec` (v7) are DERIVED LEMMAS. The c_tilde, mu, and
+   w1 decompositions together leave trust localized to:
+     - The w sub-stage axiom (polynomial vector A·y at accepted
+       kappa, FIPS 204 §6.2 — before HighBits)
      - The mu byte-layout axiom (FIPS 204 §5.4.1 ExternalMu, codec)
      - The z and h stage axioms (still bundled)
    This remains axiom decomposition, not full mechanized closure —
@@ -349,9 +357,9 @@ What this gives the NIST reviewer at submission time:
 What remains in the high-assurance track:
 
 - The per-stage byte-walk obligations remaining after the v5
-  c_tilde-stage and v6 mu sub-stage decompositions:
+  c_tilde-stage, v6 mu sub-stage, and v7 w1 sub-stage decompositions:
     Stage-level (4): `combine_body_{z,h}_spec`, `sign_body_{z,h}_spec`
-    w1 sub-stage (2): `combine_body_w1_spec`, `sign_body_w1_spec`
+    w sub-stage (2): `combine_body_w_spec`, `sign_body_w_spec`
     mu byte-layout (2, codec category):
       `combine_body_mu_input_spec`, `sign_body_mu_input_spec`
   Each is independently attackable. The z-stage axioms have a
@@ -359,9 +367,10 @@ What remains in the high-assurance track:
   `Crypto.Threshold.Lagrange.threshold_partial_response_identity`;
   the mu byte-layout axioms reduce to FIPS 204 §5.4.1 byte
   serialization once `MLDSA65_Functional` exposes the bit-level
-  ops; the w1 axioms reduce to `decompose_vec_k` + `mat_vec_mul`;
-  the h axioms reduce to `vec_k_make_hint`. Roadmaps with named
-  sub-claims are committed under `proofs/easycrypt/extraction/`.
+  ops; the w axioms reduce to `mat_vec_mul` + `expand_a` +
+  `expand_mask` + an accepted-kappa loop model; the h axioms
+  reduce to `vec_k_make_hint`. Roadmaps with named sub-claims
+  are committed under `proofs/easycrypt/extraction/`.
 - The two accepted-path no-reject obligations
   (`combine_no_reject_on_accepted_honest_layout`,
   `sign_no_reject_on_accepted_honest_layout`) — these reduce to the
@@ -395,14 +404,15 @@ requires closing the following named obligations.
 ### Remaining EC axioms in the corollary cone (8 + 1 + 4 + ~21)
 
 1. **6 per-stage byte-walk axioms** on the extracted Jasmin /
-   libjade procedures (4 stage-level z/h + 2 w1 sub-stage):
-     - `combine_body_{w1,z,h}_spec` — combine side (tracked #4)
-     - `sign_body_{w1,z,h}_spec`    — sign side    (tracked #3)
+   libjade procedures (4 stage-level z/h + 2 w sub-stage):
+     - `combine_body_{w,z,h}_spec` — combine side (tracked #4)
+     - `sign_body_{w,z,h}_spec`    — sign side    (tracked #3)
    Each maps to a concrete FIPS 204 sub-stage; closure paths are
-   listed in the per-side accounting blocks. The w1 sub-stage is
-   the narrowest remaining byte-walk after the v6 mu decomposition;
-   it reduces to `decompose_vec_k` + `mat_vec_mul` once concretized.
-   The z stage has a Lean Lagrange-aggregation bridge path.
+   listed in the per-side accounting blocks. The w sub-stage is
+   the narrowest remaining byte-walk after the v7 HighBits
+   decomposition; it reduces to `mat_vec_mul` + `expand_a` +
+   `expand_mask` + accepted-kappa selection. The z stage has a
+   Lean Lagrange-aggregation bridge path.
 
    Plus **2 mu byte-layout axioms** (`combine_body_mu_input_spec`,
    `sign_body_mu_input_spec`) classified under FIPS 204 codec

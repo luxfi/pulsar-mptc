@@ -333,10 +333,16 @@ op sign_body_compute_mu
    : Pulsar_N1.mu_t =
   Pulsar_N1.shake256_to_mu (sign_body_mu_input mem_pre ptrs).
 
-op sign_body_compute_w1 :
+op sign_body_compute_w :
   Pulsar_N1_Memory.mem_t ->
   Pulsar_N1_Sign_Layout.sign_ptrs_t ->
-  Pulsar_N1.w1_value_t.
+  Pulsar_N1.w_value_t.
+
+op sign_body_compute_w1
+   (mem_pre : Pulsar_N1_Memory.mem_t)
+   (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+   : Pulsar_N1.w1_value_t =
+  Pulsar_N1.high_bits_of_w (sign_body_compute_w mem_pre ptrs).
 
 op sign_body_compute_c_tilde
    (mem_pre : Pulsar_N1_Memory.mem_t)
@@ -444,7 +450,21 @@ proof.
   by rewrite Hinput.
 qed.
 
-axiom sign_body_w1_spec :
+axiom sign_body_w_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+         (full : sign_full_args_t),
+    Pulsar_N1_Sign_Layout.layout_sign_args
+      mem_pre ptrs (wire_sign_args_of_full full) =>
+    sign_body_compute_status mem_pre ptrs = 0 =>
+    sign_body_compute_w mem_pre ptrs
+    = Pulsar_N1.central_w
+        (Pulsar_N1.unpack_sk full.`sgn_sk_n1)
+        (Pulsar_N1.compute_mu full.`sgn_m_n1 full.`sgn_ctx_n1)
+        full.`sgn_rnd_n1.
+
+(* sign_body_w1_spec — was a primary axiom; now DERIVED. *)
+lemma sign_body_w1_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
          (full : sign_full_args_t),
@@ -456,6 +476,12 @@ axiom sign_body_w1_spec :
         (Pulsar_N1.unpack_sk full.`sgn_sk_n1)
         (Pulsar_N1.compute_mu full.`sgn_m_n1 full.`sgn_ctx_n1)
         full.`sgn_rnd_n1.
+proof.
+  move=> mem_pre ptrs full Hlay Hstatus.
+  have Hw := sign_body_w_spec mem_pre ptrs full Hlay Hstatus.
+  rewrite /sign_body_compute_w1 /Pulsar_N1.central_w1.
+  by rewrite Hw.
+qed.
 
 (* sign_body_c_tilde_spec — was a primary axiom; now DERIVED. *)
 lemma sign_body_c_tilde_spec :
@@ -760,19 +786,20 @@ qed.
      v4: 3 axioms (sign_body_{c_tilde,z,h}_spec — per-stage)
      v5: c_tilde-stage axiom DECOMPOSED — `sign_body_c_tilde_spec`
          becomes derived; replaced by sign_body_{mu,w1}_spec axioms.
-     v6 (this commit):
-         4 axioms — mu sub-stage axiom further DECOMPOSED:
-         `sign_body_mu_spec` becomes a derived lemma, replaced by
-         a byte-layout axiom `sign_body_mu_input_spec` (FIPS 204
-         §5.4.1 ExternalMu layout, codec category).
+     v6: mu sub-stage axiom further DECOMPOSED.
+     v7 (this commit):
+         4 axioms — w1 sub-stage axiom DECOMPOSED via HighBits:
+         `sign_body_w1_spec` becomes a derived lemma, replaced by
+         `sign_body_w_spec` (narrower — about polynomial vector w
+         before HighBits/decompose).
          Remaining byte-walk axioms on this file:
-           sign_body_w1_spec   (c_tilde sub-stage, narrow)
+           sign_body_w_spec    (c_tilde sub-stage, narrower than w1)
            sign_body_z_spec    (stage-level)
            sign_body_h_spec    (stage-level)
          Plus 1 codec-layout axiom:
            sign_body_mu_input_spec
 
-   Mirror of the combine-side post-v6 structure.
+   Mirror of the combine-side post-v7 structure.
 
    The separation property is now BY CONSTRUCTION. The byte-walk
    obligation reduces to a claim about pure signature bytes (the

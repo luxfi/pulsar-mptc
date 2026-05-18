@@ -513,13 +513,43 @@ type h_n1_t.
 
 (* w1 — the high-bits polynomial vector at the accepting kappa.
    Abstract type captures whatever value the centralised ML-DSA
-   inner loop produces for w1Encode's input on accept. The
-   structural bridge to MLDSA65_Functional.HighBits / vec_k_use_hint
-   is future work; here we surface only the abstract value. *)
+   inner loop produces for w1Encode's input on accept. *)
 type w1_value_t.
 
-op central_w1 :
-  unpacked_sk_t -> mu_t -> randomness_t -> w1_value_t.
+(* w — the polynomial-vector intermediate BEFORE HighBits/decompose.
+   In FIPS 204 §6.2, w = A·y at the accepted kappa, where
+   A = ExpandA(rho), y = ExpandMask(rho', kappa). The HighBits step
+   then extracts w1 = (decompose_vec_k gamma2 w).`1.
+
+   Surfacing w_value_t as a distinct type lets central_w1 factor
+   as `high_bits_of_w ∘ central_w`. The HighBits decomposition is
+   then structural on both extracted and centralised sides, so the
+   refinement files' w1-stage byte-walk obligations decompose into
+   a narrower `w_spec` claim (extracted_w = central_w) — the
+   HighBits step is folded into structural definitions on both
+   sides.
+
+   The accepted-kappa selection + A·y composition remain inside
+   `central_w`'s abstract surface (concretisation would require a
+   loop / fixed-point model and MLDSA65_Functional.mat_vec_mul +
+   expand_a + expand_mask bridges — future narrowing steps). *)
+type w_value_t.
+
+op central_w :
+  unpacked_sk_t -> mu_t -> randomness_t -> w_value_t.
+
+(* HighBits as a structural function over w polynomial vectors.
+   On the centralised side this is `(decompose_vec_k gamma2 w).`1`;
+   on the extracted side it is the same FIPS 204 §3.4.2 decomposition
+   applied to the extracted body's w vector. Encoded as a single
+   abstract op here; concrete identity with MLDSA65_Functional
+   decompose_vec_k is bridge work. *)
+op high_bits_of_w : w_value_t -> w1_value_t.
+
+op central_w1
+   (usk : unpacked_sk_t) (mu_val : mu_t) (rho_rnd : randomness_t)
+   : w1_value_t =
+  high_bits_of_w (central_w usk mu_val rho_rnd).
 
 (* SHAKE-based c_tilde derivation: c_tilde = SHAKE256(mu ||
    w1Encode(w1), 32) per FIPS 204 §6.2. Abstract here; concrete

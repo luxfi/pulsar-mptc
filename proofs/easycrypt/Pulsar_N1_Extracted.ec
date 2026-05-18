@@ -31,18 +31,21 @@ require import Pulsar_N1.
 (* ===================================================================
    The concrete extracted N1 byte-equality corollary.
 
-   Trust boundary of this corollary (v6):
+   Trust boundary of this corollary (v7):
      - 4 stage-level byte-walk axioms in the refinement files
        (z + h on combine and sign):
          combine_body_z_spec  (Lagrange+decompose  — roadmap S3+S5)
          combine_body_h_spec  (MakeHint stage      — roadmap S7)
          sign_body_z_spec, sign_body_h_spec
-     - 2 c_tilde-stage sub-axioms (NARROW, w1 only — mu sub-stage
-       decomposed further in v6):
-         combine_body_w1_spec, sign_body_w1_spec
-       Compose with the derived `*_body_mu_spec` lemmas to give
-       the derived `*_body_c_tilde_spec` lemmas under the structural
-       SHAKE composition via `Pulsar_N1.shake_mu_w1`.
+     - 2 c_tilde-stage sub-axioms (NARROW, w only — w1 sub-stage
+       decomposed in v7 via HighBits structural split):
+         combine_body_w_spec, sign_body_w_spec
+       The w-stage axioms constrain the polynomial vector w BEFORE
+       HighBits/decompose. Compose with the structural
+       `high_bits_of_w` op (shared on both sides) to derive
+       `*_body_w1_spec` lemmas, then with the derived `*_body_mu_spec`
+       lemmas (v6) under the structural `shake_mu_w1` composition
+       (v5) to derive `*_body_c_tilde_spec` lemmas.
      - 2 FIPS 204 §5.4.1 ExternalMu byte-layout axioms (v6, NARROW;
        classified under codec layouts, not byte-walks):
          combine_body_mu_input_spec, sign_body_mu_input_spec
@@ -69,15 +72,18 @@ require import Pulsar_N1.
    Headline trust footprint:
      Was (v4): 6 stage-level byte-walks
      Was (v5): 4 stage-level + 4 c_tilde sub-stage (mu + w1)
-     Now (v6): 4 stage-level (z + h)
-             + 2 c_tilde sub-stage (w1 only)
-             + 2 FIPS 204 byte-layout (mu_input, codec category)
-             = 6 stage/sub-stage byte-walk axioms
-             + 2 codec layout axioms
-     This is continued axiom decomposition — mu and c_tilde specs
-     are now both derived lemmas. The remaining axioms are smaller
-     and more attackable than what they replace, but the obligations
-     remain axiomatic (NOT full mechanized closure).
+     Was (v6): 4 stage-level + 2 c_tilde sub-stage (w1)
+             + 2 codec layout (mu_input)
+     Now (v7): 4 stage-level (z + h)
+             + 2 c_tilde sub-stage (w only — HighBits structural)
+             + 2 codec layout (mu_input)
+             = 6 byte-walk axioms + 2 codec layout axioms
+     Continued axiom decomposition. Now `*_body_w1_spec`,
+     `*_body_mu_spec`, and `*_body_c_tilde_spec` are all derived
+     lemmas on both sides. The remaining axioms (`*_body_w_spec`,
+     `*_body_z_spec`, `*_body_h_spec`, `*_body_mu_input_spec`)
+     are narrower than what they replaced but remain axiomatic
+     (NOT full mechanized closure).
    =================================================================== *)
 
 lemma pulsar_n1_byte_equality_extracted :
