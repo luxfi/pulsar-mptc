@@ -32,16 +32,19 @@ require import Pulsar_N1.
    The concrete extracted N1 byte-equality corollary.
 
    Trust boundary of this corollary:
-     - 2 axioms in the refinement files (component-level byte-walks):
-         combine_body_compute_components_spec
-                               (Pulsar_N1_Combine_Refinement.ec)
-         sign_body_compute_components_spec
-                               (Pulsar_N1_Sign_Refinement.ec)
-       Each constrains the (c_tilde, z, h) component triple the
-       extracted body produces. Byte-equality of the packed signature
-       is then a derived lemma (combine_body_compute_sig_spec /
-       sign_body_compute_sig_spec) via Pulsar_N1.pack_n1_signature
-       being the same op on both sides.
+     - 6 axioms in the refinement files (per-FIPS-204-stage
+       byte-walks; 3 components × 2 sides):
+         Combine (Pulsar_N1_Combine_Refinement.ec):
+           combine_body_c_tilde_spec    — SampleInBall stage  (S4)
+           combine_body_z_spec          — Lagrange+decompose  (S3+S5)
+           combine_body_h_spec          — MakeHint stage      (S7)
+         Sign (Pulsar_N1_Sign_Refinement.ec):
+           sign_body_c_tilde_spec, sign_body_z_spec, sign_body_h_spec
+       Each constrains a single component value the extracted body
+       produces. The composite *_compute_components_spec and
+       *_compute_sig_spec are derived lemmas (via tuple
+       destructuring + the structural pack identity through
+       Pulsar_N1.pack_n1_signature).
      - 1 codec roundtrip axiom in Pulsar_N1
          pack_unpack_n1_signature_roundtrip
        Slots into the existing "~21 per-type FIPS 204 codec

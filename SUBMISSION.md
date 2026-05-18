@@ -209,14 +209,33 @@ axiom set:
 
 **Remaining trust footprint of the extracted N1 corollary**:
 
-- **2 implementation-refinement axioms** — byte-walks over the
-  pure signature output of the extracted Jasmin procedures
-  (`combine_body_compute_sig_spec` tracked #4 with roadmap in
-  `proofs/easycrypt/extraction/combine-byte-walk-roadmap.md`;
-  `sign_body_compute_sig_spec` tracked #3 with roadmap in
-  `proofs/easycrypt/extraction/sign-byte-walk-roadmap.md` and
-  ctx/rho_rnd ghost contract pinned in
-  `Pulsar_N1_Sign_Refinement.ec`).
+- **6 implementation-refinement axioms** — per-FIPS-204-stage
+  byte-walks on the extracted Jasmin/libjade procedures, three per
+  side, one per output component of the ML-DSA §6.2 inner loop:
+    combine side (tracked #4):
+      `combine_body_c_tilde_spec` — SampleInBall stage (roadmap S4)
+      `combine_body_z_spec`       — Lagrange-aggregated z + decompose
+                                    (roadmap S3 + S5)
+      `combine_body_h_spec`       — MakeHint stage (roadmap S7)
+    sign side (tracked #3):
+      `sign_body_c_tilde_spec`, `sign_body_z_spec`, `sign_body_h_spec`
+  Each axiom constrains a single component value the extracted
+  body produces; the pack step (FIPS 204 §3.5.5) and memory-write
+  step are structurally discharged. Roadmaps with named sub-claims
+  are in `proofs/easycrypt/extraction/`. The `sign_body_*_spec`
+  trio's ctx/rho_rnd ghost contract is pinned in
+  `Pulsar_N1_Sign_Refinement.ec`.
+
+  Why six axioms (not two): the prior "2 byte-walks over full
+  3293-byte packed signatures" framing concealed the per-stage
+  structure of the obligation. The per-stage split makes each
+  obligation independently attackable against the corresponding
+  `MLDSA65_Functional` op (`sample_in_ball`, `decompose_vec_k`,
+  `vec_k_make_hint`) and exposes a Lean-bridge opportunity for the
+  z-stage axioms (via `Crypto.Threshold.Lagrange.
+  threshold_partial_response_identity`). The composite
+  `*_compute_components_spec` and `*_compute_sig_spec` are now
+  derived lemmas, not axioms.
 - **2 accepted-path no-reject axioms** — protocol-correctness
   companions to the byte-walks
   (`combine_no_reject_on_accepted_honest_layout`,
@@ -261,7 +280,8 @@ What this gives the NIST reviewer at submission time:
    `pulsar_n1_byte_equality_extracted`, instantiating the generic
    `pulsar_n1_byte_equality` with concrete wrapper modules. Trust
    reduces to:
-   - 2 named byte-walk obligations (combine + sign);
+   - 6 named per-stage byte-walk obligations (3 components × 2
+     sides — c_tilde / z / h on combine and sign);
    - 2 accepted-path no-reject axioms (combine + sign);
    - 1 Lean-bridged algebraic identity in the N1 cone
      (`lagrange_inverse_eval`);
@@ -278,10 +298,15 @@ What this gives the NIST reviewer at submission time:
 
 What remains in the high-assurance track:
 
-- The two byte-walk obligations (`combine_body_compute_sig_spec`,
-  `sign_body_compute_sig_spec`) — multi-week proofs walking the
-  ~370-line extracted Jasmin procedures stage-by-stage. Roadmaps
-  with named sub-claims are committed under
+- The six per-stage byte-walk obligations
+  (`combine_body_{c_tilde,z,h}_spec`, `sign_body_{c_tilde,z,h}_spec`)
+  — multi-week proofs walking the corresponding regions of the
+  extracted Jasmin / libjade procedures. Each is independently
+  attackable; the z-stage axioms have a Lean-bridge path through
+  `Crypto.Threshold.Lagrange.threshold_partial_response_identity`,
+  and the c_tilde / h-stage axioms reduce to FIPS 204 hash and
+  arithmetic op compositions over the MLDSA65_Functional layer.
+  Roadmaps with named sub-claims are committed under
   `proofs/easycrypt/extraction/`.
 - The two accepted-path no-reject obligations
   (`combine_no_reject_on_accepted_honest_layout`,

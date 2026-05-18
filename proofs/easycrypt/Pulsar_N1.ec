@@ -466,19 +466,41 @@ type c_tilde_n1_t.
 type z_n1_t.
 type h_n1_t.
 
-(* ML-DSA inner signing loop, at the component level. The kappa
-   rejection-sampling loop produces the (c_tilde, z, h) triple on
-   accept; on reject, the loop bumps kappa and retries (deterministic
-   in this functional view — the loop terminates at the first
-   accepting kappa or exhausts the kappa bound, both as a pure
-   function of inputs).
+(* ML-DSA inner signing loop, decomposed per FIPS 204 §6.2 output
+   stage. Each component op captures the centralised single-party
+   output of one inner-loop stage on accept:
 
-   This op is intentionally abstract here. Each component's spec
-   relative to the ML-DSA reference will be discharged independently
-   in MLDSA65_Functional (S4: SampleInBall → c_tilde; S5+S3: A·y +
-   Lagrange aggregation → z; S7: MakeHint → h). *)
-op run_signing_components :
-  unpacked_sk_t -> mu_t -> randomness_t -> c_tilde_n1_t * z_n1_t * h_n1_t.
+     mldsa_compute_c_tilde  c_tilde from SampleInBall(SHAKE(mu || w1))
+                            — corresponds to roadmap S4.
+     mldsa_compute_z        z = y + c·s1 after kappa converges
+                            — roadmap S3 (Lagrange-aggregation, when
+                              viewed from the threshold side) + S5
+                              (w_prime + decompose).
+     mldsa_compute_h        h = MakeHint(w_low_agg, w_high_agg)
+                            — roadmap S7.
+
+   Splitting the previously triple-returning `run_signing_components`
+   into three named ops is the structural step that lets the
+   refinement files split their byte-walk axioms per-stage as well.
+   `run_signing_components` is then DEFINED as the tuple of the
+   three — its identity collapses to component identities under
+   tuple destructuring, the load-bearing fact downstream lemmas
+   consume. *)
+op mldsa_compute_c_tilde :
+  unpacked_sk_t -> mu_t -> randomness_t -> c_tilde_n1_t.
+
+op mldsa_compute_z :
+  unpacked_sk_t -> mu_t -> randomness_t -> z_n1_t.
+
+op mldsa_compute_h :
+  unpacked_sk_t -> mu_t -> randomness_t -> h_n1_t.
+
+op run_signing_components
+   (usk : unpacked_sk_t) (mu_val : mu_t) (rho_rnd : randomness_t)
+   : c_tilde_n1_t * z_n1_t * h_n1_t =
+  (mldsa_compute_c_tilde usk mu_val rho_rnd,
+   mldsa_compute_z       usk mu_val rho_rnd,
+   mldsa_compute_h       usk mu_val rho_rnd).
 
 (* FIPS 204 §3.5.5 signature codec: layout the (c_tilde, z, h) triple
    into the byte-level signature_t and back. Mirrors the existing
