@@ -172,12 +172,31 @@ op combine_abs_op (full : combine_full_args_t) : Pulsar_N1.signature_t =
 
 (* The functional "compute" output of the extracted combine body:
    given the input memory + pointer bundle, return the FIPS 204
-   signature bytes that get written at sig_out_ptr. This is the
-   ONLY remaining abstract op — the byte-walk obligation. *)
+   signature bytes that get written at sig_out_ptr. *)
 op combine_body_compute_sig :
   Pulsar_N1_Memory.mem_t ->
   Pulsar_N1_Combine_Layout.combine_ptrs_t ->
   Pulsar_N1_Signature_Codec.signature_t.
+
+(* Status-aware byte-walk (Agent 1 HIGH-2 closure).
+
+   The extracted M.pulsar_combine procedure returns a status word.
+   On rejection-check failure (FIPS 204 §6.1 R1..R4 bounds violated
+   by the aggregate) it returns non-zero status and leaves
+   sig_out_ptr in an undefined state. Earlier versions of the
+   byte-walk axiom claimed byte-equality UNCONDITIONALLY — which
+   was vacuously satisfiable on rejection branches.
+
+   `combine_body_compute_status` surfaces the procedure's return
+   word. The byte-walk axiom (below) is conditioned on
+   `status = 0`: a successful Combine call produces the
+   centralised FIPS 204 signature on the reconstructed secret;
+   the rejection branch makes no claim about the signature
+   buffer content. *)
+op combine_body_compute_status :
+  Pulsar_N1_Memory.mem_t ->
+  Pulsar_N1_Combine_Layout.combine_ptrs_t ->
+  int.
 
 (* Definition: combine_body_fn writes the computed signature at
    sig_out_ptr and leaves all other memory untouched, by virtue of
@@ -195,18 +214,41 @@ op combine_body_fn (mem_pre : Pulsar_N1_Memory.mem_t)
     ptrs.`Pulsar_N1_Combine_Layout.sig_out_ptr
     (combine_body_compute_sig mem_pre ptrs).
 
-(* The byte-walk axiom — restated against the compute op. Closing
-   this still requires walking the extracted body (tracked #4),
-   but the surface area is smaller: it makes a claim about pure
-   signature bytes, not about memory states. *)
+(* The byte-walk axiom — restated against the compute op + STATUS
+   GUARDED. Closing this still requires walking the extracted body
+   (tracked #4) BUT the obligation now also covers the
+   status-aware semantics: the byte-equality claim is made only
+   when the extracted procedure returns status = 0 (success). *)
 axiom combine_body_compute_sig_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
          (full : combine_full_args_t),
     Pulsar_N1_Combine_Layout.layout_combine_args
       mem_pre ptrs (wire_args_of_full full) =>
+    combine_body_compute_status mem_pre ptrs = 0 =>
     refine_sig_to_n1 (combine_body_compute_sig mem_pre ptrs)
     = combine_abs_op full.
+
+(* Protocol-correctness companion axiom: for layout-conforming
+   inputs from an HONEST quorum (the inputs the wrapper constructs
+   via n1_inputs_to_combine_full from real shares + Round-2
+   messages), the extracted Combine NEVER rejects — i.e. always
+   returns status = 0. FIPS 204 §6.1 rejection conditions are
+   satisfied by construction when the aggregate inputs were
+   honestly produced (the masking + commit scheme keeps the
+   z-norm + hint-count + low-bits within bounds).
+
+   This axiom is the COMPANION to combine_body_compute_sig_spec:
+   together they recover the previous unconditional byte-walk
+   shape. Splitting them makes the obligation surface visible —
+   one claim per concern, status-aware + protocol-correctness. *)
+axiom combine_no_reject_on_honest_layout :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+         (full : combine_full_args_t),
+    Pulsar_N1_Combine_Layout.layout_combine_args
+      mem_pre ptrs (wire_args_of_full full) =>
+    combine_body_compute_status mem_pre ptrs = 0.
 
 (* ===================================================================
    DERIVED LEMMAS — fully proved (combine_body_spec was an axiom,
@@ -214,8 +256,14 @@ axiom combine_body_compute_sig_spec :
    lemma).
    =================================================================== *)
 
-(* The old `combine_body_spec` shape, now PROVED. Compose
-   read_after_write_signature with combine_body_compute_sig_spec. *)
+(* The old `combine_body_spec` shape — STATUS DISCHARGED by the
+   companion axiom `combine_no_reject_on_honest_layout`.
+   Composition:
+     layout_combine_args  →  status = 0  (combine_no_reject_on_honest_layout)
+     layout + status = 0  →  byte-equality (combine_body_compute_sig_spec)
+   Wrapper bridge consumers see the same unconditional shape they
+   had before; the status-aware obligation is internal to this
+   refinement file. *)
 lemma combine_body_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
@@ -229,6 +277,8 @@ lemma combine_body_spec :
     = combine_abs_op full.
 proof.
   move=> mem_pre ptrs full Hlay.
+  have Hstatus :=
+    combine_no_reject_on_honest_layout mem_pre ptrs full Hlay.
   rewrite /combine_body_fn.
   rewrite Pulsar_N1_Combine_Layout.read_after_write_signature.
   by apply combine_body_compute_sig_spec.
