@@ -599,8 +599,53 @@ op mldsa_compute_c_tilde
 op mldsa_compute_z :
   unpacked_sk_t -> mu_t -> randomness_t -> z_n1_t.
 
-op mldsa_compute_h :
-  unpacked_sk_t -> mu_t -> randomness_t -> h_n1_t.
+(* w_low — the low-bits polynomial-vector intermediate at the accepting
+   kappa. In FIPS 204 §3.4.2 decompose, w factors as
+     (w_high, w_low) = decompose_vec_k gamma2 w
+   where w_high = w1 = `high_bits_of_w w` (already surfaced in v7)
+   and w_low is the remaining low-bits coordinate-wise residue.
+
+   Surfacing w_low_value_t as a distinct type lets the h-stage factor
+   structurally as `make_hint_of_w ∘ (central_w, central_w_low)`:
+   the MakeHint operation (FIPS 204 §3.4.3) takes the full polynomial
+   vector w plus its low-bits component and produces the hint vector
+   h, which encodes the carry information needed to recover w1 from
+   the response without re-aggregating w. The high-bits side is
+   structural (the `central_w` value already in scope determines w1
+   via `high_bits_of_w`); the low-bits side is a second independent
+   abstract op.
+
+   The MakeHint decomposition is structural on both extracted and
+   centralised sides, so the refinement files' h-stage byte-walk
+   obligations decompose into a narrower `w_low_spec` claim
+   (extracted_w_low = central_w_low) — the MakeHint step is folded
+   into structural definitions on both sides.
+
+   `central_w` and `central_w_low` remain abstract surfaces
+   (concretisation would require a fixed-point model of the kappa
+   loop plus MLDSA65_Functional.decompose_vec_k bridge — future
+   narrowing steps). *)
+type w_low_value_t.
+
+op central_w_low :
+  unpacked_sk_t -> mu_t -> randomness_t -> w_low_value_t.
+
+(* MakeHint as a structural function over (w, w_low) pairs.
+   On the centralised side, given w = A·y at the accepted kappa and
+   w_low = (decompose_vec_k gamma2 w).`2, MakeHint produces the hint
+   vector h per FIPS 204 §3.4.3. On the extracted side it is the
+   same operation applied to the body's threshold-aggregated (or
+   libjade-computed) w and w_low intermediates. Encoded as a single
+   abstract op here; concrete identity with
+   MLDSA65_Functional.vec_k_make_hint is bridge work. *)
+op make_hint_of_w : w_value_t -> w_low_value_t -> h_n1_t.
+
+op mldsa_compute_h
+   (usk : unpacked_sk_t) (mu_val : mu_t) (rho_rnd : randomness_t)
+   : h_n1_t =
+  make_hint_of_w
+    (central_w     usk mu_val rho_rnd)
+    (central_w_low usk mu_val rho_rnd).
 
 (* ===================================================================
    Threshold response layer — FROST-style partial responses + Lagrange

@@ -341,10 +341,28 @@ op combine_body_compute_z :
   Pulsar_N1_Combine_Layout.combine_ptrs_t ->
   Pulsar_N1.z_n1_t.
 
-op combine_body_compute_h :
+(* w_low polynomial-vector intermediate the extracted combine body
+   produces at the accepting kappa. Mirror of `combine_body_compute_w`
+   from v7: that op surfaced the w intermediate BEFORE HighBits;
+   this op surfaces the low-bits side of the decompose. Together
+   (w, w_low) are the two inputs MakeHint consumes to produce h.
+
+   For combine, this is the threshold-aggregated w_low side of the
+   decompose at lines 3510-3530 (decompose loop). `combine_body_compute_h`
+   is now DEFINED as `make_hint_of_w` applied to the (w, w_low) pair,
+   mirroring the structural definition of `Pulsar_N1.mldsa_compute_h`. *)
+op combine_body_compute_w_low :
   Pulsar_N1_Memory.mem_t ->
   Pulsar_N1_Combine_Layout.combine_ptrs_t ->
-  Pulsar_N1.h_n1_t.
+  Pulsar_N1.w_low_value_t.
+
+op combine_body_compute_h
+   (mem_pre : Pulsar_N1_Memory.mem_t)
+   (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+   : Pulsar_N1.h_n1_t =
+  Pulsar_N1.make_hint_of_w
+    (combine_body_compute_w     mem_pre ptrs)
+    (combine_body_compute_w_low mem_pre ptrs).
 
 op combine_body_compute_components
    (mem_pre : Pulsar_N1_Memory.mem_t)
@@ -432,19 +450,86 @@ op combine_body_fn (mem_pre : Pulsar_N1_Memory.mem_t)
    mu VALUE. Classified under FIPS 204 codec layouts, not the
    byte-walk category.
 
-   combine_body_mu_input_spec (FIPS 204 codec layout):
-     The extracted SHAKE input buffer that produced the protocol-
-     level mu used in c_tilde derivation matches the FIPS 204
-     §5.4.1 ExternalMu byte layout for (m, ctx). Narrower than
-     `combine_body_mu_spec` — no SHAKE semantics, just byte
-     layout. Tracked #4 sub-claim.
+   v9 (combine side): the prior `combine_body_mu_input_spec` axiom
+   is itself DECOMPOSED into three strictly-narrower per-range
+   sub-axioms over the byte structure of the ExternalMu layout.
+   The combine side has NO `m_ptr`/`ctx_ptr` in its layout (combine
+   doesn't compute mu itself — it reads c_tilde as a wire input;
+   `combine_body_mu_input` is a protocol-witness ghost claim about
+   the byte buffer the threshold protocol used). So unlike the
+   sign side (which can collapse to `load_bytes` at a concrete
+   `ptr_m`), the combine side decomposes the int-list equality
+   along the THREE FIPS 204 §5.4.1 components:
+
+     1. PREFIX (2 bytes): `[0x00; |ctx_bytes|]`
+     2. CTX SLICE (next |ctx| bytes): `context_bytes ctx`
+     3. M SUFFIX (remaining bytes): `message_bytes m`
+
+   Each sub-axiom is a `take`/`drop`-positioned equality over the
+   ghost buffer; together with `cat_take_drop` and `drop_drop`
+   they compose to the original byte-list equality. The composite
+   `combine_body_mu_input_spec` is now a DERIVED LEMMA.
+
+   This is NOT mechanized closure: trust is split into three
+   narrower byte-range claims about the protocol-witness buffer.
+   A future layout API change adding `m_ptr` and `ctx_ptr` to
+   `combine_ptrs_t` would let each sub-axiom collapse to a
+   `load_bytes` identity on the wire, mirroring the sign-side v9.
 
    combine_body_w1_spec (byte-walk, sub-stage):
      The extracted body's w1 intermediate (the high-bits polynomial
      vector at the accepting kappa) matches the centralised
      `central_w1` op evaluated on the reconstructed share's
      unpacked sk + mu + rho_rnd. Tracked #4 sub-claim. *)
-axiom combine_body_mu_input_spec :
+
+(* Sub-axiom (1/3): the first 2 bytes of the protocol-witness
+   ExternalMu buffer are the FIPS 204 §5.4.1 prefix
+   `[0x00; |context_bytes ctx|]`. *)
+axiom combine_body_mu_input_prefix_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+         (full : combine_full_args_t),
+    Pulsar_N1_Combine_Layout.layout_combine_args
+      mem_pre ptrs (wire_args_of_full full) =>
+    protocol_consistency full =>
+    combine_body_compute_status mem_pre ptrs = 0 =>
+    take 2 (combine_body_mu_input mem_pre ptrs)
+    = [0; size (Pulsar_N1.context_bytes full.`full_ctx)].
+
+(* Sub-axiom (2/3): bytes [2, 2 + |ctx|) of the protocol-witness
+   ExternalMu buffer equal `context_bytes ctx`. *)
+axiom combine_body_mu_input_ctx_bytes_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+         (full : combine_full_args_t),
+    Pulsar_N1_Combine_Layout.layout_combine_args
+      mem_pre ptrs (wire_args_of_full full) =>
+    protocol_consistency full =>
+    combine_body_compute_status mem_pre ptrs = 0 =>
+    take (size (Pulsar_N1.context_bytes full.`full_ctx))
+         (drop 2 (combine_body_mu_input mem_pre ptrs))
+    = Pulsar_N1.context_bytes full.`full_ctx.
+
+(* Sub-axiom (3/3): the suffix of the protocol-witness ExternalMu
+   buffer starting at offset `2 + |ctx|` equals `message_bytes m`. *)
+axiom combine_body_mu_input_m_bytes_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+         (full : combine_full_args_t),
+    Pulsar_N1_Combine_Layout.layout_combine_args
+      mem_pre ptrs (wire_args_of_full full) =>
+    protocol_consistency full =>
+    combine_body_compute_status mem_pre ptrs = 0 =>
+    drop (2 + size (Pulsar_N1.context_bytes full.`full_ctx))
+         (combine_body_mu_input mem_pre ptrs)
+    = Pulsar_N1.message_bytes full.`full_m.
+
+(* combine_body_mu_input_spec — was an axiom in v6..v8; now DERIVED
+   in v9 by composing the three per-range sub-axioms with
+   `cat_take_drop` (twice) and `drop_drop`. The `0 <= |ctx_bytes|`
+   side condition for `drop_drop` is discharged by
+   `Pulsar_N1.context_bytes_len_bound`. *)
+lemma combine_body_mu_input_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
          (full : combine_full_args_t),
@@ -454,6 +539,34 @@ axiom combine_body_mu_input_spec :
     combine_body_compute_status mem_pre ptrs = 0 =>
     combine_body_mu_input mem_pre ptrs
     = Pulsar_N1.external_mu_layout full.`full_m full.`full_ctx.
+proof.
+  move=> mem_pre ptrs full Hlay Hconsist Hstatus.
+  have Hpref :=
+    combine_body_mu_input_prefix_spec mem_pre ptrs full Hlay Hconsist Hstatus.
+  have Hctx :=
+    combine_body_mu_input_ctx_bytes_spec mem_pre ptrs full Hlay Hconsist Hstatus.
+  have Hm :=
+    combine_body_mu_input_m_bytes_spec mem_pre ptrs full Hlay Hconsist Hstatus.
+  have Hge0 : 0 <= size (Pulsar_N1.context_bytes full.`full_ctx).
+  + by have := Pulsar_N1.context_bytes_len_bound full.`full_ctx.
+  pose xs := combine_body_mu_input mem_pre ptrs.
+  pose n  := size (Pulsar_N1.context_bytes full.`full_ctx).
+  rewrite /Pulsar_N1.external_mu_layout.
+  (* Goal: xs = [0; n] ++ context_bytes ctx ++ message_bytes m
+     Strategy:
+       xs = take 2 xs ++ drop 2 xs                                  (cat_take_drop)
+          = [0; n] ++ drop 2 xs                                     (Hpref)
+          = [0; n] ++ (take n (drop 2 xs) ++ drop n (drop 2 xs))    (cat_take_drop)
+          = [0; n] ++ (ctx ++ drop n (drop 2 xs))                   (Hctx)
+          = [0; n] ++ (ctx ++ drop (n + 2) xs)                      (drop_drop)
+          = [0; n] ++ (ctx ++ drop (2 + n) xs)                      (addzC)
+          = [0; n] ++ (ctx ++ message_bytes m)                      (Hm)
+          = [0; n] ++ ctx ++ message_bytes m                        (catA) *)
+  rewrite -(cat_take_drop 2 xs) Hpref.
+  rewrite -(cat_take_drop n (drop 2 xs)) Hctx.
+  rewrite drop_drop // (addzC n 2) Hm.
+  by rewrite catA.
+qed.
 
 (* combine_body_mu_spec — was a primary axiom in v5; now DERIVED in
    v6 via the SHAKE structural composition. *)
@@ -632,7 +745,36 @@ proof.
   + exact Hhonest.
 qed.
 
-axiom combine_body_h_spec :
+(* Narrower w_low-polynomial axiom: extracted w_low polynomial-vector
+   matches the centralised central_w_low at the same protocol-level
+   inputs. The MakeHint step is structural (folded into the
+   definitions of `combine_body_compute_h` and `Pulsar_N1.mldsa_compute_h`
+   on both sides via `make_hint_of_w`), so the pair (w-equality, w_low-
+   equality) lifts to h-equality by congruence under `make_hint_of_w`. *)
+axiom combine_body_w_low_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+         (full : combine_full_args_t),
+    Pulsar_N1_Combine_Layout.layout_combine_args
+      mem_pre ptrs (wire_args_of_full full) =>
+    protocol_consistency full =>
+    combine_body_compute_status mem_pre ptrs = 0 =>
+    combine_body_compute_w_low mem_pre ptrs
+    = Pulsar_N1.central_w_low
+        (Pulsar_N1.unpack_sk
+           (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares))
+        (Pulsar_N1.compute_mu full.`full_m full.`full_ctx)
+        full.`full_rho_rnd.
+
+(* combine_body_h_spec — was a primary axiom in v4-v9; now DERIVED
+   in v10 via the MakeHint structural composition. Composes
+   `combine_body_w_spec` (v7) + `combine_body_w_low_spec` (this commit)
+   via the structural definitions of `combine_body_compute_h`
+   (= make_hint_of_w on extracted w + extracted w_low) and
+   `Pulsar_N1.mldsa_compute_h` (= make_hint_of_w on centralised
+   central_w + central_w_low). After both unfold, byte-equality
+   reduces to w-equality + w_low-equality. *)
+lemma combine_body_h_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
          (full : combine_full_args_t),
@@ -646,6 +788,13 @@ axiom combine_body_h_spec :
            (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares))
         (Pulsar_N1.compute_mu full.`full_m full.`full_ctx)
         full.`full_rho_rnd.
+proof.
+  move=> mem_pre ptrs full Hlay Hconsist Hstatus.
+  have Hw     := combine_body_w_spec     mem_pre ptrs full Hlay Hconsist Hstatus.
+  have Hw_low := combine_body_w_low_spec mem_pre ptrs full Hlay Hconsist Hstatus.
+  rewrite /combine_body_compute_h /Pulsar_N1.mldsa_compute_h.
+  by rewrite Hw Hw_low.
+qed.
 
 (* Composite components_spec — now DERIVED from the three per-stage
    axioms. Tuple equality follows from componentwise equality given
@@ -872,18 +1021,36 @@ qed.
 
    This file declares:
 
-     axioms (4 — 2 stage-level + 2 c_tilde-stage sub-stage):
-       Stage-level (z + h):
-         combine_body_z_spec        (roadmap S3+S5 — Lagrange + decompose)
-         combine_body_h_spec        (roadmap S7 — MakeHint stage)
-       c_tilde-stage sub-stage (mu + w1):
-         combine_body_mu_spec       (extracted mu = compute_mu m ctx)
-         combine_body_w1_spec       (extracted w1 = central_w1 (...))
-         Each strictly narrower than the prior bundled
-         `combine_body_c_tilde_spec` axiom (now a derived lemma).
-         The SHAKE composition that ties mu+w1 → c_tilde is encoded
-         as a STRUCTURAL DEFINITION on both sides (via
-         `Pulsar_N1.shake_mu_w1`), not as an axiom.
+     axioms (3 byte-walk + 3 codec-layout per-range — all strictly
+     narrower than any prior stage-level shape):
+       z stage (Lagrange-bridged, narrow byte-walk + structural):
+         combine_body_z_via_aggregation_spec
+                                    (extracted z is Lagrange aggregation
+                                     of partial responses over quorum)
+         combine_body_partial_responses_spec
+                                    (per-party partial responses match
+                                     per_party_partial_response)
+       h stage (MakeHint structural split, v10):
+         combine_body_w_low_spec    (extracted w_low = central_w_low (...))
+         The MakeHint composition tying (w, w_low) → h is encoded as
+         a STRUCTURAL DEFINITION on both sides (via
+         `Pulsar_N1.make_hint_of_w`), not as an axiom.
+       c_tilde stage (mu codec per-range split + w polynomial):
+         combine_body_w_spec        (extracted w = central_w (...))
+         combine_body_mu_input_prefix_spec    (first 2 bytes =
+                                              [0; |context_bytes ctx|])
+         combine_body_mu_input_ctx_bytes_spec (bytes [2, 2+|ctx|) =
+                                              context_bytes ctx)
+         combine_body_mu_input_m_bytes_spec   (bytes [2+|ctx|, end) =
+                                              message_bytes m)
+         The SHAKE composition that ties mu+w1 → c_tilde and the
+         HighBits composition that ties w → w1 are encoded as
+         STRUCTURAL DEFINITIONS on both sides (via
+         `Pulsar_N1.shake_mu_w1` and `Pulsar_N1.high_bits_of_w`).
+         The ExternalMu byte layout is now decomposed along its FIPS
+         204 §5.4.1 components — `combine_body_mu_input_spec`
+         becomes a derived lemma composing the three per-range
+         sub-axioms via `cat_take_drop` and `drop_drop`.
 
        Each conditioned on layout + protocol_consistency +
        status = 0. Tracked #4.
@@ -926,9 +1093,9 @@ qed.
                structural `high_bits_of_w` definition shared with
                `Pulsar_N1.central_w1`. `combine_body_w1_spec`
                becomes a derived lemma.
-           v8 (this commit): combine z-stage DERIVED via Lean
-               Lagrange bridge. `combine_body_z_spec` is no longer
-               a primitive axiom — it is a derived lemma composing:
+           v8: combine z-stage DERIVED via Lean Lagrange bridge.
+               `combine_body_z_spec` is no longer a primitive axiom —
+               it is a derived lemma composing:
                  - `combine_body_z_via_aggregation_spec` (narrow
                    structural: extracted z is Lagrange aggregation
                    of partial responses over the quorum),
@@ -946,6 +1113,53 @@ qed.
                pulsar_n1_byte_equality_extracted. This is NOT full
                mechanized closure of z — trust is split between
                the narrow extraction axioms and the Lean theorem.
+           v10: h sub-stage axiom DECOMPOSED via
+               MakeHint structural split. `combine_body_h_spec` is
+               replaced by a narrower `combine_body_w_low_spec`
+               (about the polynomial vector w_low — the low-bits side
+               of the FIPS 204 §3.4.2 decompose at the accepting
+               kappa), plus the structural `make_hint_of_w`
+               definition shared with `Pulsar_N1.mldsa_compute_h`.
+               `combine_body_h_spec` becomes a derived lemma,
+               composing `combine_body_w_spec` (v7) +
+               `combine_body_w_low_spec` (v10) via
+               `make_hint_of_w`. Same pattern as v7 (HighBits on w
+               → w1) and v6 (SHAKE on mu_input → mu): the
+               structural function is factored on both extracted
+               and centralised sides; equality of inputs lifts to
+               equality of outputs by congruence. Net axiom count
+               unchanged (1 axiom replaced by 1); obligation surface
+               narrower (h-stage trust shifts from full MakeHint
+               output to just the w_low intermediate).
+           v9 (this commit, combine side): mu codec-layout axiom
+               DECOMPOSED into three per-range sub-axioms over the
+               byte structure of the ExternalMu layout. The combine
+               side has NO `m_ptr`/`ctx_ptr` in `combine_ptrs_t`
+               (combine reads c_tilde as a wire input — does not
+               compute mu itself), so unlike the sign-side v9
+               (which collapsed the mu_input claim to a
+               `load_bytes` identity), the combine side decomposes
+               the protocol-witness byte-list equality along its
+               three FIPS 204 §5.4.1 components:
+                 - combine_body_mu_input_prefix_spec    (first 2 bytes
+                                                         = [0; |ctx|])
+                 - combine_body_mu_input_ctx_bytes_spec (next |ctx|
+                                                         bytes = ctx)
+                 - combine_body_mu_input_m_bytes_spec   (suffix at
+                                                         offset 2+|ctx|
+                                                         = M)
+               `combine_body_mu_input_spec` becomes a derived lemma
+               composing the three sub-axioms via `cat_take_drop`
+               (twice) and `drop_drop`, with the `0 <= |ctx|`
+               side condition discharged by
+               `Pulsar_N1.context_bytes_len_bound`. This is NOT
+               full mechanized closure (the combine side cannot
+               reach `load_bytes` without a layout API change
+               adding `m_ptr`/`ctx_ptr`); trust is split into three
+               strictly-narrower byte-range claims about the
+               protocol-witness buffer. Net axiom count on this
+               file: +2 (1 codec-layout axiom replaced by 3
+               per-range codec-layout sub-axioms).
 
      ops (DEFINITIONS — no proof obligation):
        wire_args_of_full     (record projection)
@@ -961,36 +1175,71 @@ qed.
                               disjointness predicate)
 
      ops (abstract — held inside the per-stage byte-walk obligations):
-       combine_body_compute_mu       (extracted mu intermediate)
-       combine_body_compute_w1       (extracted w1 intermediate at
-                                      accepting kappa)
-       combine_body_compute_z        (Lagrange-aggregated z + decompose
-                                      output)
-       combine_body_compute_h        (MakeHint output)
+       combine_body_mu_input         (extracted ExternalMu byte buffer)
+       combine_body_compute_w        (extracted w polynomial vector
+                                      before HighBits/decompose)
+       combine_body_compute_w_low    (extracted w_low polynomial vector
+                                      — low-bits side of decompose)
+       combine_body_compute_z        (Lagrange-aggregated z output)
+       combine_body_compute_partial_responses
+                                     (per-party z_i intermediates)
          Each names what the extracted body produces for one
          intermediate / component value.
 
      ops (DEFINITIONS — no proof obligation):
-       combine_body_compute_c_tilde
-                                     (DEFINED — shake_mu_w1 of mu + w1
-                                      extracted intermediates)
+       combine_body_compute_mu       (DEFINED — shake256_to_mu of
+                                      extracted ExternalMu input)
+       combine_body_compute_w1       (DEFINED — high_bits_of_w of
+                                      extracted w intermediate)
+       combine_body_compute_c_tilde  (DEFINED — shake_mu_w1 of extracted
+                                      mu + w1 intermediates)
+       combine_body_compute_h        (DEFINED — make_hint_of_w of
+                                      extracted w + w_low intermediates)
 
      types (records):
        combine_full_args_t   (wire + ghost protocol-level args)
 
      lemmas (derived, fully proved):
+       combine_body_mu_input_spec
+         (was axiom in v6..v8; now a lemma in v9 composing
+          combine_body_mu_input_prefix_spec +
+          combine_body_mu_input_ctx_bytes_spec +
+          combine_body_mu_input_m_bytes_spec via `cat_take_drop`
+          (twice) and `drop_drop`; the `0 <= |ctx|` side
+          condition discharged by
+          `Pulsar_N1.context_bytes_len_bound`)
+       combine_body_mu_spec
+         (was axiom in v5; now a lemma in v6 via
+          combine_body_mu_input_spec + the structural
+          `shake256_to_mu` definition shared with
+          `Pulsar_N1.compute_mu`)
+       combine_body_w1_spec
+         (was axiom in v5; now a lemma in v7 via
+          combine_body_w_spec + the structural
+          `high_bits_of_w` definition shared with
+          `Pulsar_N1.central_w1`)
        combine_body_c_tilde_spec
          (was axiom in v4; now a lemma in v5 via combine_body_mu_spec
           + combine_body_w1_spec, both unfolded under the structural
           definitions of `combine_body_compute_c_tilde` and
           `Pulsar_N1.mldsa_compute_c_tilde` — both factor through
           `Pulsar_N1.shake_mu_w1`)
+       combine_body_z_spec
+         (was axiom in v4; now a lemma in v8 via
+          combine_body_z_via_aggregation_spec +
+          combine_body_partial_responses_spec +
+          `Pulsar_N1.threshold_partial_response_identity`)
+       combine_body_h_spec
+         (was axiom in v4; now a lemma in v10 via
+          combine_body_w_spec + combine_body_w_low_spec, both
+          unfolded under the structural definitions of
+          `combine_body_compute_h` and `Pulsar_N1.mldsa_compute_h`
+          — both factor through `Pulsar_N1.make_hint_of_w`)
        combine_body_compute_components_spec
-         (was axiom in v3; now a lemma composing
-          combine_body_c_tilde_spec (now a lemma) + combine_body_z_spec
-          + combine_body_h_spec via tuple destructuring on
-          combine_body_compute_components / run_signing_components,
-          both DEFINITIONS as tuples of per-component ops)
+         (was axiom in v3; now a lemma composing the per-stage lemmas
+          via tuple destructuring on combine_body_compute_components /
+          run_signing_components, both DEFINITIONS as tuples of
+          per-component ops)
        combine_body_compute_sig_spec
          (was axiom in v2; now a lemma via combine_body_compute_components_spec
           + the structural definitions of combine_body_compute_sig
@@ -1016,40 +1265,87 @@ qed.
      v6: mu sub-stage axiom further DECOMPOSED — `combine_body_mu_spec`
          becomes derived; replaced by `combine_body_mu_input_spec`
          byte-layout axiom (codec category).
-     v7 (this commit):
-         4 axioms — w1 sub-stage axiom DECOMPOSED via HighBits:
+     v7: 4 axioms — w1 sub-stage axiom DECOMPOSED via HighBits:
          `combine_body_w1_spec` becomes a derived lemma, replaced
          by `combine_body_w_spec` (narrower — about polynomial
          vector w before HighBits/decompose).
+     v8: z-stage axiom DECOMPOSED via Lean Lagrange bridge —
+         `combine_body_z_spec` becomes a derived lemma, replaced
+         by two narrower axioms
+         (combine_body_z_via_aggregation_spec +
+          combine_body_partial_responses_spec).
+     v10: h-stage axiom DECOMPOSED via MakeHint structural split.
+         `combine_body_h_spec` becomes a derived lemma, replaced
+         by `combine_body_w_low_spec` (narrower — about polynomial
+         vector w_low, the low-bits side of FIPS 204 §3.4.2
+         decompose at accepting kappa). Net axiom count unchanged
+         on this file (1 replaced by 1); obligation surface
+         strictly narrower.
+     v9 (this commit, combine side):
+         mu codec-layout axiom DECOMPOSED into three per-range
+         sub-axioms over the FIPS 204 §5.4.1 ExternalMu byte
+         layout. `combine_body_mu_input_spec` becomes a derived
+         lemma composing:
+           - combine_body_mu_input_prefix_spec    (first 2 bytes)
+           - combine_body_mu_input_ctx_bytes_spec (ctx slice)
+           - combine_body_mu_input_m_bytes_spec   (m suffix)
+         via `cat_take_drop` and `drop_drop`. Combine side cannot
+         collapse to `load_bytes` (no `m_ptr`/`ctx_ptr` in
+         `combine_ptrs_t` — combine doesn't compute mu itself);
+         decomposition along byte ranges of the protocol-witness
+         buffer is the maximal closure for this layout.
          Remaining byte-walk axioms on this file:
-           combine_body_w_spec    (c_tilde dependency sub-stage, narrower than w1)
-           combine_body_z_spec    (stage-level)
-           combine_body_h_spec    (stage-level)
-         Plus 1 codec-layout axiom:
-           combine_body_mu_input_spec
+           combine_body_w_spec     (c_tilde dependency sub-stage)
+           combine_body_w_low_spec (h-stage sub-stage, narrower than h)
+           combine_body_z_via_aggregation_spec    (z structural)
+           combine_body_partial_responses_spec    (z byte-walk)
+         Plus 3 codec-layout axioms (was 1 in v8):
+           combine_body_mu_input_prefix_spec
+           combine_body_mu_input_ctx_bytes_spec
+           combine_body_mu_input_m_bytes_spec
+         Net axiom count on this file: +2 (1 codec-layout axiom
+         replaced by 3 per-range codec-layout sub-axioms; each
+         strictly narrower than the composite).
          Next target: w sub-stage further decomposition via
          mat_vec_mul + expand_a + expand_mask bridges, or via
          Lean threshold-aggregation correspondence for combine.
 
-   Concrete attack surface per axiom (post-v5):
-     combine_body_mu_spec ↦ FIPS 204 §5.4.1 ExternalMu derivation
-       extracted location: combine.ec — the SHAKE of (0x00 ||
-                           |ctx| || ctx || M) producing mu
-       MLDSA65_Functional dependency: shake256 (mu is just SHAKE on
-                                      a fixed-prefix layout)
-     combine_body_w1_spec ↦ Lagrange-aggregated w_high at accepting kappa
+   Concrete attack surface per axiom (post-v9):
+     combine_body_mu_input_prefix_spec    ↦ first 2 bytes of the
+                                            ExternalMu buffer equal
+                                            [0; |context_bytes ctx|]
+                                            (FIPS 204 §5.4.1 prefix
+                                            for pure mode + ctx-len
+                                            byte). Codec category.
+     combine_body_mu_input_ctx_bytes_spec ↦ bytes [2, 2+|ctx|) of
+                                            the ExternalMu buffer
+                                            equal context_bytes ctx.
+                                            Codec category.
+     combine_body_mu_input_m_bytes_spec   ↦ bytes [2+|ctx|, end) of
+                                            the ExternalMu buffer
+                                            equal message_bytes m.
+                                            Codec category.
+       extracted location: combine.ec — the protocol-witness SHAKE
+                           input buffer layout (0x00 || |ctx| || ctx
+                           || M); per-range claims about the buffer
+                           the threshold protocol used to derive
+                           the c_tilde wire input.
+       Codec-category axioms, not SHAKE-semantics claims.
+     combine_body_w_spec ↦ extracted w polynomial vector at accepting kappa
        extracted location: combine.ec lines 3530-3545 (w_prime)
-                           + 3560 (decompose_vec)
-       Bridge target: high-bits structural identity through
+       Bridge target: structural identity through
+                      MLDSA65_Functional.mat_vec_mul + expand_a +
+                      expand_mask
+     combine_body_w_low_spec ↦ extracted w_low polynomial vector at accepting kappa
+       extracted location: combine.ec lines 3510-3530 (decompose loop)
+       Bridge target: low-bits side of structural identity through
                       MLDSA65_Functional.decompose_vec_k
-     combine_body_z_spec ↦ Lagrange-aggregated z + extracted decompose
-       extracted location: combine.ec lines 3460-3490 (aggregation)
-                           + 3530-3545 (w_prime computation)
+     combine_body_z_via_aggregation_spec ↦ structural Lagrange shape
+       extracted location: combine.ec lines 3460-3490
+     combine_body_partial_responses_spec ↦ per-party z_i match
+       extracted location: combine.ec round-2 message decode
        Bridge to Lean: Crypto.Threshold.Lagrange.
                        threshold_partial_response_identity
-     combine_body_h_spec ↦ MakeHint(w_low_agg, w_high_agg)
-       extracted location: combine.ec line 3550 (polyveck_make_hint)
-       MLDSA65_Functional dependency: vec_k_make_hint
 
    The SHAKE composition tying mu + w1 → c_tilde is no longer an
    axiom — it's a structural identity in `shake_mu_w1` (used

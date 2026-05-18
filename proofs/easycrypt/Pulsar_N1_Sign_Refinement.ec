@@ -321,11 +321,28 @@ proof. by rewrite /sign_abs_op /Pulsar_N1.mldsa_sign_op. qed.
    `sign_body_compute_mu` is now STRUCTURAL: factored as a SHAKE
    over the libjade body's ExternalMu input buffer
    (`sign_body_mu_input`). On the libjade sign side this maps
-   directly to the SHAKE call libjade makes during mu derivation. *)
-op sign_body_mu_input :
-  Pulsar_N1_Memory.mem_t ->
-  Pulsar_N1_Sign_Layout.sign_ptrs_t ->
-  Pulsar_N1.mu_shake_input_t.
+   directly to the SHAKE call libjade makes during mu derivation.
+
+   v9 closure (sign side): `sign_body_mu_input` is no longer an
+   abstract op. The libjade `M.sign(ptr_signature, ptr_m, m_len,
+   ptr_sk)` body reads the message bytes at `ptr_m` for length
+   `m_len` and feeds them DIRECTLY to SHAKE-256 in its mu
+   derivation. Per FIPS 204 §5.4.1, the bytes the wrapper has
+   placed at `ptr_m` (covering `m_len` bytes) are precisely the
+   ExternalMu layout `[0; |ctx|] || ctx || M`. So
+   `sign_body_mu_input mem_pre ptrs = load_bytes mem_pre ptr_m
+   m_len` is the libjade-level identity (extracted-body-level),
+   while the claim that those bytes equal `external_mu_layout m
+   ctx` is the wrapper's responsibility (byte-layout axiom
+   `sign_layout_m_buffer_external_mu` below). *)
+op sign_body_mu_input
+   (mem_pre : Pulsar_N1_Memory.mem_t)
+   (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+   : Pulsar_N1.mu_shake_input_t =
+  Pulsar_N1_Memory.load_bytes
+    mem_pre
+    ptrs.`Pulsar_N1_Sign_Layout.ptr_m
+    ptrs.`Pulsar_N1_Sign_Layout.m_len.
 
 op sign_body_compute_mu
    (mem_pre : Pulsar_N1_Memory.mem_t)
@@ -357,10 +374,27 @@ op sign_body_compute_z :
   Pulsar_N1_Sign_Layout.sign_ptrs_t ->
   Pulsar_N1.z_n1_t.
 
-op sign_body_compute_h :
+(* w_low polynomial-vector intermediate the extracted libjade sign
+   body produces at the accepting kappa. Mirror of `sign_body_compute_w`
+   from v7. Together (w, w_low) are the two inputs MakeHint consumes
+   to produce h.
+
+   For sign, this is libjade's decompose-vector low-bits side at the
+   accepting kappa. `sign_body_compute_h` is now DEFINED as
+   `make_hint_of_w` applied to the (w, w_low) pair, mirroring the
+   structural definition of `Pulsar_N1.mldsa_compute_h`. *)
+op sign_body_compute_w_low :
   Pulsar_N1_Memory.mem_t ->
   Pulsar_N1_Sign_Layout.sign_ptrs_t ->
-  Pulsar_N1.h_n1_t.
+  Pulsar_N1.w_low_value_t.
+
+op sign_body_compute_h
+   (mem_pre : Pulsar_N1_Memory.mem_t)
+   (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+   : Pulsar_N1.h_n1_t =
+  Pulsar_N1.make_hint_of_w
+    (sign_body_compute_w     mem_pre ptrs)
+    (sign_body_compute_w_low mem_pre ptrs).
 
 op sign_body_compute_components
    (mem_pre : Pulsar_N1_Memory.mem_t)
@@ -422,8 +456,45 @@ op sign_body_fn (mem_pre : Pulsar_N1_Memory.mem_t)
 (* === c_tilde-stage sub-axioms (NARROW), mirror of combine =====
    After v6: mu sub-stage axiom decomposed into a byte-layout claim
    (classified under FIPS 204 codec layouts). sign_body_mu_spec is
-   a derived lemma. *)
-axiom sign_body_mu_input_spec :
+   a derived lemma.
+
+   v9 (sign side): the prior `sign_body_mu_input_spec` axiom was
+   stated about an abstract op `sign_body_mu_input`. With
+   `sign_body_mu_input` now CONSTRUCTIVELY defined as
+   `load_bytes mem_pre ptr_m m_len` (the libjade body's actual
+   read), the same statement decomposes into:
+
+     (a) `sign_body_mu_input mem_pre ptrs = load_bytes mem_pre
+         ptr_m m_len` — TRIVIAL, by the constructive definition.
+     (b) `load_bytes mem_pre ptr_m m_len = external_mu_layout m
+         ctx` — PURE BYTE-LAYOUT CLAIM (the wrapper assembles
+         ExternalMu and writes it at ptr_m so m_len covers the
+         prefix+ctx+M bytes; per FIPS 204 §5.4.1).
+
+   (a) is folded into the constructive definition (no obligation).
+   (b) is the strictly narrower wrapper-layer byte-layout axiom
+   below. The old `sign_body_mu_input_spec` becomes a derived
+   lemma combining (a) and (b) via a single rewrite. The axiom's
+   logical content is unchanged (b is the only non-trivial half of
+   the old axiom) — narrower in that the libjade-body read is no
+   longer in the statement at all. *)
+axiom sign_layout_m_buffer_external_mu :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+         (full : sign_full_args_t),
+    Pulsar_N1_Sign_Layout.layout_sign_args
+      mem_pre ptrs (wire_sign_args_of_full full) =>
+    sign_body_compute_status mem_pre ptrs = 0 =>
+    Pulsar_N1_Memory.load_bytes
+      mem_pre
+      ptrs.`Pulsar_N1_Sign_Layout.ptr_m
+      ptrs.`Pulsar_N1_Sign_Layout.m_len
+    = Pulsar_N1.external_mu_layout full.`sgn_m_n1 full.`sgn_ctx_n1.
+
+(* sign_body_mu_input_spec — was an axiom in v6..v8; now DERIVED in
+   v9 via the constructive definition of `sign_body_mu_input` and
+   the narrower `sign_layout_m_buffer_external_mu` axiom. *)
+lemma sign_body_mu_input_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
          (full : sign_full_args_t),
@@ -432,6 +503,11 @@ axiom sign_body_mu_input_spec :
     sign_body_compute_status mem_pre ptrs = 0 =>
     sign_body_mu_input mem_pre ptrs
     = Pulsar_N1.external_mu_layout full.`sgn_m_n1 full.`sgn_ctx_n1.
+proof.
+  move=> mem_pre ptrs full Hlay Hstatus.
+  rewrite /sign_body_mu_input.
+  by apply sign_layout_m_buffer_external_mu.
+qed.
 
 (* sign_body_mu_spec — was a primary axiom in v5; now DERIVED. *)
 lemma sign_body_mu_spec :
@@ -517,7 +593,34 @@ axiom sign_body_z_spec :
         (Pulsar_N1.compute_mu full.`sgn_m_n1 full.`sgn_ctx_n1)
         full.`sgn_rnd_n1.
 
-axiom sign_body_h_spec :
+(* Narrower w_low-polynomial axiom: extracted w_low polynomial-vector
+   matches the centralised central_w_low at the same protocol-level
+   inputs. The MakeHint step is structural (folded into the
+   definitions of `sign_body_compute_h` and `Pulsar_N1.mldsa_compute_h`
+   on both sides via `make_hint_of_w`), so the pair (w-equality,
+   w_low-equality) lifts to h-equality by congruence. *)
+axiom sign_body_w_low_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+         (full : sign_full_args_t),
+    Pulsar_N1_Sign_Layout.layout_sign_args
+      mem_pre ptrs (wire_sign_args_of_full full) =>
+    sign_body_compute_status mem_pre ptrs = 0 =>
+    sign_body_compute_w_low mem_pre ptrs
+    = Pulsar_N1.central_w_low
+        (Pulsar_N1.unpack_sk full.`sgn_sk_n1)
+        (Pulsar_N1.compute_mu full.`sgn_m_n1 full.`sgn_ctx_n1)
+        full.`sgn_rnd_n1.
+
+(* sign_body_h_spec — was a primary axiom in v4-v9; now DERIVED in
+   v10 via the MakeHint structural composition. Composes
+   `sign_body_w_spec` (v7) + `sign_body_w_low_spec` (this commit)
+   via the structural definitions of `sign_body_compute_h`
+   (= make_hint_of_w on extracted w + extracted w_low) and
+   `Pulsar_N1.mldsa_compute_h` (= make_hint_of_w on centralised
+   central_w + central_w_low). After both unfold, byte-equality
+   reduces to w-equality + w_low-equality. *)
+lemma sign_body_h_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
          (full : sign_full_args_t),
@@ -529,6 +632,13 @@ axiom sign_body_h_spec :
         (Pulsar_N1.unpack_sk full.`sgn_sk_n1)
         (Pulsar_N1.compute_mu full.`sgn_m_n1 full.`sgn_ctx_n1)
         full.`sgn_rnd_n1.
+proof.
+  move=> mem_pre ptrs full Hlay Hstatus.
+  have Hw     := sign_body_w_spec     mem_pre ptrs full Hlay Hstatus.
+  have Hw_low := sign_body_w_low_spec mem_pre ptrs full Hlay Hstatus.
+  rewrite /sign_body_compute_h /Pulsar_N1.mldsa_compute_h.
+  by rewrite Hw Hw_low.
+qed.
 
 (* Composite components_spec — now DERIVED from the three per-stage
    axioms via tuple destructuring. *)
@@ -724,15 +834,25 @@ qed.
 (* ===================================================================
    AXIOM ACCOUNTING
 
-   axioms (4 — 2 stage-level + 2 c_tilde-stage sub-stage):
-     Stage-level (z + h):
+   axioms (3 byte-walks + 1 byte-layout):
+     Byte-walks (libjade body, conditioned on layout + status = 0):
+       sign_body_w_spec        (polynomial vector w before HighBits)
+       sign_body_w_low_spec    (polynomial vector w_low — low-bits side
+                                 of FIPS 204 §3.4.2 decompose; h-stage
+                                 sub-stage, narrower than h)
        sign_body_z_spec        (response z from kappa loop)
-       sign_body_h_spec        (roadmap S7 — MakeHint stage)
-     c_tilde-stage sub-stage (mu + w1):
-       sign_body_mu_spec       (extracted mu = compute_mu m ctx)
-       sign_body_w1_spec       (extracted w1 = central_w1 (...))
-       Each strictly narrower than the prior bundled
-       `sign_body_c_tilde_spec` axiom (now a derived lemma).
+     Byte-layout (FIPS 204 §5.4.1 ExternalMu, wrapper-layer
+                  responsibility):
+       sign_layout_m_buffer_external_mu
+         The bytes the wrapper has placed at ptr_m for length m_len
+         equal `external_mu_layout m ctx`. Pure byte-layout claim;
+         no libjade-body read, no SHAKE semantics. Replaces the
+         prior abstract-op `sign_body_mu_input_spec` axiom (now a
+         derived lemma).
+
+     The MakeHint composition tying (w, w_low) → h is encoded as a
+     STRUCTURAL DEFINITION on both sides (via
+     `Pulsar_N1.make_hint_of_w`), not as an axiom.
 
      Each conditioned on layout + status = 0.
      Tracked #3. Mirrors the combine-side per-stage split.
@@ -742,16 +862,55 @@ qed.
          v2: 1 axiom  (sign_body_compute_sig_spec — packed signature)
          v3: 1 axiom  (sign_body_compute_components_spec — triple)
          v4: 3 axioms (sign_body_{c_tilde,z,h}_spec — per-stage)
-         v5 (this commit): c_tilde-stage axiom DECOMPOSED — the
-             primitive `sign_body_c_tilde_spec` axiom is replaced
-             by 2 narrower sub-axioms (mu, w1); `sign_body_c_tilde_spec`
-             becomes a derived lemma. NOT full mechanized closure
-             of the c_tilde path: mu and w1 specs remain axioms.
+         v5: c_tilde-stage axiom DECOMPOSED — `sign_body_c_tilde_spec`
+             becomes derived; replaced by sign_body_{mu,w1}_spec axioms.
+         v6: mu sub-stage axiom further DECOMPOSED into byte-layout
+             `sign_body_mu_input_spec` over abstract `sign_body_mu_input`.
+         v7: w1 sub-stage axiom DECOMPOSED via HighBits structural
+             split; `sign_body_w1_spec` becomes derived; replaced
+             by narrower `sign_body_w_spec` axiom.
+         v8: combine side — z-stage Lean-bridged aggregation
+             decomposition (sign side untouched).
+         v9: `sign_body_mu_input` is no longer an abstract op — it's
+             CONSTRUCTIVELY defined as the libjade body's actual read
+             `load_bytes mem_pre ptr_m m_len`.
+             `sign_body_mu_input_spec` becomes a DERIVED LEMMA;
+             replaced by the strictly narrower wrapper-layer axiom
+             `sign_layout_m_buffer_external_mu` (a pure byte-layout
+             claim about the bytes the wrapper placed at ptr_m —
+             FIPS 204 §5.4.1 ExternalMu). Net axiom count unchanged;
+             obligation surface STRICTLY smaller: the abstract op
+             `sign_body_mu_input` no longer exists, and the
+             axiom no longer mentions any libjade-side operator.
+         v10 (this commit): h-stage axiom DECOMPOSED via MakeHint
+             structural split. `sign_body_h_spec` becomes a derived
+             lemma, replaced by `sign_body_w_low_spec` (narrower —
+             about polynomial vector w_low, the low-bits side of
+             FIPS 204 §3.4.2 decompose at the accepting kappa), plus
+             the structural `make_hint_of_w` definition shared with
+             `Pulsar_N1.mldsa_compute_h`. Composition for the derived
+             lemma: `sign_body_w_spec` (v7) + `sign_body_w_low_spec`
+             (this commit) → byte-equality of h via congruence under
+             `make_hint_of_w`. Same pattern as v7 (HighBits on w → w1)
+             and v6 (SHAKE on mu_input → mu): the structural function
+             is factored on both extracted and centralised sides;
+             equality of inputs lifts to equality of outputs by
+             congruence. Net axiom count unchanged (1 replaced by 1);
+             obligation surface narrower per axiom.
 
    ops (DEFINITIONS — no proof obligation):
      wire_sign_args_of_full   (record projection)
      refine_sig_to_n1_sign    (structural sig-type coercion)
      sign_abs_op              (DEFINED — mldsa_sign_op on ghost fields)
+     sign_body_mu_input       (DEFINED v9 — load_bytes mem ptr_m m_len;
+                               the libjade body's actual SHAKE-mu
+                               input read)
+     sign_body_compute_mu     (DEFINED — shake256_to_mu of mu_input)
+     sign_body_compute_w1     (DEFINED — high_bits_of_w of compute_w)
+     sign_body_compute_c_tilde
+                              (DEFINED — shake_mu_w1 of mu and w1)
+     sign_body_compute_h      (DEFINED v10 — make_hint_of_w of
+                               compute_w and compute_w_low)
      sign_body_compute_sig    (DEFINED — pack_n1_signature of the
                                compute_components output)
      sign_body_compute_components
@@ -762,22 +921,29 @@ qed.
      sig_mem_separation       (DEFINED — byte-level memory disjointness)
 
    ops (abstract — held inside the byte-walk obligation):
-     sign_body_compute_sig
-       Pure signature bytes the extracted libjade body produces from
-       the input memory + pointer bundle.
+     sign_body_compute_w      (polynomial vector w; under sign_body_w_spec)
+     sign_body_compute_w_low  (polynomial vector w_low — low-bits side
+                                of decompose; under sign_body_w_low_spec)
+     sign_body_compute_z      (response z; under sign_body_z_spec)
+     sign_body_compute_status (kappa-loop accept/reject return)
 
    types (records):
      sign_full_args_t   (wire + ghost protocol-level args)
 
    Lemmas (PROVED):
-     sign_body_spec
-       (was axiom; now lemma via read_after_write_sig_sign +
-        sign_body_compute_sig_spec)
-     sign_body_separation
-       (was axiom; now lemma via write_sig_sign_separation +
-        the constructive definition of sign_body_fn)
+     sign_body_mu_input_spec    (v9 — was axiom in v6..v8)
+     sign_body_mu_spec
+     sign_body_w1_spec
+     sign_body_c_tilde_spec
+     sign_body_h_spec           (v10 — was axiom in v4..v9)
+     sign_body_compute_components_spec
+     sign_body_compute_sig_spec
+     sign_body_spec             (was axiom v1 — v3; lemma since v4)
+     sign_body_separation       (was axiom v1; lemma since refactor)
      sign_body_writes_abs
      sign_body_writes_mldsa_sign
+     sign_abs_op_ctx_flows_through_mu
+     sign_abs_op_eq_mldsa
 
    Implementation-refinement axiom delta for this file:
      v1: 2 axioms (sign_body_spec + sign_body_separation)
@@ -787,19 +953,45 @@ qed.
      v5: c_tilde-stage axiom DECOMPOSED — `sign_body_c_tilde_spec`
          becomes derived; replaced by sign_body_{mu,w1}_spec axioms.
      v6: mu sub-stage axiom further DECOMPOSED.
-     v7 (this commit):
-         4 axioms — w1 sub-stage axiom DECOMPOSED via HighBits:
+     v7: 4 axioms — w1 sub-stage axiom DECOMPOSED via HighBits:
          `sign_body_w1_spec` becomes a derived lemma, replaced by
          `sign_body_w_spec` (narrower — about polynomial vector w
          before HighBits/decompose).
+     v9: mu sub-stage axiom further NARROWED —
+         `sign_body_mu_input_spec` (over abstract `sign_body_mu_input`)
+         becomes a derived lemma; the abstract op `sign_body_mu_input`
+         is replaced by the constructive definition `load_bytes
+         mem_pre ptr_m m_len`; replaced by `sign_layout_m_buffer_external_mu`
+         (pure byte-layout axiom over the wrapper-assembled ptr_m
+         buffer; no libjade-body read in statement).
+     v10 (this commit): h-stage axiom DECOMPOSED via MakeHint
+         structural split — `sign_body_h_spec` becomes a derived
+         lemma, replaced by `sign_body_w_low_spec` (narrower — about
+         polynomial vector w_low, the low-bits side of FIPS 204
+         §3.4.2 decompose at the accepting kappa). Net axiom count
+         unchanged on this file (1 replaced by 1); obligation
+         surface strictly narrower per axiom (h-stage trust shifts
+         from full MakeHint output to just the w_low intermediate;
+         MakeHint composition is structural via `make_hint_of_w`).
          Remaining byte-walk axioms on this file:
-           sign_body_w_spec    (c_tilde dependency sub-stage, narrower than w1)
-           sign_body_z_spec    (stage-level)
-           sign_body_h_spec    (stage-level)
-         Plus 1 codec-layout axiom:
-           sign_body_mu_input_spec
+           sign_body_w_spec     (c_tilde dependency sub-stage)
+           sign_body_w_low_spec (h-stage sub-stage, narrower than h)
+           sign_body_z_spec     (stage-level)
+         Plus 1 codec-layout / wrapper byte-layout axiom:
+           sign_layout_m_buffer_external_mu
 
-   Mirror of the combine-side post-v7 structure.
+   Net axiom count (this file, v10): 3 byte-walks + 1 byte-layout
+   = 4 axioms (same as v9). Obligation surface STRICTLY smaller
+   than v9 per axiom because the h-stage byte-walk now concerns
+   only the w_low polynomial-vector intermediate, not the
+   full MakeHint output; the MakeHint composition is structural
+   on both extracted and centralised sides.
+
+   Mirror of the combine-side post-v7/v8/v10 structure (combine v9
+   is the codec-side mu narrowing equivalent — on combine the
+   `combine_body_mu_input` stays abstract because combine doesn't
+   have a `ptr_m`; mu is a wire input from the threshold protocol,
+   not a buffer read).
 
    The separation property is now BY CONSTRUCTION. The byte-walk
    obligation reduces to a claim about pure signature bytes (the
