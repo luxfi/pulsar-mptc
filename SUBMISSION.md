@@ -119,11 +119,23 @@ pulsar-mptc/
 ├── jasmin/                  # high-assurance Jasmin sources (initial track)
 │   ├── ml-dsa-65/           #   libjade single-party baseline (fetched on demand)
 │   └── threshold/           #   Pulsar threshold layer (stubs)
-├── proofs/easycrypt/        # high-assurance EasyCrypt theories (theory shells)
-│   ├── Pulsar_N1.ec        #   Class N1 byte-equality reduction
-│   ├── Pulsar_N4.ec        #   Class N4 public-key preservation
-│   └── lemmas/Pulsar_CT.ec #   constant-time obligations
-├── scripts/                 # build / test / bench / gen_vectors / SBOM / check-high-assurance
+├── proofs/easycrypt/        # high-assurance EasyCrypt theories (13 files)
+│   ├── Pulsar_N1.ec                       # Class N1 protocol spec + generic theorem
+│   ├── Pulsar_N4.ec                       # Class N4 reshare pk-preservation
+│   ├── Pulsar_N1_Memory.ec                # byte-memory model (0 axioms)
+│   ├── Pulsar_N1_Signature_Codec.ec       # FIPS 204 sig codec
+│   ├── Pulsar_N1_{Combine,Sign}_Layout.ec # per-side ABI byte layout
+│   ├── Pulsar_N1_{Combine,Sign}_Refinement.ec # per-side byte-walk refinement scaffold
+│   ├── Pulsar_N1_{Combine,Sign}_Wrapper.ec    # per-side wrapper module + bridge lemma
+│   ├── Pulsar_N1_Extracted.ec             # concrete extracted N1 corollary
+│   ├── lemmas/MLDSA65_Functional.ec       # FIPS 204 functional ops
+│   └── lemmas/Pulsar_CT.ec                # constant-time obligations
+├── proofs/lean-easycrypt-bridge.md        # Lean↔EC algebraic-bridge correspondence
+├── scripts/                 # per-push + nightly gate orchestrators
+│   ├── check-high-assurance.sh, test.sh   # per-push (REAL — under 60s)
+│   ├── nightly.sh                         # cron-scheduled REAL-budget gate
+│   ├── checks/                            # per-check independent scripts
+│   └── build / bench / gen_vectors / SBOM / extract-jasmin-ec
 └── docs/                    # design notes + decision-record archive
 ```
 
@@ -152,53 +164,90 @@ identity persists while the secret-share custodians rotate.
 
 ## High-assurance track (Jasmin + EasyCrypt)
 
-Pulsar ships with an **initial** Jasmin + EasyCrypt high-assurance
-track. The intent is to land on the same formal-method footing libjade
-gives the single-party ML-DSA implementation: Jasmin sources whose
-verified compiler produces bit-identical assembly, and EasyCrypt
-theories that machine-check both functional correctness and constant-
-time against the Barthe-Grégoire-Laporte leakage model.
+Pulsar ships with a Jasmin + EasyCrypt high-assurance track aimed at
+the same formal-method footing libjade gives the single-party ML-DSA
+implementation: Jasmin sources whose verified compiler produces
+bit-identical assembly, and EasyCrypt theories that machine-check
+both functional correctness and constant-time against the
+Barthe-Grégoire-Laporte leakage model.
 
-This is honest scaffolding, not a closed proof. What ships at the
-this repository tag:
+The EasyCrypt track is **not theory shells** — every lemma in the
+13-file tree is closed (admit budget enforced 0/0; see
+`scripts/checks/ec-admits.sh`). What remains in the dependency cone
+of the extracted N1 byte-equality theorem is a small, localized
+axiom set:
 
 | Artifact | Status | Location |
 |---|---|---|
-| libjade ML-DSA-65 single-party baseline (Jasmin + EasyCrypt) | Verified upstream; pinned at commit 9426b32, fetched on demand | `jasmin/ml-dsa-65/fetch.sh` |
-| Pulsar Round-1 commit (Jasmin) | **Implemented** (397 lines) — real KMAC256/cSHAKE flow + libjade `expandMask` / `expandA` / `mult_mat_vec` / `decompose_vec` / `pack_w1` | `jasmin/threshold/round1.jazz` |
-| Pulsar Round-2 response (Jasmin) | **Implemented** (626 lines) — peer-MAC verify, `lagrange_coefficient_mont`, `c.lambda.s_i` via NTT, `tau_2` transcript bind, response packing | `jasmin/threshold/round2.jazz` |
-| Pulsar Combine (Jasmin) | **Implemented** (416 lines) — `Sigma z_j`, `c.s_2` aggregation, `polyveck_make_hint`, R1..R4 rejection (`checknorm_vecl/veck`), FIPS 204 `pack(c_tilde, z, h)` | `jasmin/threshold/combine.jazz` |
-| Class N1 byte-equality (EasyCrypt) | **Theory shell** — lemma stated, 6-step reduction core remains `admit` (requires EasyCrypt + libjade Dilithium expert) | `proofs/easycrypt/Pulsar_N1.ec` |
-| Class N4 public-key preservation (EasyCrypt) | **Theory shell** — lemma stated, proof body `admit` | `proofs/easycrypt/Pulsar_N4.ec` |
-| Constant-time obligations (EasyCrypt) | **Theory shell** — lemmas stated, proof bodies `admit` | `proofs/easycrypt/lemmas/Pulsar_CT.ec` |
-| Build wiring | Complete (skip-friendly when `jasminc` / `easycrypt` are absent) | `scripts/check-high-assurance.sh` |
+| libjade ML-DSA-65 single-party baseline (Jasmin + EasyCrypt) | Verified upstream; pinned, fetched on demand | `jasmin/ml-dsa-65/fetch.sh` |
+| Pulsar Round-1 commit (Jasmin) | Implemented (~400 lines) | `jasmin/threshold/round1.jazz` |
+| Pulsar Round-2 response (Jasmin) | Implemented (~600 lines) | `jasmin/threshold/round2.jazz` |
+| Pulsar Combine (Jasmin) | Implemented (~400 lines) | `jasmin/threshold/combine.jazz` |
+| Jasmin → EC extraction sanity | Per-push gate | `scripts/checks/extraction.sh` |
+| jasmin-ct threshold (round1, round2, combine) | **BLOCKING — green** | `scripts/checks/jasmin.sh` |
+| jasmin-ct libjade sign | Allowed-failure under #2 (precise write-up: `ct/jasmin-ct-libjade.md`) | same |
+| Class N1 byte-equality (concrete extracted corollary) | **Proven as a lemma** (`pulsar_n1_byte_equality_extracted`) — composes the per-side wrapper-bridge equivs | `proofs/easycrypt/Pulsar_N1_Extracted.ec` |
+| Class N1 byte-equality (generic, parametric) | **Proven as a theorem** (`pulsar_n1_byte_equality`) inside `section ClassN1` | `proofs/easycrypt/Pulsar_N1.ec` |
+| Class N4 public-key preservation | **Proven** (concrete `ReshareHonest` module + `reshare_preserves_secret_honest` lemma) | `proofs/easycrypt/Pulsar_N4.ec` |
+| Wrapper bridges (combine + sign) | **Proven as lemmas** (both — neither is an axiom) | `Pulsar_N1_{Combine,Sign}_Wrapper.ec` |
+| Body separation (combine + sign) | **Proven as lemmas** | `Pulsar_N1_{Combine,Sign}_Refinement.ec` |
+| Memory frame laws | **Proven** (0 axioms) | `Pulsar_N1_Memory.ec` |
+| Build wiring | Per-check orchestrator; per-check scripts independently runnable | `scripts/check-high-assurance.sh` |
 
-Jasmin sources call into the pinned libjade Dilithium reference
-primitives plus shared `jasmin/lib/` helpers (1,159 lines:
-`lagrange_coefficient_mont`, `polyvecl_scalar_mont`, `polyveck_scalar_mont`,
-`kmac256_init_R1MAC`, `kmac256_finalize_32`, `ct_eq_32`, the cSHAKE256
-prelude/finalise/absorb family, KMAC-domain-separation tags). Total
-threshold-layer Jasmin (excluding vendored libjade): 2,598 lines.
+**Remaining trust footprint of the extracted N1 corollary**:
 
-Every remaining `admit` in the EasyCrypt tree is documented in
-`proofs/easycrypt/README.md` with its dependency surface (libjade
-`MLDSA65_Functional`, Shamir IT-resilience axiom). No `admit` in
-EasyCrypt corresponds to an unimplemented Jasmin body; the
-correspondence has flipped — the Jasmin implementation is what the
-EasyCrypt reduction needs to *refine*, not vice-versa.
+- **2 implementation-refinement axioms** — byte-walks over the
+  pure signature output of the extracted Jasmin procedures
+  (`combine_body_compute_sig_spec` tracked #4 with roadmap in
+  `proofs/easycrypt/extraction/combine-byte-walk-roadmap.md`;
+  `sign_body_compute_sig_spec` tracked #3 with roadmap in
+  `proofs/easycrypt/extraction/sign-byte-walk-roadmap.md` and
+  ctx/rho_rnd ghost contract pinned in
+  `Pulsar_N1_Sign_Refinement.ec`).
+- **4 Lean-bridged algebraic axioms** — Shamir/Lagrange identities
+  that EasyCrypt's first-order theory does not natively cover.
+  Each axiom carries an inline citation comment naming the proved
+  Lean theorem; the bridge is operationally guarded by
+  `scripts/check-lean-bridge.sh`. Full correspondence table in
+  `proofs/lean-easycrypt-bridge.md`.
+- **0 section-local module-contract axioms** in the extracted
+  corollary's cone (the corollary uses the concrete wrapper modules
+  + proved bridge lemmas, not the section's declare-axiom
+  hypotheses).
 
 What this gives the NIST reviewer at submission time:
 
 1. The libjade single-party verified baseline as the kernel under
    Pulsar's threshold layer — real, machine-checked, citable.
 2. Real Jasmin sources for all three threshold-layer routines that
-   call into the pinned libjade kernel via documented require paths.
-3. The Class N1 reduction skeleton in EasyCrypt that the Jasmin
-   sources are intended to refine.
+   call into the pinned libjade kernel.
+3. The Class N1 byte-equality theorem **proven** in EasyCrypt as
+   `pulsar_n1_byte_equality_extracted`, instantiating the generic
+   `pulsar_n1_byte_equality` with concrete wrapper modules. Trust
+   reduces to two named byte-walk obligations + four Lean-bridged
+   algebraic identities.
+4. The Class N4 reshare-preservation theorem **proven** as a
+   concrete lemma on `ReshareHonest`.
+5. jasmin-ct **blocking** on the threshold layer (round1, round2,
+   combine all CT-clean); libjade sign advisory with a documented
+   fix path.
 
-What remains in the high-assurance track is the EasyCrypt admits and
-the `jasminc` CI gate — both tracked independently of the Jasmin
-sources landing.
+What remains in the high-assurance track:
+
+- The two byte-walk obligations (`combine_body_compute_sig_spec`,
+  `sign_body_compute_sig_spec`) — multi-week proofs walking the
+  ~370-line extracted Jasmin procedures stage-by-stage. Roadmaps
+  with named sub-claims are committed under
+  `proofs/easycrypt/extraction/`.
+- Mechanizing the four Lean-bridged algebraic axioms inside
+  EasyCrypt directly (would require porting a minimal polynomial-
+  interpolation theory into EC).
+- Closing the libjade jasmin-ct annotation gap (#2) upstream.
+
+`scripts/check-high-assurance.sh` runs every per-push EC + jasmin-ct
++ extraction-sanity + bridge-guard + admit-budget + regression-guard
+check at REAL budget. `scripts/nightly.sh` runs the heavier 1-h
+fuzz + 10⁹-sample dudect runs that aren't appropriate for per-push.
 
 ## What this submission does NOT claim
 
