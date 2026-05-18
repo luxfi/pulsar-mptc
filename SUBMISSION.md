@@ -37,6 +37,19 @@ This is the **Class N1** claim. A FIPS-validated ML-DSA verifier
 (BoringSSL FIPS, AWS-LC, OpenSSL 3.0 PQ provider) accepts a Pulsar
 signature without modification.
 
+**Theorem framing — accepted-path correctness.** The Class N1
+byte-equality theorem is conditional on acceptance: *if* the threshold
+combine (and the single-party comparator) accepts — i.e., passes the
+ML-DSA norm and rejection checks and the kappa rejection-sampling loop
+converged — *then* the produced byte string equals the centralized
+ML-DSA-65 signature on the same protocol-level inputs, under the
+stated layout, algebraic, and byte-walk assumptions. Acceptance
+probability is tracked separately through the `accept_signing_attempt`
+predicate and the `mldsa_accept_lower_bound` operational bound; ML-DSA
+rejection sampling remains probabilistic per FIPS 204, and the
+deterministic EC model captures the accepted-path conditioning via
+the predicate rather than via probabilistic Hoare logic.
+
 Cross-validation evidence: every KAT vector in `vectors/kat-v1.json` is
 verified by three independent ML-DSA implementations
 (`test/interoperability/`):
@@ -209,7 +222,7 @@ axiom set:
   (`combine_no_reject_on_accepted_honest_layout`,
   `sign_no_reject_on_accepted_honest_layout`). Each asserts
   `status = 0` for layout-conforming inputs CONDITIONED on the
-  ML-DSA-65 accept event (`accept_signing_attempt`). FIPS 204 §6.2
+  ML-DSA-65 accept event (`accept_signing_attempt`). ML-DSA
   rejection sampling remains probabilistic; the probability bound
   `mldsa_accept_lower_bound` (≈ 1 − 2^-128 after the kappa-bounded
   loop) is tracked operationally rather than via probabilistic
@@ -273,10 +286,11 @@ What remains in the high-assurance track:
 - The two accepted-path no-reject obligations
   (`combine_no_reject_on_accepted_honest_layout`,
   `sign_no_reject_on_accepted_honest_layout`) — these reduce to the
-  byte-walk completing the FIPS 204 §6.1 rejection-condition check,
+  byte-walk completing the ML-DSA norm / rejection checks and the
+  kappa rejection-sampling loop converging on the honest inputs,
   but are stated separately so the obligation surface is visible.
   The accompanying `mldsa_accept_lower_bound` probability tracking
-  is an operational (non-mechanized) bound from FIPS 204 §C.1.
+  is an operational (non-mechanized) FIPS 204 acceptance bound.
 - Mechanizing the Lean-bridged algebraic axioms inside EasyCrypt
   directly (1 in N1 cone, 3 in N4 cone) — would require porting a
   minimal polynomial-interpolation theory into EC.

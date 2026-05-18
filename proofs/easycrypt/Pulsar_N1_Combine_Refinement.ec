@@ -203,8 +203,8 @@ op combine_abs_op (full : combine_full_args_t) : Pulsar_N1.signature_t =
        of public Round-2 messages.
      - Decompose loop (lines 3510-3530): w_prime, w_low, w_high split.
      - Hint loop (lines 3550-3570): polyveck_make_hint over public.
-     - Rejection checks R1-R4 (lines 3580-3595): public norms vs.
-       FIPS 204 §6.1 bounds.
+     - Rejection checks R1-R4 (lines 3580-3595): public norms vs. the
+       ML-DSA norm bounds.
      - Pack + write loop (lines 3600-3611): pack_signature + storeW8
        into Glob.mem at sig_out_ptr.
 
@@ -216,19 +216,32 @@ op combine_abs_op (full : combine_full_args_t) : Pulsar_N1.signature_t =
    Tracked: https://github.com/luxfi/pulsar-mptc/issues/4
    =================================================================== *)
 
-(* The functional "compute" output of the extracted combine body:
-   given the input memory + pointer bundle, return the FIPS 204
-   signature bytes that get written at sig_out_ptr. *)
-op combine_body_compute_sig :
+(* The component-level "compute" output of the extracted combine
+   body: given the input memory + pointer bundle, return the
+   (c_tilde, z, h) signature-component triple that the kappa
+   rejection-sampling loop produces.
+
+   Structurally surfaces the FIPS 204 §3.5.5 pack boundary: the
+   byte-walk obligation (`combine_body_compute_components_spec`
+   below) now constrains the per-component values rather than all
+   3293 packed bytes. The byte-level signature is then derived
+   constructively from this triple via `Pulsar_N1.pack_n1_signature`
+   (see the `combine_body_compute_sig` definition below). This
+   matches the S1-S10 sub-claim structure in
+   `proofs/easycrypt/extraction/combine-byte-walk-roadmap.md`:
+   the new axiom is exactly S1-S8 (component computation), while
+   S9 (packing) and S10 (memory write) are now structural
+   definitions discharged by codec roundtrip + write_signature_at. *)
+op combine_body_compute_components :
   Pulsar_N1_Memory.mem_t ->
   Pulsar_N1_Combine_Layout.combine_ptrs_t ->
-  Pulsar_N1_Signature_Codec.signature_t.
+  Pulsar_N1.c_tilde_n1_t * Pulsar_N1.z_n1_t * Pulsar_N1.h_n1_t.
 
 (* Status-aware byte-walk (Agent 1 HIGH-2 closure).
 
    The extracted M.pulsar_combine procedure returns a status word.
-   On rejection-check failure (FIPS 204 §6.1 R1..R4 bounds violated
-   by the aggregate) it returns non-zero status and leaves
+   On rejection-check failure (any of the ML-DSA R1..R4 norm bounds
+   violated by the aggregate) it returns non-zero status and leaves
    sig_out_ptr in an undefined state. Earlier versions of the
    byte-walk axiom claimed byte-equality UNCONDITIONALLY — which
    was vacuously satisfiable on rejection branches.
@@ -243,6 +256,22 @@ op combine_body_compute_status :
   Pulsar_N1_Memory.mem_t ->
   Pulsar_N1_Combine_Layout.combine_ptrs_t ->
   int.
+
+(* combine_body_compute_sig is now DEFINED constructively via the
+   FIPS 204 §3.5.5 pack of the inner-loop components. The pack step
+   is structurally identical between the extracted combine body and
+   the centralised ML-DSA reference — both lay out the same
+   (c_tilde, z, h) triple into the same byte format per the codec.
+   Byte-equality of the packed signatures therefore reduces to
+   triple-equality of the components (`combine_body_compute_components_spec`
+   below) under the pack codec's injectivity (proved as
+   `Pulsar_N1.pack_n1_signature_injective`). *)
+op combine_body_compute_sig
+   (mem_pre : Pulsar_N1_Memory.mem_t)
+   (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+   : Pulsar_N1_Signature_Codec.signature_t =
+  let cz_h = combine_body_compute_components mem_pre ptrs in
+  Pulsar_N1.pack_n1_signature cz_h.`1 cz_h.`2 cz_h.`3.
 
 (* Definition: combine_body_fn writes the computed signature at
    sig_out_ptr and leaves all other memory untouched, by virtue of
@@ -260,12 +289,53 @@ op combine_body_fn (mem_pre : Pulsar_N1_Memory.mem_t)
     ptrs.`Pulsar_N1_Combine_Layout.sig_out_ptr
     (combine_body_compute_sig mem_pre ptrs).
 
-(* The byte-walk axiom — restated against the compute op + STATUS
-   GUARDED. Closing this still requires walking the extracted body
-   (tracked #4) BUT the obligation now also covers the
-   status-aware semantics: the byte-equality claim is made only
-   when the extracted procedure returns status = 0 (success). *)
-axiom combine_body_compute_sig_spec :
+(* The component-level byte-walk axiom — restated against
+   `combine_body_compute_components` + STATUS GUARDED. The extracted
+   body's (c_tilde, z, h) triple matches the centralised ML-DSA
+   inner loop's triple on the reconstructed share.
+
+   Closing this still requires walking the extracted body (tracked
+   #4), but the obligation surface is now per-component (S1-S8 of
+   the byte-walk roadmap):
+
+     - c_tilde from SampleInBall  (roadmap S4 stage)
+     - z       from Lagrange-aggregated z_agg + decompose
+                                  (roadmap S3 + S5 stages)
+     - h       from MakeHint over the aggregated w_low
+                                  (roadmap S7 stage)
+
+   Each of those reduces, in turn, to the centralised ML-DSA
+   computation on the reconstructed share — i.e., this axiom can be
+   further split into three per-component sub-axioms once the
+   per-component MLDSA65_Functional ops are concretised. For now it
+   carries the bundle; the pack step (S9) and memory-write step
+   (S10) are no longer part of the byte-walk obligation — they are
+   discharged by `Pulsar_N1.pack_n1_signature` (constructive
+   composition) and `Pulsar_N1_Combine_Layout.read_after_write_signature`
+   respectively. *)
+axiom combine_body_compute_components_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+         (full : combine_full_args_t),
+    Pulsar_N1_Combine_Layout.layout_combine_args
+      mem_pre ptrs (wire_args_of_full full) =>
+    protocol_consistency full =>
+    combine_body_compute_status mem_pre ptrs = 0 =>
+    combine_body_compute_components mem_pre ptrs
+    = Pulsar_N1.run_signing_components
+        (Pulsar_N1.unpack_sk
+           (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares))
+        (Pulsar_N1.compute_mu full.`full_m full.`full_ctx)
+        full.`full_rho_rnd.
+
+(* Original byte-equality shape — now DERIVED from the component-
+   level axiom + the structural pack identity. The pack step is the
+   same on both sides (`Pulsar_N1.pack_n1_signature` in
+   `combine_body_compute_sig`'s definition, and inside the unfolding
+   of `Pulsar_N1.sign_internal_loop` on the centralised reference);
+   the component-level Hcomp equality therefore lifts directly to
+   byte-equality by congruence. *)
+lemma combine_body_compute_sig_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
          (full : combine_full_args_t),
@@ -275,6 +345,25 @@ axiom combine_body_compute_sig_spec :
     combine_body_compute_status mem_pre ptrs = 0 =>
     refine_sig_to_n1 (combine_body_compute_sig mem_pre ptrs)
     = combine_abs_op full.
+proof.
+  move=> mem_pre ptrs full Hlay Hconsist Hstatus.
+  have Hcomp :=
+    combine_body_compute_components_spec mem_pre ptrs full
+      Hlay Hconsist Hstatus.
+  (* After δ-expanding refine_sig_to_n1 (identity coercion) and
+     combine_body_compute_sig / combine_abs_op / mldsa_sign_op /
+     sign_internal_loop, both sides reduce (via ζ on the let-
+     bindings, triggered by /=) to
+       pack_n1_signature X.`1 X.`2 X.`3
+     where X on the LHS is `combine_body_compute_components mem_pre
+     ptrs` and X on the RHS is `run_signing_components (unpack_sk
+     ...) (compute_mu ...) rho_rnd`. Hcomp rewrites LHS-X to RHS-X.
+     Three occurrences ⇒ use `!Hcomp` (rewrite repeatedly). *)
+  rewrite /refine_sig_to_n1 /combine_body_compute_sig
+          /combine_abs_op /Pulsar_N1.mldsa_sign_op
+          /Pulsar_N1.sign_internal_loop /=.
+  by rewrite !Hcomp.
+qed.
 
 (* Accepted-path no-reject axiom (followup B closure).
 
@@ -287,9 +376,9 @@ axiom combine_body_compute_sig_spec :
 
    The accept-path is captured by the `accept_signing_attempt`
    predicate (declared at Pulsar_N1.ec), evaluated on the
-   reconstructed share. FIPS 204 §6.1 rejection sampling remains
-   probabilistic per ML-DSA; the probability bound on acceptance
-   is `Pulsar_N1.mldsa_accept_lower_bound` (≈ 1 − 2^-128 after the
+   reconstructed share. ML-DSA rejection sampling remains
+   probabilistic; the probability bound on acceptance is
+   `Pulsar_N1.mldsa_accept_lower_bound` (≈ 1 − 2^-128 after the
    kappa-bounded loop), tracked operationally rather than via
    probabilistic Hoare logic.
 
@@ -429,17 +518,32 @@ qed.
 
    This file declares:
 
-     axioms (1 — Jasmin-extraction byte-walk on signature bytes):
-       combine_body_compute_sig_spec
-         The single byte-walk obligation. Equivalent to the previous
-         `combine_body_spec` axiom but stated against the pure-
-         signature-output op `combine_body_compute_sig` (no memory
-         indirection). Tracked #4.
+     axioms (1 — Jasmin-extraction byte-walk on signature COMPONENTS):
+       combine_body_compute_components_spec
+         The component-level byte-walk obligation. The extracted
+         body's (c_tilde, z, h) triple matches the centralised
+         ML-DSA inner loop's triple on the reconstructed share.
+         Conditioned on layout + protocol_consistency + status = 0.
+         Tracked #4.
+
+         REFINEMENT NOTE: previous shape was a monolithic axiom
+         `combine_body_compute_sig_spec` over the full 3293-byte
+         packed signature. Refactored to surface the FIPS 204 §3.5.5
+         pack boundary at the type level (c_tilde_n1_t * z_n1_t *
+         h_n1_t triple in Pulsar_N1.ec). The new shape constrains
+         only the per-component values; the pack step is structural
+         (`Pulsar_N1.pack_n1_signature`, same op on both sides) and
+         the byte-equality is now a derived lemma. Per-component
+         splitting (one axiom each for c_tilde, z, h) is the next
+         narrowing step.
 
      ops (DEFINITIONS — no proof obligation):
        wire_args_of_full     (record projection)
        refine_sig_to_n1      (structural sig-type coercion)
        combine_abs_op        (DEFINED — mldsa_sign_op ∘ reconstruct)
+       combine_body_compute_sig
+                             (DEFINED — pack_n1_signature of the
+                              compute_components output)
        combine_body_fn       (DEFINED — write_signature_at the
                               compute_sig output at sig_out_ptr,
                               by construction touching no other memory)
@@ -447,8 +551,8 @@ qed.
                               disjointness predicate)
 
      ops (abstract — held inside the byte-walk obligation):
-       combine_body_compute_sig
-         The pure signature bytes the extracted body produces from
+       combine_body_compute_components
+         The (c_tilde, z, h) triple the extracted body produces from
          the input memory + pointer bundle. The byte-walk obligation
          constrains its output value; its existence is just naming.
 
@@ -456,6 +560,11 @@ qed.
        combine_full_args_t   (wire + ghost protocol-level args)
 
      lemmas (derived, fully proved):
+       combine_body_compute_sig_spec
+         (was axiom; now a lemma via combine_body_compute_components_spec
+          + the structural definitions of combine_body_compute_sig
+          and Pulsar_N1.sign_internal_loop — both factor through
+          Pulsar_N1.pack_n1_signature of the same component triple)
        combine_body_spec
          (was axiom; now a lemma via read_after_write_signature +
           combine_body_compute_sig_spec)
@@ -466,13 +575,26 @@ qed.
        combine_body_writes_signature
 
    Implementation-refinement axiom delta for this file:
-     Before: 2 axioms (combine_body_spec + combine_body_separation)
-     After:  1 axiom  (combine_body_compute_sig_spec)
+     Before-before: 2 axioms (combine_body_spec + combine_body_separation)
+     Before:        1 axiom  (combine_body_compute_sig_spec — over full
+                              3293-byte packed signature)
+     After:         1 axiom  (combine_body_compute_components_spec —
+                              over the (c_tilde, z, h) component triple)
 
-   The separation property is now BY CONSTRUCTION — combine_body_fn
-   is *defined* as a write-at-sig_out_ptr of the computed signature,
-   so any memory address outside [sig_out_ptr, sig_out_ptr + sig_len)
-   is provably untouched. The byte-walk obligation reduces to a
-   claim about pure signature bytes (the "what" the extracted body
-   computes), separated from the "where" it writes them.
+   Headline axiom count is unchanged, but the obligation surface has
+   moved one structural level inward: the byte-walk no longer claims
+   anything about the 3293-byte packed signature, only about the
+   three FIPS 204 §3.5.5 components. The pack step is now part of
+   the trusted FIPS 204 codec (one new roundtrip axiom in Pulsar_N1
+   — `pack_unpack_n1_signature_roundtrip` — that slots into the
+   existing "~21 per-type FIPS 204 codec round-trip" category) and
+   pack-injectivity is proved as a derived lemma, not an axiom.
+
+   Why this matters for closure: the next attack splits
+   combine_body_compute_components_spec into three component-level
+   axioms (one per c_tilde, z, h), each addressable independently
+   against the per-stage MLDSA65_Functional ops (sample_in_ball for
+   c_tilde, decompose + Lagrange aggregation for z, make_hint for
+   h). The combine-side byte-walk roadmap's S1-S8 stages map onto
+   the component-level axioms directly.
    =================================================================== *)

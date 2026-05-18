@@ -32,12 +32,23 @@ require import Pulsar_N1.
    The concrete extracted N1 byte-equality corollary.
 
    Trust boundary of this corollary:
-     - 2 axioms in the refinement files
-         combine_body_compute_sig_spec (Pulsar_N1_Combine_Refinement.ec)
-         sign_body_compute_sig_spec    (Pulsar_N1_Sign_Refinement.ec)
-       Both are byte-walk obligations on pure signature output.
+     - 2 axioms in the refinement files (component-level byte-walks):
+         combine_body_compute_components_spec
+                               (Pulsar_N1_Combine_Refinement.ec)
+         sign_body_compute_components_spec
+                               (Pulsar_N1_Sign_Refinement.ec)
+       Each constrains the (c_tilde, z, h) component triple the
+       extracted body produces. Byte-equality of the packed signature
+       is then a derived lemma (combine_body_compute_sig_spec /
+       sign_body_compute_sig_spec) via Pulsar_N1.pack_n1_signature
+       being the same op on both sides.
+     - 1 codec roundtrip axiom in Pulsar_N1
+         pack_unpack_n1_signature_roundtrip
+       Slots into the existing "~21 per-type FIPS 204 codec
+       round-trip" category. Pack-injectivity is a derived lemma
+       (pack_n1_signature_injective), not an axiom.
      - 0 ABI bridge identity axioms in either wrapper file
-       (both wrapper bridges are now lemmas).
+       (both wrapper bridges are lemmas).
      - 0 module-contract axioms in scope here
        (combine_body_axiom / S_functional_spec are
         section-local inside Pulsar_N1; this corollary

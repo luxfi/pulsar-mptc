@@ -285,19 +285,25 @@ proof. by rewrite /sign_abs_op /Pulsar_N1.mldsa_sign_op. qed.
 
      - sk unpacking: rho, K, tr, s1, s2, t0 (FIPS 204 §3.5.4).
      - mu = SHAKE(tr || M) — message binder.
-     - Rejection-sampling loop on attempt kappa.
+     - Kappa rejection-sampling loop on attempt counter.
      - Pack signature and write to ptr_signature.
 
    Tracked: https://github.com/luxfi/pulsar-mptc/issues/3
    =================================================================== *)
 
-(* The functional "compute" output of the extracted libjade sign
-   body: given input memory + pointer bundle, return the FIPS 204
-   signature bytes that get written at ptr_signature. *)
-op sign_body_compute_sig :
+(* The component-level "compute" output of the extracted libjade
+   sign body: given input memory + pointer bundle, return the
+   (c_tilde, z, h) signature-component triple that libjade's kappa
+   rejection-sampling loop produces.
+
+   Mirrors the combine-side `combine_body_compute_components` — both
+   surface the FIPS 204 §3.5.5 pack boundary at the type level so
+   the byte-walk obligation reduces to component-level claims rather
+   than a monolithic statement over the full 3293-byte signature. *)
+op sign_body_compute_components :
   Pulsar_N1_Memory.mem_t ->
   Pulsar_N1_Sign_Layout.sign_ptrs_t ->
-  Pulsar_N1_Signature_Codec.signature_t.
+  Pulsar_N1.c_tilde_n1_t * Pulsar_N1.z_n1_t * Pulsar_N1.h_n1_t.
 
 (* Status-aware byte-walk (Agent 1 HIGH-2 closure, sign-side).
 
@@ -310,6 +316,19 @@ op sign_body_compute_status :
   Pulsar_N1_Memory.mem_t ->
   Pulsar_N1_Sign_Layout.sign_ptrs_t ->
   int.
+
+(* sign_body_compute_sig is now DEFINED constructively as the
+   FIPS 204 §3.5.5 pack of the inner-loop components. Same structural
+   pattern as combine_body_compute_sig in Pulsar_N1_Combine_Refinement
+   — the pack step is identical to what `Pulsar_N1.sign_internal_loop`
+   does on the centralised reference, so byte-equality reduces to
+   triple-equality of the components. *)
+op sign_body_compute_sig
+   (mem_pre : Pulsar_N1_Memory.mem_t)
+   (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+   : Pulsar_N1_Signature_Codec.signature_t =
+  let cz_h = sign_body_compute_components mem_pre ptrs in
+  Pulsar_N1.pack_n1_signature cz_h.`1 cz_h.`2 cz_h.`3.
 
 (* Definition: sign_body_fn writes the computed signature at
    ptr_signature and leaves all other memory untouched, by virtue
@@ -327,12 +346,36 @@ op sign_body_fn (mem_pre : Pulsar_N1_Memory.mem_t)
     ptrs.`Pulsar_N1_Sign_Layout.ptr_signature
     (sign_body_compute_sig mem_pre ptrs).
 
-(* The byte-walk axiom — restated against the compute op + STATUS
-   GUARDED. The byte-equality claim is made only when the
-   extracted libjade procedure returns status = 0 (kappa loop
-   converged). Closing this still requires walking the extracted
-   body (tracked #3). *)
-axiom sign_body_compute_sig_spec :
+(* The component-level byte-walk axiom — restated against
+   `sign_body_compute_components` + STATUS GUARDED. The extracted
+   libjade body's (c_tilde, z, h) triple matches the centralised
+   ML-DSA inner loop's triple on the protocol-level sk / mu / rnd.
+
+   Closing this is the libjade byte-walk through `sign.ec`'s ML-DSA
+   sign procedure (tracked #3). Per-component splitting into three
+   separate sub-axioms (one each for c_tilde, z, h) is the next
+   narrowing step. *)
+axiom sign_body_compute_components_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+         (full : sign_full_args_t),
+    Pulsar_N1_Sign_Layout.layout_sign_args
+      mem_pre ptrs (wire_sign_args_of_full full) =>
+    sign_body_compute_status mem_pre ptrs = 0 =>
+    sign_body_compute_components mem_pre ptrs
+    = Pulsar_N1.run_signing_components
+        (Pulsar_N1.unpack_sk full.`sgn_sk_n1)
+        (Pulsar_N1.compute_mu full.`sgn_m_n1 full.`sgn_ctx_n1)
+        full.`sgn_rnd_n1.
+
+(* Original byte-equality shape — now DERIVED from the component-
+   level axiom + the structural pack identity. Pack is the same on
+   both sides (`Pulsar_N1.pack_n1_signature` in
+   `sign_body_compute_sig`'s definition, and inside the unfolding of
+   `Pulsar_N1.sign_internal_loop` on the centralised reference);
+   component-level Hcomp lifts directly to byte-equality by
+   congruence. *)
+lemma sign_body_compute_sig_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
          (full : sign_full_args_t),
@@ -341,6 +384,22 @@ axiom sign_body_compute_sig_spec :
     sign_body_compute_status mem_pre ptrs = 0 =>
     refine_sig_to_n1_sign (sign_body_compute_sig mem_pre ptrs)
     = sign_abs_op full.
+proof.
+  move=> mem_pre ptrs full Hlay Hstatus.
+  have Hcomp :=
+    sign_body_compute_components_spec mem_pre ptrs full Hlay Hstatus.
+  (* sign_abs_op = sign_internal_loop (unpack_sk sk) (compute_mu m
+     ctx) rnd; after δ on sign_internal_loop's definition (let cz_h'
+     = run_signing_components ... in pack_n1_signature cz_h'.`1
+     cz_h'.`2 cz_h'.`3) and ζ via /=, both sides reduce to
+     pack_n1_signature applied at three projections of either
+     `sign_body_compute_components mem_pre ptrs` (LHS) or
+     `run_signing_components ...` (RHS). Hcomp closes the equality
+     at three positions ⇒ `!Hcomp`. *)
+  rewrite /refine_sig_to_n1_sign /sign_body_compute_sig
+          /sign_abs_op /Pulsar_N1.sign_internal_loop /=.
+  by rewrite !Hcomp.
+qed.
 
 (* Accepted-path no-reject axiom (followup B closure).
 
@@ -351,10 +410,10 @@ axiom sign_body_compute_sig_spec :
    extracted libjade M.sign returns status = 0.
 
    The accept event is `accept_signing_attempt`, declared at
-   Pulsar_N1.ec. FIPS 204 §6.2's kappa loop converges with
-   probability ≈ 1 − (3/4)^256 per attempt; the kappa-bounded loop
-   accumulates failure probability ≤ 2^-128 across the bound. The
-   probability bound is tracked operationally
+   Pulsar_N1.ec. ML-DSA's kappa rejection-sampling loop converges
+   with probability ≈ 1 − (3/4)^256 per attempt; the kappa-bounded
+   loop accumulates failure probability ≤ 2^-128 across the bound.
+   The probability bound is tracked operationally
    (Pulsar_N1.mldsa_accept_lower_bound) rather than via
    probabilistic Hoare logic.
 
@@ -479,14 +538,25 @@ qed.
 (* ===================================================================
    AXIOM ACCOUNTING
 
-   axioms (1 — libjade byte-walk on signature bytes):
-     sign_body_compute_sig_spec
-       Single byte-walk obligation. Tracked #3.
+   axioms (1 — libjade byte-walk on signature COMPONENTS):
+     sign_body_compute_components_spec
+       Component-level byte-walk obligation. The extracted libjade
+       body's (c_tilde, z, h) triple matches the centralised ML-DSA
+       inner loop's triple on the protocol-level inputs. Conditioned
+       on layout + status = 0. Tracked #3.
+
+       REFINEMENT NOTE: previous shape was a monolithic axiom
+       `sign_body_compute_sig_spec` over the full 3293-byte packed
+       signature. Refactored to surface the FIPS 204 §3.5.5 pack
+       boundary at the type level. Mirrors the combine-side refactor
+       in Pulsar_N1_Combine_Refinement.
 
    ops (DEFINITIONS — no proof obligation):
      wire_sign_args_of_full   (record projection)
      refine_sig_to_n1_sign    (structural sig-type coercion)
      sign_abs_op              (DEFINED — mldsa_sign_op on ghost fields)
+     sign_body_compute_sig    (DEFINED — pack_n1_signature of the
+                               compute_components output)
      sign_body_fn             (DEFINED — write_sig_sign at ptr_signature
                                of the compute_sig output; by construction
                                only ptr_signature range is touched)
@@ -511,8 +581,11 @@ qed.
      sign_body_writes_mldsa_sign
 
    Implementation-refinement axiom delta for this file:
-     Before: 2 axioms (sign_body_spec + sign_body_separation)
-     After:  1 axiom  (sign_body_compute_sig_spec)
+     Before-before: 2 axioms (sign_body_spec + sign_body_separation)
+     Before:        1 axiom  (sign_body_compute_sig_spec — over full
+                              3293-byte packed signature)
+     After:         1 axiom  (sign_body_compute_components_spec —
+                              over the (c_tilde, z, h) component triple)
 
    The separation property is now BY CONSTRUCTION. The byte-walk
    obligation reduces to a claim about pure signature bytes (the

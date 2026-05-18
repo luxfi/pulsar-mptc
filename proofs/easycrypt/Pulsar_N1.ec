@@ -449,8 +449,86 @@ type mu_t.
 
 op unpack_sk  : share_t -> unpacked_sk_t.
 op compute_mu : message_t -> ctx_t -> mu_t.
-op sign_internal_loop :
-  unpacked_sk_t -> mu_t -> randomness_t -> signature_t.
+
+(* FIPS 204 §3.5.5 signature components surfaced as abstract types:
+   c_tilde (32-byte SHAKE digest), z (l-coordinate response vector,
+   bit-packed via the FIPS 204 PowerToBytesPos encoding), h (k-
+   coordinate hint vector with at most omega non-zero coefficients).
+
+   Surfacing the components at the type level lets the byte-walk
+   obligations in Combine_Refinement / Sign_Refinement split along
+   the FIPS 204 §3.5.5 packing boundary: a "components match" axiom
+   over the (c_tilde, z, h) triple plus a structural pack identity.
+   The pack identity is then directly attackable per-component (S4
+   for c_tilde, S3+S5 for z, S7 for h on the combine roadmap) rather
+   than as a monolithic byte-walk over the full 3293-byte signature. *)
+type c_tilde_n1_t.
+type z_n1_t.
+type h_n1_t.
+
+(* ML-DSA inner signing loop, at the component level. The kappa
+   rejection-sampling loop produces the (c_tilde, z, h) triple on
+   accept; on reject, the loop bumps kappa and retries (deterministic
+   in this functional view — the loop terminates at the first
+   accepting kappa or exhausts the kappa bound, both as a pure
+   function of inputs).
+
+   This op is intentionally abstract here. Each component's spec
+   relative to the ML-DSA reference will be discharged independently
+   in MLDSA65_Functional (S4: SampleInBall → c_tilde; S5+S3: A·y +
+   Lagrange aggregation → z; S7: MakeHint → h). *)
+op run_signing_components :
+  unpacked_sk_t -> mu_t -> randomness_t -> c_tilde_n1_t * z_n1_t * h_n1_t.
+
+(* FIPS 204 §3.5.5 signature codec: layout the (c_tilde, z, h) triple
+   into the byte-level signature_t and back. Mirrors the existing
+   per-type FIPS 204 codec axioms in Pulsar_N1_Signature_Codec.ec —
+   round-trip identity is the load-bearing property the refinement
+   files consume. *)
+op pack_n1_signature : c_tilde_n1_t -> z_n1_t -> h_n1_t -> signature_t.
+op unpack_n1_signature : signature_t -> c_tilde_n1_t * z_n1_t * h_n1_t.
+
+axiom pack_unpack_n1_signature_roundtrip :
+  forall (c : c_tilde_n1_t) (z : z_n1_t) (h : h_n1_t),
+    unpack_n1_signature (pack_n1_signature c z h) = (c, z, h).
+
+(* Derived injectivity. Used by the refinement files to lift a
+   component-level (c, z, h) equality to a byte-level pack equality
+   (and vice versa). PROVED — not an additional axiom. *)
+lemma pack_n1_signature_injective :
+  forall (c1 c2 : c_tilde_n1_t) (z1 z2 : z_n1_t) (h1 h2 : h_n1_t),
+    pack_n1_signature c1 z1 h1 = pack_n1_signature c2 z2 h2 =>
+    c1 = c2 /\ z1 = z2 /\ h1 = h2.
+proof.
+  move=> c1 c2 z1 z2 h1 h2 Heq.
+  have Htup : (c1, z1, h1) = (c2, z2, h2).
+  - rewrite -(pack_unpack_n1_signature_roundtrip c1 z1 h1).
+    rewrite Heq.
+    by rewrite pack_unpack_n1_signature_roundtrip.
+  by smt().
+qed.
+
+(* sign_internal_loop factors structurally through the component-
+   level inner loop and the FIPS 204 §3.5.5 packing step.
+
+   This DEFINITION (rather than an abstract op declaration) is the
+   structural refinement that lets the combine and sign byte-walk
+   axioms split along the pack boundary. Before this commit,
+   `sign_internal_loop` was abstract and the byte-walk obligation
+   constrained all 3293 signature bytes as one monolithic claim;
+   after, the byte-walk decomposes into a (c_tilde, z, h) component
+   spec (still axiomatic) and a structural pack identity (derivable
+   from the codec roundtrip). The total axiom surface is essentially
+   unchanged — the codec roundtrip slots cleanly into the existing
+   "~21 per-type FIPS 204 codec round-trip" category — but the
+   byte-walk obligation is now per-component instead of opaque,
+   matching the S1-S10 sub-claim structure in
+   `proofs/easycrypt/extraction/combine-byte-walk-roadmap.md`. *)
+op sign_internal_loop
+   (usk : unpacked_sk_t) (mu_val : mu_t) (rho_rnd : randomness_t)
+   : signature_t =
+  let cz_h = run_signing_components usk mu_val rho_rnd in
+  pack_n1_signature cz_h.`1 cz_h.`2 cz_h.`3.
 
 op mldsa_sign_op (sk : share_t) (m : message_t)
                  (ctx : ctx_t) (rho_rnd : randomness_t)
@@ -460,7 +538,7 @@ op mldsa_sign_op (sk : share_t) (m : message_t)
 (* ML-DSA-65 rejection-sampling accept event (followup B closure).
 
    `accept_signing_attempt sk m ctx rho_rnd` is the (deterministic)
-   event that the FIPS 204 §6.1 R1-R4 norm checks pass for the
+   event that the ML-DSA R1-R4 norm checks pass for the
    ML-DSA-65 signing attempt with the four protocol-level inputs.
 
    No-reject is NOT a universal property of honest signing — it is a
@@ -470,9 +548,10 @@ op mldsa_sign_op (sk : share_t) (m : message_t)
    acceptance is tracked operationally.
 
    `mldsa_accept_lower_bound` names the probability bound on
-   acceptance for honest signers (FIPS 204 §C.1: ≈ 1 − (3/4)^256 per
-   attempt, ≥ 1 − 2^-128 after the kappa-bounded loop). Stated as
-   an abstract real-valued lower bound; the operational tracking of
+   acceptance for honest signers (≈ 1 − (3/4)^256 per attempt,
+   ≥ 1 − 2^-128 after the kappa-bounded loop, per the standard
+   ML-DSA acceptance analysis). Stated as an abstract real-valued
+   lower bound; the operational tracking of
    `Pr[accept] >= mldsa_accept_lower_bound` is a probabilistic
    obligation tracked separately (the deterministic EC model
    captures the accepted-path conditioning via the predicate
