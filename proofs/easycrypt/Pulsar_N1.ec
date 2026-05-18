@@ -457,6 +457,36 @@ op mldsa_sign_op (sk : share_t) (m : message_t)
    : signature_t =
   sign_internal_loop (unpack_sk sk) (compute_mu m ctx) rho_rnd.
 
+(* ML-DSA-65 rejection-sampling accept event (followup B closure).
+
+   `accept_signing_attempt sk m ctx rho_rnd` is the (deterministic)
+   event that the FIPS 204 §6.1 R1-R4 norm checks pass for the
+   ML-DSA-65 signing attempt with the four protocol-level inputs.
+
+   No-reject is NOT a universal property of honest signing — it is a
+   property of ACCEPTED signing attempts. FIPS 204 rejection sampling
+   remains probabilistic per ML-DSA; cryptographic-reduction proofs
+   condition on the accepted path, while the probability of
+   acceptance is tracked operationally.
+
+   `mldsa_accept_lower_bound` names the probability bound on
+   acceptance for honest signers (FIPS 204 §C.1: ≈ 1 − (3/4)^256 per
+   attempt, ≥ 1 − 2^-128 after the kappa-bounded loop). Stated as
+   an abstract real-valued lower bound; the operational tracking of
+   `Pr[accept] >= mldsa_accept_lower_bound` is a probabilistic
+   obligation tracked separately (the deterministic EC model
+   captures the accepted-path conditioning via the predicate
+   above).
+
+   Downstream byte-walk axioms in Combine_Refinement and
+   Sign_Refinement condition on `accept_signing_attempt` evaluated
+   on the protocol-level inputs (for combine: the reconstructed
+   share; for sign: the share directly). *)
+op accept_signing_attempt :
+  share_t -> message_t -> ctx_t -> randomness_t -> bool.
+
+op mldsa_accept_lower_bound : real.
+
 (* HIGH-4 load-bearing reinforcement (followup A).
 
    Without further axioms the three pipeline ops admit the trivial
@@ -709,6 +739,9 @@ declare axiom combine_body_axiom :
   equiv [ T.combine ~ CombineAbs.combine :
             ={arg}
             /\ group_pk{1} = derive_pk (reconstruct quorum{1} shares{1})
+            /\ accept_signing_attempt
+                 (reconstruct quorum{1} shares{1})
+                 m{1} ctx{1} rho_rnd{1}
           ==> ={res} ].
 
 (* Functional-spec hypothesis on the single-party module `S`.          *)
@@ -733,7 +766,9 @@ declare axiom combine_body_axiom :
 (* `Pulsar_N1_Sign_Refinement.sign_body_spec`).                         *)
 declare axiom S_functional_spec :
   equiv [ S.sign ~ FIPS204Sign.sign :
-            ={arg} ==> ={res} ].
+            ={arg}
+            /\ accept_signing_attempt sk{1} m{1} ctx{1} rho_rnd{1}
+          ==> ={res} ].
 
 (* The honest-quorum Pulsar execution, as a single procedure.
    Parameterised by `T` to comply with EasyCrypt's module-system
@@ -800,10 +835,14 @@ module SinglePartyRun (S : MLDSA65_Sign) = {
 (* -------------------------------------------------------------------- *)
 
 (* Step 1 — single-party run is equivalent to FIPS204 instantiation     *)
-(* via the section-local `S_functional_spec` axiom.                      *)
+(* via the section-local `S_functional_spec` axiom. Threads the         *)
+(* accept-path precondition through. *)
 lemma single_party_run_refines_fips204 :
   equiv [ SinglePartyRun(S).run ~ SinglePartyRun(FIPS204Sign).run :
             ={group_pk, shares, quorum, m, ctx, rho_rnd}
+            /\ accept_signing_attempt
+                 (reconstruct quorum{1} shares{1})
+                 m{1} ctx{1} rho_rnd{1}
         ==> ={res} ].
 proof.
   proc.
@@ -891,6 +930,9 @@ lemma pulsar_n1_byte_equality :
             /\ uniq quorum{1}
             /\ size shares{1} = size quorum{1}
             /\ group_pk{1} = derive_pk (reconstruct quorum{1} shares{1})
+            /\ accept_signing_attempt
+                 (reconstruct quorum{1} shares{1})
+                 m{1} ctx{1} rho_rnd{1}
         ==> ={res} ].
 proof.
   (* Chain via SinglePartyRun(FIPS204Sign).run as the bridge module.    *)
@@ -904,16 +946,23 @@ proof.
         /\ uniq quorum{1}
         /\ size shares{1} = size quorum{1}
         /\ group_pk{1} = derive_pk (reconstruct quorum{1} shares{1})
+        /\ accept_signing_attempt
+             (reconstruct quorum{1} shares{1})
+             m{1} ctx{1} rho_rnd{1}
      ==> ={res})
     (={group_pk, shares, quorum, m, ctx, rho_rnd}
+        /\ accept_signing_attempt
+             (reconstruct quorum{1} shares{1})
+             m{1} ctx{1} rho_rnd{1}
      ==> ={res}).
-  + move=> &1 &2 [#] 6-> uQ szq Hgpk.
+  + move=> &1 &2 [#] 6-> uQ szq Hgpk Haccept.
     by exists (group_pk{2}, shares{2}, quorum{2}, m{2}, ctx{2}, rho_rnd{2}).
   + done.
   + (* Step A: ThresholdRun(T).run ~ SinglePartyRun(FIPS204Sign).run    *)
     proc.
     (* Step A1: replace T.combine on the LHS by CombineAbs.combine via   *)
-    (* the section-local refinement axiom.                                *)
+    (* the section-local refinement axiom. Threads gpk-consistency +     *)
+    (* accept-path through the transitivity's middle precondition.       *)
     transitivity{1}
       { sess <- witness;
         r1s  <- [];
@@ -923,13 +972,16 @@ proof.
                                   rho_rnd, r1s, r2s); }
       (={group_pk, shares, quorum, m, ctx, rho_rnd}
           /\ group_pk{1} = derive_pk (reconstruct quorum{1} shares{1})
+          /\ accept_signing_attempt
+               (reconstruct quorum{1} shares{1})
+               m{1} ctx{1} rho_rnd{1}
         ==> ={sig})
       (={group_pk, shares, quorum, m, ctx, rho_rnd} ==> ={sig}).
     + smt().
     + done.
     + (* T.combine ~ CombineAbs.combine via the axiom (other code is the *)
-      (* same on both sides). The gpk-consistency precondition the axiom *)
-      (* needs is carried by the transitivity's first-leg postcondition. *)
+      (* same on both sides). Both gpk-consistency and accept-path are   *)
+      (* carried by the transitivity's first-leg postcondition.          *)
       wp.
       call combine_body_axiom.
       by auto.
@@ -943,7 +995,8 @@ proof.
   + (* Step B: SinglePartyRun(FIPS204Sign).run ~ SinglePartyRun(S).run  *)
     symmetry.
     conseq single_party_run_refines_fips204.
-    + by move=> &1 &2 [#] 6->.
+    + move=> &1 &2 [#] 6-> Haccept.
+      do! split=> //.
     + done.
 qed.
 

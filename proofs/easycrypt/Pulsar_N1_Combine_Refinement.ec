@@ -276,25 +276,41 @@ axiom combine_body_compute_sig_spec :
     refine_sig_to_n1 (combine_body_compute_sig mem_pre ptrs)
     = combine_abs_op full.
 
-(* Protocol-correctness companion axiom: for layout-conforming
-   inputs from an HONEST quorum (the inputs the wrapper constructs
-   via n1_inputs_to_combine_full from real shares + Round-2
-   messages), the extracted Combine NEVER rejects — i.e. always
-   returns status = 0. FIPS 204 §6.1 rejection conditions are
-   satisfied by construction when the aggregate inputs were
-   honestly produced (the masking + commit scheme keeps the
-   z-norm + hint-count + low-bits within bounds).
+(* Accepted-path no-reject axiom (followup B closure).
 
-   This axiom is the COMPANION to combine_body_compute_sig_spec:
-   together they recover the previous unconditional byte-walk
-   shape. Splitting them makes the obligation surface visible —
-   one claim per concern, status-aware + protocol-correctness. *)
-axiom combine_no_reject_on_honest_layout :
+   No-reject is NOT a universal property of honest signing — it is
+   a property of ACCEPTED signing attempts. The conditioned form:
+   given layout-conforming inputs from an honest quorum AND the
+   ML-DSA-65 accept event holds for the protocol-level inputs (the
+   reconstructed share, message, ctx, rho_rnd), the extracted
+   Combine returns status = 0.
+
+   The accept-path is captured by the `accept_signing_attempt`
+   predicate (declared at Pulsar_N1.ec), evaluated on the
+   reconstructed share. FIPS 204 §6.1 rejection sampling remains
+   probabilistic per ML-DSA; the probability bound on acceptance
+   is `Pulsar_N1.mldsa_accept_lower_bound` (≈ 1 − 2^-128 after the
+   kappa-bounded loop), tracked operationally rather than via
+   probabilistic Hoare logic.
+
+   Previous shape claimed UNCONDITIONAL status=0 on layout-
+   conforming inputs — too strong, since rejection is a
+   probabilistic event. With the accept-path precondition explicit,
+   the axiom is honest: it captures the deterministic claim
+   "if the attempt accepts, the byte output corresponds to the
+   centralized FIPS 204 signature".
+
+   COMPANION to combine_body_compute_sig_spec: together they
+   recover the conditional byte-walk shape. *)
+axiom combine_no_reject_on_accepted_honest_layout :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
          (full : combine_full_args_t),
     Pulsar_N1_Combine_Layout.layout_combine_args
       mem_pre ptrs (wire_args_of_full full) =>
+    Pulsar_N1.accept_signing_attempt
+      (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares)
+      full.`full_m full.`full_ctx full.`full_rho_rnd =>
     combine_body_compute_status mem_pre ptrs = 0.
 
 (* ===================================================================
@@ -303,13 +319,13 @@ axiom combine_no_reject_on_honest_layout :
    lemma).
    =================================================================== *)
 
-(* The old `combine_body_spec` shape — STATUS DISCHARGED by the
-   companion axiom `combine_no_reject_on_honest_layout`.
+(* The `combine_body_spec` shape — STATUS DISCHARGED by the
+   accepted-path no-reject axiom (followup B).
    Composition:
-     layout_combine_args  →  status = 0  (combine_no_reject_on_honest_layout)
-     layout + status = 0  →  byte-equality (combine_body_compute_sig_spec)
-   Wrapper bridge consumers see the same unconditional shape they
-   had before; the status-aware obligation is internal to this
+     layout + accept  →  status = 0  (combine_no_reject_on_accepted_honest_layout)
+     layout + consist + status = 0  →  byte-equality (combine_body_compute_sig_spec)
+   Wrapper bridge consumers thread `accept_signing_attempt` through
+   the cascade; the status-aware obligation is internal to this
    refinement file. *)
 lemma combine_body_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
@@ -318,15 +334,18 @@ lemma combine_body_spec :
     Pulsar_N1_Combine_Layout.layout_combine_args
       mem_pre ptrs (wire_args_of_full full) =>
     protocol_consistency full =>
+    Pulsar_N1.accept_signing_attempt
+      (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares)
+      full.`full_m full.`full_ctx full.`full_rho_rnd =>
     refine_sig_to_n1
       (Pulsar_N1_Combine_Layout.read_signature_at
          (combine_body_fn mem_pre ptrs)
          ptrs.`Pulsar_N1_Combine_Layout.sig_out_ptr)
     = combine_abs_op full.
 proof.
-  move=> mem_pre ptrs full Hlay Hconsist.
+  move=> mem_pre ptrs full Hlay Hconsist Haccept.
   have Hstatus :=
-    combine_no_reject_on_honest_layout mem_pre ptrs full Hlay.
+    combine_no_reject_on_accepted_honest_layout mem_pre ptrs full Hlay Haccept.
   rewrite /combine_body_fn.
   rewrite Pulsar_N1_Combine_Layout.read_after_write_signature.
   by apply combine_body_compute_sig_spec.
@@ -361,7 +380,7 @@ qed.
 
 (* L4: packed_signature(...) = CombineAbs.combine(...)
    DERIVED as a lemma from combine_body_spec via congruence.
-   Threads the protocol_consistency hypothesis through. *)
+   Threads protocol_consistency + accept_signing_attempt through. *)
 lemma packed_bytes_eq_CombineAbs :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
@@ -369,20 +388,23 @@ lemma packed_bytes_eq_CombineAbs :
     Pulsar_N1_Combine_Layout.layout_combine_args
       mem_pre ptrs (wire_args_of_full full) =>
     protocol_consistency full =>
+    Pulsar_N1.accept_signing_attempt
+      (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares)
+      full.`full_m full.`full_ctx full.`full_rho_rnd =>
     refine_sig_to_n1
       (Pulsar_N1_Combine_Layout.read_signature_at
          (combine_body_fn mem_pre ptrs)
          ptrs.`Pulsar_N1_Combine_Layout.sig_out_ptr)
     = combine_abs_op full.
 proof.
-  move=> mem_pre ptrs full Hlay Hconsist.
-  by apply (combine_body_spec mem_pre ptrs full Hlay Hconsist).
+  move=> mem_pre ptrs full Hlay Hconsist Haccept.
+  by apply (combine_body_spec mem_pre ptrs full Hlay Hconsist Haccept).
 qed.
 
 (* L3 composite: from combine_body_spec it follows immediately that
    running the extracted body on any layout-conforming, protocol-
-   consistent memory state yields a memory state whose sig_out_ptr
-   decodes to the abstract signature. *)
+   consistent, accepted memory state yields a memory state whose
+   sig_out_ptr decodes to the abstract signature. *)
 lemma combine_body_writes_signature :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
@@ -390,6 +412,9 @@ lemma combine_body_writes_signature :
     Pulsar_N1_Combine_Layout.layout_combine_args
       mem_pre ptrs (wire_args_of_full full) =>
     protocol_consistency full =>
+    Pulsar_N1.accept_signing_attempt
+      (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares)
+      full.`full_m full.`full_ctx full.`full_rho_rnd =>
     refine_sig_to_n1
       (Pulsar_N1_Combine_Layout.read_signature_at
          (combine_body_fn mem_pre ptrs)

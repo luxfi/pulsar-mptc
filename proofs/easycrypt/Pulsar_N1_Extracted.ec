@@ -56,6 +56,9 @@ lemma pulsar_n1_byte_equality_extracted :
       /\ size shares{1} = size quorum{1}
       /\ group_pk{1} = Pulsar_N1.derive_pk
                         (Pulsar_N1.reconstruct quorum{1} shares{1})
+      /\ Pulsar_N1.accept_signing_attempt
+           (Pulsar_N1.reconstruct quorum{1} shares{1})
+           m{1} ctx{1} rho_rnd{1}
     ==> ={res}
   ].
 proof.

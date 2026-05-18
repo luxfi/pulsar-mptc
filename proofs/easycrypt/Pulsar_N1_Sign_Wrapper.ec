@@ -112,6 +112,7 @@ lemma sign_wrapper_bridge :
          (m : Pulsar_N1.message_t)
          (ctx : Pulsar_N1.ctx_t)
          (rho_rnd : Pulsar_N1.randomness_t),
+    Pulsar_N1.accept_signing_attempt sk m ctx rho_rnd =>
     let (mem, ptrs, full) = encode_sign_args sk m ctx rho_rnd in
     Pulsar_N1_Sign_Refinement.refine_sig_to_n1_sign
       (Pulsar_N1_Sign_Layout.read_sig_sign
@@ -119,7 +120,7 @@ lemma sign_wrapper_bridge :
          ptrs.`Pulsar_N1_Sign_Layout.ptr_signature)
     = Pulsar_N1.mldsa_sign_op sk m ctx rho_rnd.
 proof.
-  move=> sk m ctx rho_rnd /=.
+  move=> sk m ctx rho_rnd Haccept /=.
   rewrite /encode_sign_args /=.
   have Hlay :
     Pulsar_N1_Sign_Layout.layout_sign_args
@@ -135,6 +136,13 @@ proof.
          (n1_inputs_to_sign_full sk m ctx rho_rnd)).
   - rewrite /wire_sign_args_of_full /n1_inputs_to_sign_full /=.
     by apply Pulsar_N1_Sign_Layout.encode_sign_args_layout.
+  have Hacc :
+    Pulsar_N1.accept_signing_attempt
+      (n1_inputs_to_sign_full sk m ctx rho_rnd).`sgn_sk_n1
+      (n1_inputs_to_sign_full sk m ctx rho_rnd).`sgn_m_n1
+      (n1_inputs_to_sign_full sk m ctx rho_rnd).`sgn_ctx_n1
+      (n1_inputs_to_sign_full sk m ctx rho_rnd).`sgn_rnd_n1.
+  - by rewrite /n1_inputs_to_sign_full /=.
   have Hspec :=
     Pulsar_N1_Sign_Refinement.sign_body_spec
       (Pulsar_N1_Sign_Layout.encode_sign_args
@@ -146,11 +154,11 @@ proof.
          (n1_msg_to_layout_sign  m)
          (Pulsar_N1_Sign_Layout.msg_len (n1_msg_to_layout_sign m))).`2
       (n1_inputs_to_sign_full sk m ctx rho_rnd)
-      Hlay.
+      Hlay Hacc.
   move: Hspec.
   rewrite /Pulsar_N1_Sign_Refinement.sign_abs_op
           /n1_inputs_to_sign_full /=.
-  by move=> ->.
+  by rewrite /Pulsar_N1.mldsa_sign_op /=; move=> ->.
 qed.
 
 (* ===================================================================
@@ -184,19 +192,16 @@ module SignExtractedWrapper : Pulsar_N1.MLDSA65_Sign = {
 
 lemma sign_wrapper_equiv_FIPS204Sign :
   equiv [ SignExtractedWrapper.sign ~ Pulsar_N1.FIPS204Sign.sign :
-            ={arg} ==> ={res} ].
+            ={arg}
+            /\ Pulsar_N1.accept_signing_attempt
+                 sk{1} m{1} ctx{1} rho_rnd{1}
+        ==> ={res} ].
 proof.
-  (* Explicit proof — mirror of combine_wrapper_equiv_CombineAbs.
-     Earlier version closed via `smt(sign_wrapper_bridge)`. Per the
-     cryptographer review HIGH-6, the SMT close hid whether the
-     bridge lemma's universally-quantified shape actually unified
-     with the wrapper-proc's let-destructured tuple. Explicit
-     witness chain makes the unification visible. *)
   proc.
   inline Pulsar_N1.FIPS204Sign.sign.
   wp; skip => />.
-  move=> &1.
-  exact: (sign_wrapper_bridge sk{1} m{1} ctx{1} rho_rnd{1}).
+  move=> &1 Haccept.
+  exact: (sign_wrapper_bridge sk{1} m{1} ctx{1} rho_rnd{1} Haccept).
 qed.
 
 (* ===================================================================

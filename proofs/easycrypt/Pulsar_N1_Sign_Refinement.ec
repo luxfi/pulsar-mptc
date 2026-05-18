@@ -342,42 +342,64 @@ axiom sign_body_compute_sig_spec :
     refine_sig_to_n1_sign (sign_body_compute_sig mem_pre ptrs)
     = sign_abs_op full.
 
-(* Protocol-correctness companion: libjade M.sign's kappa loop
-   converges with overwhelming probability (FIPS 204 §6.2's
-   rejection rate is ~1/4 per iteration; the loop is bounded by
-   kappa_max ≈ 256 iterations, giving failure probability
-   ≈ (3/4)^256 ≈ 10^-32 which is operationally negligible).
+(* Accepted-path no-reject axiom (followup B closure).
 
-   For honest inputs the extracted procedure thus returns status
-   = 0 deterministically (within the loop bound). This axiom
-   captures the protocol-correctness side; together with
-   sign_body_compute_sig_spec it recovers the previous
-   unconditional byte-walk shape. *)
-axiom sign_no_reject_on_honest_layout :
+   No-reject is NOT a universal property of honest signing — it is
+   a property of ACCEPTED signing attempts. The conditioned form:
+   given layout-conforming inputs AND the ML-DSA-65 accept event
+   holds for the protocol-level inputs (sk, m, ctx, rho_rnd), the
+   extracted libjade M.sign returns status = 0.
+
+   The accept event is `accept_signing_attempt`, declared at
+   Pulsar_N1.ec. FIPS 204 §6.2's kappa loop converges with
+   probability ≈ 1 − (3/4)^256 per attempt; the kappa-bounded loop
+   accumulates failure probability ≤ 2^-128 across the bound. The
+   probability bound is tracked operationally
+   (Pulsar_N1.mldsa_accept_lower_bound) rather than via
+   probabilistic Hoare logic.
+
+   Previous shape claimed UNCONDITIONAL status=0 on layout-
+   conforming inputs — too strong, since rejection is a
+   probabilistic event. With the accept-path precondition explicit,
+   the axiom is honest: "if the attempt accepts, the byte output
+   is the centralized FIPS 204 signature".
+
+   COMPANION to sign_body_compute_sig_spec: together they recover
+   the conditional byte-walk shape. *)
+axiom sign_no_reject_on_accepted_honest_layout :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
          (full : sign_full_args_t),
     Pulsar_N1_Sign_Layout.layout_sign_args
       mem_pre ptrs (wire_sign_args_of_full full) =>
+    Pulsar_N1.accept_signing_attempt
+      full.`sgn_sk_n1 full.`sgn_m_n1
+      full.`sgn_ctx_n1 full.`sgn_rnd_n1 =>
     sign_body_compute_status mem_pre ptrs = 0.
 
-(* The old `sign_body_spec` shape, now PROVED. Compose
-   read_after_write_sig_sign with sign_body_compute_sig_spec. *)
+(* The `sign_body_spec` shape — STATUS DISCHARGED by the
+   accepted-path no-reject axiom (followup B). Threads
+   `accept_signing_attempt` from the caller through to the
+   byte-walk axiom. *)
 lemma sign_body_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
          (full : sign_full_args_t),
     Pulsar_N1_Sign_Layout.layout_sign_args
       mem_pre ptrs (wire_sign_args_of_full full) =>
+    Pulsar_N1.accept_signing_attempt
+      full.`sgn_sk_n1 full.`sgn_m_n1
+      full.`sgn_ctx_n1 full.`sgn_rnd_n1 =>
     refine_sig_to_n1_sign
       (Pulsar_N1_Sign_Layout.read_sig_sign
          (sign_body_fn mem_pre ptrs)
          ptrs.`Pulsar_N1_Sign_Layout.ptr_signature)
     = sign_abs_op full.
 proof.
-  move=> mem_pre ptrs full Hlay.
+  move=> mem_pre ptrs full Hlay Haccept.
   have Hstatus :=
-    sign_no_reject_on_honest_layout mem_pre ptrs full Hlay.
+    sign_no_reject_on_accepted_honest_layout
+      mem_pre ptrs full Hlay Haccept.
   rewrite /sign_body_fn.
   rewrite Pulsar_N1_Sign_Layout.read_after_write_sig_sign.
   by apply sign_body_compute_sig_spec.
@@ -413,13 +435,16 @@ qed.
 
 (* The combined byte-equality + abstract-op identity, applied at
    a specific full_args. The wrapper-bridge collapse depends on
-   this lemma. *)
+   this lemma. Threads accept_signing_attempt through. *)
 lemma sign_body_writes_abs :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
          (full : sign_full_args_t),
     Pulsar_N1_Sign_Layout.layout_sign_args
       mem_pre ptrs (wire_sign_args_of_full full) =>
+    Pulsar_N1.accept_signing_attempt
+      full.`sgn_sk_n1 full.`sgn_m_n1
+      full.`sgn_ctx_n1 full.`sgn_rnd_n1 =>
     refine_sig_to_n1_sign
       (Pulsar_N1_Sign_Layout.read_sig_sign
          (sign_body_fn mem_pre ptrs)
@@ -435,6 +460,9 @@ lemma sign_body_writes_mldsa_sign :
          (full : sign_full_args_t),
     Pulsar_N1_Sign_Layout.layout_sign_args
       mem_pre ptrs (wire_sign_args_of_full full) =>
+    Pulsar_N1.accept_signing_attempt
+      full.`sgn_sk_n1 full.`sgn_m_n1
+      full.`sgn_ctx_n1 full.`sgn_rnd_n1 =>
     refine_sig_to_n1_sign
       (Pulsar_N1_Sign_Layout.read_sig_sign
          (sign_body_fn mem_pre ptrs)
@@ -443,9 +471,9 @@ lemma sign_body_writes_mldsa_sign :
         full.`sgn_sk_n1 full.`sgn_m_n1
         full.`sgn_ctx_n1 full.`sgn_rnd_n1.
 proof.
-  move=> mem_pre ptrs full Hlay.
-  rewrite (sign_body_spec mem_pre ptrs full Hlay) /sign_abs_op /=.
-  done.
+  move=> mem_pre ptrs full Hlay Haccept.
+  rewrite (sign_body_spec mem_pre ptrs full Hlay Haccept) /sign_abs_op.
+  by rewrite /Pulsar_N1.mldsa_sign_op.
 qed.
 
 (* ===================================================================

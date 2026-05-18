@@ -125,6 +125,8 @@ lemma combine_wrapper_bridge :
          (r1s : Pulsar_N1.round1_t list)
          (r2s : Pulsar_N1.round2_t list),
     gpk = Pulsar_N1.derive_pk (Pulsar_N1.reconstruct quorum shares) =>
+    Pulsar_N1.accept_signing_attempt
+      (Pulsar_N1.reconstruct quorum shares) m ctx rho_rnd =>
     let (mem, ptrs, full) =
       encode_combine_args gpk m ctx quorum shares rho_rnd r1s r2s in
     refine_sig_to_n1
@@ -134,7 +136,7 @@ lemma combine_wrapper_bridge :
     = Pulsar_N1.mldsa_sign_op
         (Pulsar_N1.reconstruct quorum shares) m ctx rho_rnd.
 proof.
-  move=> gpk m ctx quorum shares rho_rnd r1s r2s Hgpk /=.
+  move=> gpk m ctx quorum shares rho_rnd r1s r2s Hgpk Haccept /=.
   rewrite /encode_combine_args /=.
   have Hlay :
     Pulsar_N1_Combine_Layout.layout_combine_args
@@ -154,6 +156,20 @@ proof.
                     (n1_inputs_to_combine_full gpk m ctx quorum shares
                                                rho_rnd r1s r2s).
   - by rewrite /protocol_consistency /n1_inputs_to_combine_full /=.
+  have Hacc :
+    Pulsar_N1.accept_signing_attempt
+      (Pulsar_N1.reconstruct
+         (n1_inputs_to_combine_full gpk m ctx quorum shares
+                                    rho_rnd r1s r2s).`full_quorum
+         (n1_inputs_to_combine_full gpk m ctx quorum shares
+                                    rho_rnd r1s r2s).`full_shares)
+      (n1_inputs_to_combine_full gpk m ctx quorum shares
+                                 rho_rnd r1s r2s).`full_m
+      (n1_inputs_to_combine_full gpk m ctx quorum shares
+                                 rho_rnd r1s r2s).`full_ctx
+      (n1_inputs_to_combine_full gpk m ctx quorum shares
+                                 rho_rnd r1s r2s).`full_rho_rnd.
+  - by rewrite /n1_inputs_to_combine_full /=.
   have Hspec :=
     combine_body_spec
       (Pulsar_N1_Combine_Layout.encode_combine_args
@@ -166,7 +182,7 @@ proof.
                                        rho_rnd r1s r2s))).`2
       (n1_inputs_to_combine_full gpk m ctx quorum shares
                                  rho_rnd r1s r2s)
-      Hlay Hconsist.
+      Hlay Hconsist Hacc.
   rewrite Hspec /combine_abs_op /n1_inputs_to_combine_full /=.
   done.
 qed.
@@ -241,24 +257,23 @@ lemma combine_wrapper_equiv_CombineAbs :
             ={arg}
             /\ group_pk{1} = Pulsar_N1.derive_pk
                               (Pulsar_N1.reconstruct quorum{1} shares{1})
+            /\ Pulsar_N1.accept_signing_attempt
+                 (Pulsar_N1.reconstruct quorum{1} shares{1})
+                 m{1} ctx{1} rho_rnd{1}
         ==> ={res} ].
 proof.
   proc.
   inline Pulsar_N1.CombineAbs.combine Pulsar_N1.FIPS204Sign.sign.
-  wp; skip => /> &1.
-  (* After `=> />` the equational `={...}` constraints simplify the
-     goal: {2}-side wrapper variables are rewritten to the {1}-side
-     names. The gpk-consistency hypothesis (the conjunction's right
-     conjunct, gpk{1} = derive_pk(reconstruct quorum{1} shares{1}))
-     is consumed by `=> />` as a rewriting/substitution rule because
-     it has the shape of an equation. What remains is a pure equation
-     in {1}-side names, equivalent to the bridge's conclusion when
-     the bridge's gpk-precondition argument is `eq_refl`. *)
+  wp; skip => /> &1 Haccept.
+  (* After `=> />` the equational `={...}` and gpk-consistency
+     conjuncts are consumed (eq_refl on gpk). Haccept survives as a
+     hypothesis. Apply combine_wrapper_bridge with eq_refl for the
+     gpk-precondition and Haccept for the accept-path precondition. *)
   exact: (combine_wrapper_bridge
             (Pulsar_N1.derive_pk (Pulsar_N1.reconstruct quorum{1} shares{1}))
             m{1} ctx{1} quorum{1}
             shares{1} rho_rnd{1} r1s{1} r2s{1}
-            (eq_refl _)).
+            (eq_refl _) Haccept).
 qed.
 
 (* ===================================================================
