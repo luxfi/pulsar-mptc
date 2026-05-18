@@ -596,8 +596,61 @@ op mldsa_compute_c_tilde
    : c_tilde_n1_t =
   shake_mu_w1 mu_val (central_w1 usk mu_val rho_rnd).
 
-op mldsa_compute_z :
-  unpacked_sk_t -> mu_t -> randomness_t -> z_n1_t.
+(* ===================================================================
+   v11 — z-stage structural decomposition (FIPS 204 §6.2 z = y + c·s1).
+
+   `mldsa_compute_z` is now a STRUCTURAL DEFINITION composing four
+   per-stage ops:
+     - `central_y_at_accepted_kappa` — the ExpandMask y at the accepted κ
+     - `central_c_from_c_tilde` — SampleInBall(c_tilde) → ring element c
+     - `apply_c_to_s1` — c · s_1 (challenge-scaled secret share)
+     - `add_response_vec` — polynomial-vector addition
+
+   The sign-side z-stage byte-walk obligation decomposes into a
+   narrower y-spec + cs1-spec pair (each over a polynomial vector,
+   not the full z output). The structural composition is identical
+   on both extracted and centralised sides, so the refinement-side
+   `sign_body_z_spec` becomes a derived lemma via two narrower
+   sub-axioms.
+
+   For the combine threshold side: the v8 Lean-bridged path remains
+   the closure mechanism. The v11 decomposition does NOT replace v8 —
+   `combine_body_z_spec` stays a derived lemma via the
+   `threshold_partial_response_identity` bridge, and the v11
+   per-stage ops below add structural visibility to mldsa_compute_z's
+   internal form. *)
+
+type response_vec_t.        (* R_q^l polynomial vector — y / cs1 / z all live here *)
+type challenge_ring_t.      (* R_q ring element — c from SampleInBall *)
+
+op central_y_at_accepted_kappa :
+  unpacked_sk_t -> mu_t -> randomness_t -> response_vec_t.
+  (* the ExpandMask(rho', κ) mask at the accepting κ; κ-selection
+     folded into the abstract op surface *)
+
+op central_c_from_c_tilde :
+  c_tilde_n1_t -> challenge_ring_t.
+  (* FIPS 204 §3.5.1 SampleInBall: c_tilde → c ∈ R_q with τ ±1 coeffs *)
+
+op apply_c_to_s1 :
+  challenge_ring_t -> unpacked_sk_t -> response_vec_t.
+  (* c · s_1 — scalar-by-vector multiplication where s_1 ∈ R_q^l is
+     unpacked from the secret key *)
+
+op add_response_vec :
+  response_vec_t -> response_vec_t -> z_n1_t.
+  (* polynomial-vector addition; coerces R_q^l + R_q^l to the z output
+     type *)
+
+op mldsa_compute_z
+   (usk : unpacked_sk_t) (mu_val : mu_t) (rho_rnd : randomness_t)
+   : z_n1_t =
+  add_response_vec
+    (central_y_at_accepted_kappa usk mu_val rho_rnd)
+    (apply_c_to_s1
+       (central_c_from_c_tilde
+          (mldsa_compute_c_tilde usk mu_val rho_rnd))
+       usk).
 
 (* w_low — the low-bits polynomial-vector intermediate at the accepting
    kappa. In FIPS 204 §3.4.2 decompose, w factors as
@@ -743,11 +796,11 @@ lemma pack_n1_signature_injective :
     c1 = c2 /\ z1 = z2 /\ h1 = h2.
 proof.
   move=> c1 c2 z1 z2 h1 h2 Heq.
-  have Htup : (c1, z1, h1) = (c2, z2, h2).
-  - rewrite -(pack_unpack_n1_signature_roundtrip c1 z1 h1).
-    rewrite Heq.
-    by rewrite pack_unpack_n1_signature_roundtrip.
-  by smt().
+  have H1 := pack_unpack_n1_signature_roundtrip c1 z1 h1.
+  have H2 := pack_unpack_n1_signature_roundtrip c2 z2 h2.
+  rewrite Heq in H1.
+  rewrite H1 in H2.
+  by case: H2 => -> -> ->.
 qed.
 
 (* sign_internal_loop factors structurally through the component-

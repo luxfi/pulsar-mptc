@@ -369,10 +369,25 @@ op sign_body_compute_c_tilde
     (sign_body_compute_mu mem_pre ptrs)
     (sign_body_compute_w1 mem_pre ptrs).
 
-op sign_body_compute_z :
+(* v11: per-stage extracted intermediates for z = y + c·s_1.
+   Mirrors `Pulsar_N1.mldsa_compute_z`'s v11 structural definition. *)
+op sign_body_compute_y :
   Pulsar_N1_Memory.mem_t ->
   Pulsar_N1_Sign_Layout.sign_ptrs_t ->
-  Pulsar_N1.z_n1_t.
+  Pulsar_N1.response_vec_t.
+
+op sign_body_compute_cs1 :
+  Pulsar_N1_Memory.mem_t ->
+  Pulsar_N1_Sign_Layout.sign_ptrs_t ->
+  Pulsar_N1.response_vec_t.
+
+op sign_body_compute_z
+   (mem_pre : Pulsar_N1_Memory.mem_t)
+   (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+   : Pulsar_N1.z_n1_t =
+  Pulsar_N1.add_response_vec
+    (sign_body_compute_y mem_pre ptrs)
+    (sign_body_compute_cs1 mem_pre ptrs).
 
 (* w_low polynomial-vector intermediate the extracted libjade sign
    body produces at the accepting kappa. Mirror of `sign_body_compute_w`
@@ -580,7 +595,38 @@ proof.
   by rewrite Hmu Hw1.
 qed.
 
-axiom sign_body_z_spec :
+(* v11: two narrower z-stage sub-axioms (y + cs1) replacing the
+   prior bundled sign_body_z_spec. The structural add_response_vec
+   composition is shared with Pulsar_N1.mldsa_compute_z, so z-equality
+   reduces to y-equality + cs1-equality. *)
+axiom sign_body_y_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+         (full : sign_full_args_t),
+    Pulsar_N1_Sign_Layout.layout_sign_args
+      mem_pre ptrs (wire_sign_args_of_full full) =>
+    sign_body_compute_status mem_pre ptrs = 0 =>
+    sign_body_compute_y mem_pre ptrs
+    = Pulsar_N1.central_y_at_accepted_kappa
+        (Pulsar_N1.unpack_sk full.`sgn_sk_n1)
+        (Pulsar_N1.compute_mu full.`sgn_m_n1 full.`sgn_ctx_n1)
+        full.`sgn_rnd_n1.
+
+axiom sign_body_cs1_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+         (full : sign_full_args_t),
+    Pulsar_N1_Sign_Layout.layout_sign_args
+      mem_pre ptrs (wire_sign_args_of_full full) =>
+    sign_body_compute_status mem_pre ptrs = 0 =>
+    sign_body_compute_cs1 mem_pre ptrs
+    = Pulsar_N1.apply_c_to_s1
+        (Pulsar_N1.central_c_from_c_tilde
+           (sign_body_compute_c_tilde mem_pre ptrs))
+        (Pulsar_N1.unpack_sk full.`sgn_sk_n1).
+
+(* sign_body_z_spec — was primitive axiom; v11 DERIVED LEMMA. *)
+lemma sign_body_z_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
          (full : sign_full_args_t),
@@ -592,6 +638,15 @@ axiom sign_body_z_spec :
         (Pulsar_N1.unpack_sk full.`sgn_sk_n1)
         (Pulsar_N1.compute_mu full.`sgn_m_n1 full.`sgn_ctx_n1)
         full.`sgn_rnd_n1.
+proof.
+  move=> mem_pre ptrs full Hlay Hstatus.
+  have Hy   := sign_body_y_spec   mem_pre ptrs full Hlay Hstatus.
+  have Hcs1 := sign_body_cs1_spec mem_pre ptrs full Hlay Hstatus.
+  have Hct  := sign_body_c_tilde_spec mem_pre ptrs full Hlay Hstatus.
+  rewrite /sign_body_compute_z /Pulsar_N1.mldsa_compute_z.
+  rewrite Hy Hcs1 Hct.
+  done.
+qed.
 
 (* Narrower w_low-polynomial axiom: extracted w_low polynomial-vector
    matches the centralised central_w_low at the same protocol-level
@@ -834,13 +889,16 @@ qed.
 (* ===================================================================
    AXIOM ACCOUNTING
 
-   axioms (3 byte-walks + 1 byte-layout):
+   axioms (4 byte-walks + 1 byte-layout):
      Byte-walks (libjade body, conditioned on layout + status = 0):
        sign_body_w_spec        (polynomial vector w before HighBits)
        sign_body_w_low_spec    (polynomial vector w_low — low-bits side
                                  of FIPS 204 §3.4.2 decompose; h-stage
                                  sub-stage, narrower than h)
-       sign_body_z_spec        (response z from kappa loop)
+       sign_body_y_spec        (y mask vector at the accepting kappa;
+                                 z-stage sub-stage, narrower than z)
+       sign_body_cs1_spec      (c·s_1 product at the accepting kappa;
+                                 z-stage sub-stage, narrower than z)
      Byte-layout (FIPS 204 §5.4.1 ExternalMu, wrapper-layer
                   responsibility):
        sign_layout_m_buffer_external_mu
@@ -852,7 +910,11 @@ qed.
 
      The MakeHint composition tying (w, w_low) → h is encoded as a
      STRUCTURAL DEFINITION on both sides (via
-     `Pulsar_N1.make_hint_of_w`), not as an axiom.
+     `Pulsar_N1.make_hint_of_w`), not as an axiom. Symmetrically, the
+     §6.2 `z = y + c · s_1` composition is encoded as a STRUCTURAL
+     DEFINITION on both sides (via `Pulsar_N1.add_response_vec`
+     composed with `apply_c_to_s1 ∘ central_c_from_c_tilde`), not as
+     an axiom.
 
      Each conditioned on layout + status = 0.
      Tracked #3. Mirrors the combine-side per-stage split.
