@@ -154,12 +154,30 @@ type sign_abs_args_t = {
   m_abs   : message_t;
 }.
 
+(* Pointer-disjointness predicate (Agent 1 C2 — sign side).
+   The three sign-side byte buffers (ptr_signature, ptr_m, ptr_sk)
+   must not overlap, and the signature buffer must have room for
+   sig_len_sign bytes. Without this conjunct an adversarial layout
+   could alias buffers (e.g. ptr_signature overlapping ptr_sk) and
+   the byte-walk axiom would be discharged on a memory state where
+   libjade M.sign would have clobbered the sk it just read. *)
+op sign_pointers_well_separated (ptrs : sign_ptrs_t) : bool =
+  let p_s = ptrs.`ptr_signature in
+  let p_m = ptrs.`ptr_m in
+  let p_k = ptrs.`ptr_sk in
+  let m_l = ptrs.`m_len in
+     0 <= p_s
+  /\ p_s + sig_len_sign <= p_m
+  /\ p_m + m_l <= p_k
+  /\ 0 <= m_l.
+
 op layout_sign_args
    (mem : mem_t) (ptrs : sign_ptrs_t)
    (arg_abs : sign_abs_args_t) : bool =
      read_sk  mem ptrs.`ptr_sk                       = arg_abs.`sk_abs
   /\ read_msg mem ptrs.`ptr_m ptrs.`m_len            = arg_abs.`m_abs
-  /\ ptrs.`m_len = msg_len arg_abs.`m_abs.
+  /\ ptrs.`m_len = msg_len arg_abs.`m_abs
+  /\ sign_pointers_well_separated ptrs.
 
 (* ===================================================================
    Concrete encoder: lay out the abstract args into memory at fresh,

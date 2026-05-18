@@ -140,6 +140,27 @@ type combine_abs_args_t = {
   r2s_abs     : r2_msg_t list;
 }.
 
+(* Pointer-disjointness predicate (Agent 1 C2). The four byte
+   buffers (c_tilde, t0, r2_msgs, sig_out) must not overlap; the
+   byte-walk obligation assumes the layout encoder placed them at
+   non-overlapping addresses so the extracted body's writes to
+   sig_out don't clobber sk/m and the body's reads of c_tilde/t0
+   don't see overlapping bytes. Without this conjunct an
+   adversarial layout could alias buffers and the byte-walk
+   axiom would be discharged on a memory state where the
+   extracted body's behavior makes no sense. *)
+op pointers_well_separated (ptrs : combine_ptrs_t) (n_r2 : int) : bool =
+  let p_c = ptrs.`c_tilde_ptr in
+  let p_t = ptrs.`t0_ptr in
+  let p_r = ptrs.`round2_msgs_ptr in
+  let p_s = ptrs.`sig_out_ptr in
+  let len_r = n_r2 * response_bytes in
+     0 <= p_c
+  /\ p_c + c_tilde_len <= p_t
+  /\ p_t + t0_len <= p_r
+  /\ p_r + len_r  <= p_s
+  /\ 0 <= n_r2.
+
 op layout_combine_args
    (m : mem_t) (ptrs : combine_ptrs_t)
    (arg_abs : combine_abs_args_t) : bool =
@@ -147,7 +168,8 @@ op layout_combine_args
   /\ read_t0_vec  m ptrs.`t0_ptr                = arg_abs.`t0_abs
   /\ read_r2_msgs m ptrs.`round2_msgs_ptr
                   ptrs.`threshold_w32           = arg_abs.`r2s_abs
-  /\ size arg_abs.`r2s_abs = ptrs.`threshold_w32.
+  /\ size arg_abs.`r2s_abs = ptrs.`threshold_w32
+  /\ pointers_well_separated ptrs (size arg_abs.`r2s_abs).
 
 (* ===================================================================
    Concrete encoder: lay out the abstract args into memory at fresh

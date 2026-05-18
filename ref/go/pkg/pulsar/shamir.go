@@ -262,6 +262,17 @@ func shareFromBytes(x uint32, buf [shareWireSize]byte) shamirShare {
 // ID-stable evaluation point rather than a position-in-committee
 // point. The DKG default uses (committee_index + 1) which is simpler
 // and KAT-stable.
+//
+// Distribution honesty (Agent 4 M2): this is `digest[0] % 256 + 1`,
+// which gives outputs in [1, 256]. Because `shamirPrime - 1 = 256`
+// and `digest[0]` is uniform on [0, 255] (one cSHAKE256 byte), the
+// modular reduction is the identity — every output in [1, 256] is
+// equiprobable. This is a HAPPY COINCIDENCE of the parameter choice
+// (small prime = 257). If shamirPrime ever changes (extremely
+// unlikely; the byte-wise GF(257) Shamir field is fixed by spec
+// §4.2), this function will silently bias the distribution and
+// MUST be rewritten to use rejection sampling. The current
+// implementation is correct ONLY because shamirPrime - 1 == 256.
 func EvalPointFromID(id NodeID) uint32 {
 	digest := cshake256(id[:], 1, tagSeedShare)
 	return uint32(digest[0])%(shamirPrime-1) + 1
