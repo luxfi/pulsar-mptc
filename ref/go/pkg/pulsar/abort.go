@@ -22,10 +22,32 @@ import (
 
 // Errors returned by abort-evidence verification.
 var (
-	ErrInvalidComplaint   = errors.New("pulsar: complaint structure invalid")
-	ErrComplaintSelfAcc   = errors.New("pulsar: complaint accuser equals accused")
-	ErrComplaintNoSig     = errors.New("pulsar: complaint missing accuser signature")
+	ErrInvalidComplaint = errors.New("pulsar: complaint structure invalid")
+	ErrComplaintSelfAcc = errors.New("pulsar: complaint accuser equals accused")
+	ErrComplaintNoSig   = errors.New("pulsar: complaint missing accuser signature")
+	ErrComplaintKind    = errors.New("pulsar: complaint kind out of range")
+	ErrComplaintNoEv    = errors.New("pulsar: complaint missing evidence blob")
 )
+
+// AbortSignatureVerifier is the pluggable identity-layer signature
+// verifier. Third parties (chain validators, audit observers, slashing
+// modules) call VerifyAbortEvidence with an instance that wraps their
+// production identity-key scheme (Ed25519, hybrid PQ, BLS, etc.).
+//
+// `transcript` is the canonical to-be-signed bytes returned by
+// TranscriptForComplaint(e). `signature` is e.Signature. `accuser` is
+// e.Accuser — the verifier looks up the accuser's public identity key
+// in its own validator-set record and runs the underlying scheme's
+// verify.
+//
+// Return true iff the signature is valid AND the accuser's identity is
+// known to the verifier (i.e., the accuser is a registered party at
+// the complained-about epoch). A nil verifier check is rejected by
+// VerifyAbortEvidence via ErrComplaintNoSig — there is no implicit
+// "skip signature verification" path.
+type AbortSignatureVerifier interface {
+	VerifyAbortSignature(accuser NodeID, transcript, signature []byte) bool
+}
 
 // MarshalAbortEvidence serialises an AbortEvidence to its canonical
 // wire form. Layout:
@@ -134,4 +156,70 @@ func transcriptForComplaint(e *AbortEvidence) []byte {
 // in the consumer's chain-specific identity layer).
 func TranscriptForComplaint(e *AbortEvidence) []byte {
 	return transcriptForComplaint(e)
+}
+
+// VerifyAbortEvidenceForm performs the third-party-verifiable
+// STRUCTURAL well-formedness check on an AbortEvidence (Agent 4 H1
+// closure). Independent of any signature scheme.
+//
+// Checks:
+//   - e is non-nil.
+//   - accuser != accused.
+//   - kind is in the registered ComplaintKind range (1..N).
+//   - evidence blob is non-empty (kind-specific structural validation
+//     of the blob is the consumer's responsibility; the form check
+//     only ensures the blob is present).
+//   - signature is non-empty.
+//
+// Returns the first matching error, or nil if all structural checks
+// pass. Third-party verifiers should call this BEFORE attempting
+// signature verification — a well-formed transcript depends on the
+// form being valid first.
+func VerifyAbortEvidenceForm(e *AbortEvidence) error {
+	if e == nil {
+		return ErrInvalidComplaint
+	}
+	if e.Accuser == e.Accused {
+		return ErrComplaintSelfAcc
+	}
+	switch e.Kind {
+	case ComplaintEquivocation, ComplaintBadDelivery,
+		ComplaintMACFailure, ComplaintRangeFailure:
+		// known kind
+	default:
+		return ErrComplaintKind
+	}
+	if len(e.Evidence) == 0 {
+		return ErrComplaintNoEv
+	}
+	if len(e.Signature) == 0 {
+		return ErrComplaintNoSig
+	}
+	return nil
+}
+
+// VerifyAbortEvidence performs the FULL third-party verification of an
+// AbortEvidence (Agent 4 H1 closure):
+//
+//  1. Structural well-formedness via VerifyAbortEvidenceForm.
+//  2. Identity-layer signature check via the supplied verifier.
+//
+// The verifier MUST be non-nil — the package does not provide a
+// default "skip signature" path. Returns ErrComplaintNoSig if the
+// supplied verifier rejects the signature (i.e., the accuser's
+// identity is not on file or the signature is forged).
+//
+// Pure form validation is available standalone via
+// VerifyAbortEvidenceForm.
+func VerifyAbortEvidence(e *AbortEvidence, v AbortSignatureVerifier) error {
+	if err := VerifyAbortEvidenceForm(e); err != nil {
+		return err
+	}
+	if v == nil {
+		return ErrComplaintNoSig
+	}
+	if !v.VerifyAbortSignature(e.Accuser, TranscriptForComplaint(e), e.Signature) {
+		return ErrComplaintNoSig
+	}
+	return nil
 }

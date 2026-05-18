@@ -86,6 +86,127 @@ func TestAbortEvidence_TranscriptStable(t *testing.T) {
 	}
 }
 
+// stubVerifier is a deterministic AbortSignatureVerifier for tests:
+// it accepts iff the signature equals a fixed prefix of the transcript.
+type stubVerifier struct {
+	acceptPrefix []byte
+}
+
+func (s *stubVerifier) VerifyAbortSignature(_ NodeID, transcript, signature []byte) bool {
+	if len(signature) > len(transcript) {
+		return false
+	}
+	if !bytes.HasPrefix(transcript, signature) {
+		return false
+	}
+	if !bytes.Equal(signature[:len(s.acceptPrefix)], s.acceptPrefix) {
+		return false
+	}
+	return true
+}
+
+func TestVerifyAbortEvidenceForm_HappyPath(t *testing.T) {
+	e := &AbortEvidence{
+		Kind:      ComplaintBadDelivery,
+		Accuser:   NodeID{1},
+		Accused:   NodeID{2},
+		Epoch:     1,
+		Evidence:  []byte("evidence"),
+		Signature: []byte("sig"),
+	}
+	if err := VerifyAbortEvidenceForm(e); err != nil {
+		t.Fatalf("form check rejected valid evidence: %v", err)
+	}
+}
+
+func TestVerifyAbortEvidenceForm_RejectsNil(t *testing.T) {
+	if err := VerifyAbortEvidenceForm(nil); err != ErrInvalidComplaint {
+		t.Fatalf("nil not rejected: %v", err)
+	}
+}
+
+func TestVerifyAbortEvidenceForm_RejectsSelfAcc(t *testing.T) {
+	e := &AbortEvidence{Kind: ComplaintEquivocation, Accuser: NodeID{1}, Accused: NodeID{1},
+		Evidence: []byte("x"), Signature: []byte("y")}
+	if err := VerifyAbortEvidenceForm(e); err != ErrComplaintSelfAcc {
+		t.Fatalf("self-acc not rejected: %v", err)
+	}
+}
+
+func TestVerifyAbortEvidenceForm_RejectsBadKind(t *testing.T) {
+	e := &AbortEvidence{Kind: ComplaintKind(99), Accuser: NodeID{1}, Accused: NodeID{2},
+		Evidence: []byte("x"), Signature: []byte("y")}
+	if err := VerifyAbortEvidenceForm(e); err != ErrComplaintKind {
+		t.Fatalf("bad kind not rejected: %v", err)
+	}
+}
+
+func TestVerifyAbortEvidenceForm_RejectsNoEvidence(t *testing.T) {
+	e := &AbortEvidence{Kind: ComplaintEquivocation, Accuser: NodeID{1}, Accused: NodeID{2},
+		Signature: []byte("sig")}
+	if err := VerifyAbortEvidenceForm(e); err != ErrComplaintNoEv {
+		t.Fatalf("empty evidence not rejected: %v", err)
+	}
+}
+
+func TestVerifyAbortEvidenceForm_RejectsNoSignature(t *testing.T) {
+	e := &AbortEvidence{Kind: ComplaintEquivocation, Accuser: NodeID{1}, Accused: NodeID{2},
+		Evidence: []byte("x")}
+	if err := VerifyAbortEvidenceForm(e); err != ErrComplaintNoSig {
+		t.Fatalf("empty signature not rejected: %v", err)
+	}
+}
+
+func TestVerifyAbortEvidence_HappyPath(t *testing.T) {
+	e := &AbortEvidence{
+		Kind:     ComplaintBadDelivery,
+		Accuser:  NodeID{1},
+		Accused:  NodeID{2},
+		Epoch:    1,
+		Evidence: []byte("ev"),
+	}
+	// sign := first 4 bytes of transcript
+	transcript := TranscriptForComplaint(e)
+	e.Signature = append([]byte{}, transcript[:4]...)
+	v := &stubVerifier{acceptPrefix: transcript[:4]}
+	if err := VerifyAbortEvidence(e, v); err != nil {
+		t.Fatalf("verify rejected valid: %v", err)
+	}
+}
+
+func TestVerifyAbortEvidence_RejectsBadSignature(t *testing.T) {
+	e := &AbortEvidence{
+		Kind:      ComplaintBadDelivery,
+		Accuser:   NodeID{1},
+		Accused:   NodeID{2},
+		Epoch:     1,
+		Evidence:  []byte("ev"),
+		Signature: []byte("forged"),
+	}
+	transcript := TranscriptForComplaint(e)
+	// stub accepts only signatures that PREFIX the transcript;
+	// "forged" does not match transcript[:6] in general
+	v := &stubVerifier{acceptPrefix: transcript[:1]}
+	err := VerifyAbortEvidence(e, v)
+	if err != ErrComplaintNoSig {
+		t.Fatalf("forged signature not rejected: %v", err)
+	}
+}
+
+func TestVerifyAbortEvidence_RejectsNilVerifier(t *testing.T) {
+	e := &AbortEvidence{
+		Kind:      ComplaintBadDelivery,
+		Accuser:   NodeID{1},
+		Accused:   NodeID{2},
+		Epoch:     1,
+		Evidence:  []byte("ev"),
+		Signature: []byte("sig"),
+	}
+	if err := VerifyAbortEvidence(e, nil); err != ErrComplaintNoSig {
+		t.Fatalf("nil verifier not rejected: %v", err)
+	}
+}
+
 func TestComplaintKind_String(t *testing.T) {
 	for _, tc := range []struct {
 		k    ComplaintKind
