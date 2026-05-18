@@ -23,6 +23,8 @@ implementation-level changes see `git log`.
 | v10 docs | `ec14c79` | full submission package: PATENTS + AXIOM-INVENTORY + PROOF-CLAIMS + FIPS-TRACEABILITY + TRUSTED-COMPUTING-BASE + NIST-SUBMISSION + docs/evaluation + docs/patent-claims | submission-grade documentation |
 | v11 sign z | `02c29f2` | sign z-stage via z = y + c·s1 structural split | `sign_body_z_spec` → derived lemma; 2 new sub-axioms `sign_body_y_spec` + `sign_body_cs1_spec` |
 | v11 codec | `81da17b` | signature_t concretization as record wrapping int list | **3 codec axioms ELIMINATED** (real closure, not decomposition) |
+| v12 w_spec | `02798c7` | w-stage via ExpandA + ExpandMask + mat_vec_mul structural split | `*_body_w_spec` × 2 → derived lemmas; 4 new sub-axioms (matrix_a + mask_y on each side) |
+| v13 accept | `02798c7` | per-R1/R2/R3/R4 accept bridge axiom (no-reject decomposition prep) | +1 bridge axiom (`accept_signing_attempt_iff_R1234`) connects bundled predicate to 4 per-R conditions without breaking downstream tactics |
 
 ### Derived lemmas added (previously primitive axioms)
 
@@ -37,8 +39,9 @@ sub-axioms + structural composition):
 - `combine_body_mu_input_spec`, `sign_body_mu_input_spec` (v9)
 - `combine_body_h_spec`, `sign_body_h_spec` (v10)
 - `sign_body_z_spec` (v11 — z = y + c·s1 structural split)
+- `combine_body_w_spec`, `sign_body_w_spec` (v12 — A·y structural split)
 
-Total: 12 axioms re-classified into derived lemmas across v5–v11.
+Total: 14 axioms re-classified into derived lemmas across v5–v13.
 
 ### Actual axiom eliminations (v11 codec, real closure)
 
