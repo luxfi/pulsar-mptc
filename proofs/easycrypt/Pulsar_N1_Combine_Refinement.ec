@@ -273,11 +273,27 @@ op combine_body_compute_mu
    shares; for sign, this is libjade's A·y at the accepting kappa.
    `combine_body_compute_w1` is now DEFINED as HighBits applied to
    this intermediate, matching the structural definition of
-   `Pulsar_N1.central_w1`. *)
-op combine_body_compute_w :
+   `Pulsar_N1.central_w1`.
+
+   v12: combine_body_compute_w is itself decomposed structurally
+   via apply_mat_vec_mul (ExpandA(rho), ExpandMask(rho', accept_κ)). *)
+op combine_body_compute_matrix_a :
   Pulsar_N1_Memory.mem_t ->
   Pulsar_N1_Combine_Layout.combine_ptrs_t ->
-  Pulsar_N1.w_value_t.
+  Pulsar_N1.matrix_a_t.
+
+op combine_body_compute_mask_y :
+  Pulsar_N1_Memory.mem_t ->
+  Pulsar_N1_Combine_Layout.combine_ptrs_t ->
+  Pulsar_N1.mask_vec_t.
+
+op combine_body_compute_w
+   (mem_pre : Pulsar_N1_Memory.mem_t)
+   (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+   : Pulsar_N1.w_value_t =
+  Pulsar_N1.apply_mat_vec_mul
+    (combine_body_compute_matrix_a mem_pre ptrs)
+    (combine_body_compute_mask_y mem_pre ptrs).
 
 (* === v8: z-stage Lean-bridged aggregation infrastructure =========
    The extracted combine procedure aggregates Round-2 partial
@@ -593,7 +609,40 @@ qed.
    inputs. The HighBits step is structural (folded into the
    definitions of `combine_body_compute_w1` and `central_w1` on
    both sides), so w-equality lifts to w1-equality by congruence. *)
-axiom combine_body_w_spec :
+(* v12: two narrower w-stage sub-axioms (matrix_a + mask_y) replacing
+   the prior bundled combine_body_w_spec. The apply_mat_vec_mul
+   structural composition is shared with Pulsar_N1.central_w, so
+   w-equality reduces to matrix-equality + mask-equality. *)
+axiom combine_body_matrix_a_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+         (full : combine_full_args_t),
+    Pulsar_N1_Combine_Layout.layout_combine_args
+      mem_pre ptrs (wire_args_of_full full) =>
+    protocol_consistency full =>
+    combine_body_compute_status mem_pre ptrs = 0 =>
+    combine_body_compute_matrix_a mem_pre ptrs
+    = Pulsar_N1.central_matrix_a
+        (Pulsar_N1.unpack_sk
+           (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares)).
+
+axiom combine_body_mask_y_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
+         (full : combine_full_args_t),
+    Pulsar_N1_Combine_Layout.layout_combine_args
+      mem_pre ptrs (wire_args_of_full full) =>
+    protocol_consistency full =>
+    combine_body_compute_status mem_pre ptrs = 0 =>
+    combine_body_compute_mask_y mem_pre ptrs
+    = Pulsar_N1.central_mask_y_at_accepted_kappa
+        (Pulsar_N1.unpack_sk
+           (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares))
+        (Pulsar_N1.compute_mu full.`full_m full.`full_ctx)
+        full.`full_rho_rnd.
+
+(* combine_body_w_spec — was primitive axiom in v7-v11; v12 DERIVED LEMMA. *)
+lemma combine_body_w_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Combine_Layout.combine_ptrs_t)
          (full : combine_full_args_t),
@@ -607,6 +656,13 @@ axiom combine_body_w_spec :
            (Pulsar_N1.reconstruct full.`full_quorum full.`full_shares))
         (Pulsar_N1.compute_mu full.`full_m full.`full_ctx)
         full.`full_rho_rnd.
+proof.
+  move=> mem_pre ptrs full Hlay Hconsist Hstatus.
+  have HA := combine_body_matrix_a_spec mem_pre ptrs full Hlay Hconsist Hstatus.
+  have Hy := combine_body_mask_y_spec   mem_pre ptrs full Hlay Hconsist Hstatus.
+  rewrite /combine_body_compute_w /Pulsar_N1.central_w.
+  by rewrite HA Hy.
+qed.
 
 (* combine_body_w1_spec — was a primary axiom in v5/v6; now DERIVED
    in v7 via the HighBits structural composition. *)

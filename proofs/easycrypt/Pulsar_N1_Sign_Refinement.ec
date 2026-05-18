@@ -350,10 +350,24 @@ op sign_body_compute_mu
    : Pulsar_N1.mu_t =
   Pulsar_N1.shake256_to_mu (sign_body_mu_input mem_pre ptrs).
 
-op sign_body_compute_w :
+(* v12: w-stage structural decomposition. Mirror of combine side. *)
+op sign_body_compute_matrix_a :
   Pulsar_N1_Memory.mem_t ->
   Pulsar_N1_Sign_Layout.sign_ptrs_t ->
-  Pulsar_N1.w_value_t.
+  Pulsar_N1.matrix_a_t.
+
+op sign_body_compute_mask_y :
+  Pulsar_N1_Memory.mem_t ->
+  Pulsar_N1_Sign_Layout.sign_ptrs_t ->
+  Pulsar_N1.mask_vec_t.
+
+op sign_body_compute_w
+   (mem_pre : Pulsar_N1_Memory.mem_t)
+   (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+   : Pulsar_N1.w_value_t =
+  Pulsar_N1.apply_mat_vec_mul
+    (sign_body_compute_matrix_a mem_pre ptrs)
+    (sign_body_compute_mask_y mem_pre ptrs).
 
 op sign_body_compute_w1
    (mem_pre : Pulsar_N1_Memory.mem_t)
@@ -541,7 +555,33 @@ proof.
   by rewrite Hinput.
 qed.
 
-axiom sign_body_w_spec :
+(* v12: two narrower w-stage sub-axioms (matrix_a + mask_y) replacing
+   the prior bundled sign_body_w_spec. *)
+axiom sign_body_matrix_a_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+         (full : sign_full_args_t),
+    Pulsar_N1_Sign_Layout.layout_sign_args
+      mem_pre ptrs (wire_sign_args_of_full full) =>
+    sign_body_compute_status mem_pre ptrs = 0 =>
+    sign_body_compute_matrix_a mem_pre ptrs
+    = Pulsar_N1.central_matrix_a (Pulsar_N1.unpack_sk full.`sgn_sk_n1).
+
+axiom sign_body_mask_y_spec :
+  forall (mem_pre : Pulsar_N1_Memory.mem_t)
+         (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
+         (full : sign_full_args_t),
+    Pulsar_N1_Sign_Layout.layout_sign_args
+      mem_pre ptrs (wire_sign_args_of_full full) =>
+    sign_body_compute_status mem_pre ptrs = 0 =>
+    sign_body_compute_mask_y mem_pre ptrs
+    = Pulsar_N1.central_mask_y_at_accepted_kappa
+        (Pulsar_N1.unpack_sk full.`sgn_sk_n1)
+        (Pulsar_N1.compute_mu full.`sgn_m_n1 full.`sgn_ctx_n1)
+        full.`sgn_rnd_n1.
+
+(* sign_body_w_spec — was primitive axiom in v7-v11; v12 DERIVED LEMMA. *)
+lemma sign_body_w_spec :
   forall (mem_pre : Pulsar_N1_Memory.mem_t)
          (ptrs : Pulsar_N1_Sign_Layout.sign_ptrs_t)
          (full : sign_full_args_t),
@@ -553,6 +593,13 @@ axiom sign_body_w_spec :
         (Pulsar_N1.unpack_sk full.`sgn_sk_n1)
         (Pulsar_N1.compute_mu full.`sgn_m_n1 full.`sgn_ctx_n1)
         full.`sgn_rnd_n1.
+proof.
+  move=> mem_pre ptrs full Hlay Hstatus.
+  have HA := sign_body_matrix_a_spec mem_pre ptrs full Hlay Hstatus.
+  have Hy := sign_body_mask_y_spec   mem_pre ptrs full Hlay Hstatus.
+  rewrite /sign_body_compute_w /Pulsar_N1.central_w.
+  by rewrite HA Hy.
+qed.
 
 (* sign_body_w1_spec — was a primary axiom; now DERIVED. *)
 lemma sign_body_w1_spec :

@@ -568,8 +568,39 @@ type w1_value_t.
    expand_a + expand_mask bridges — future narrowing steps). *)
 type w_value_t.
 
-op central_w :
-  unpacked_sk_t -> mu_t -> randomness_t -> w_value_t.
+(* v12 — central_w structural decomposition.
+
+   central_w = A · y at the accepting κ, factored as:
+     - central_matrix_a : ExpandA(rho) — depends only on usk's
+       public-matrix seed; κ-independent and message-independent.
+     - central_mask_y_at_accepted_kappa : ExpandMask(rho', κ_accept)
+       — depends on usk + mu + rho_rnd; κ_accept selection is folded
+       into the abstract op surface (κ-loop fixed-point model is
+       out of scope for v12).
+     - apply_mat_vec_mul : the FIPS 204 §6.2 polynomial-matrix-vector
+       product A · y → w.
+
+   The refinement-side `*_body_compute_w` ops then decompose into
+   per-stage extracted intermediates with two narrower sub-axioms
+   per side (matrix_a + mask_y), and `*_body_w_spec` becomes a
+   derived lemma via the structural `apply_mat_vec_mul` identity
+   common to both extracted and centralised sides. *)
+type matrix_a_t.   (* FIPS 204 §3.5.2 ExpandA matrix ∈ R_q^{k × l} *)
+type mask_vec_t.   (* y polynomial vector ∈ R_q^l from ExpandMask *)
+
+op central_matrix_a : unpacked_sk_t -> matrix_a_t.
+
+op central_mask_y_at_accepted_kappa :
+  unpacked_sk_t -> mu_t -> randomness_t -> mask_vec_t.
+
+op apply_mat_vec_mul : matrix_a_t -> mask_vec_t -> w_value_t.
+
+op central_w
+   (usk : unpacked_sk_t) (mu_val : mu_t) (rho_rnd : randomness_t)
+   : w_value_t =
+  apply_mat_vec_mul
+    (central_matrix_a usk)
+    (central_mask_y_at_accepted_kappa usk mu_val rho_rnd).
 
 (* HighBits as a structural function over w polynomial vectors.
    On the centralised side this is `(decompose_vec_k gamma2 w).`1`;
@@ -858,6 +889,34 @@ op mldsa_sign_op (sk : share_t) (m : message_t)
    share; for sign: the share directly). *)
 op accept_signing_attempt :
   share_t -> message_t -> ctx_t -> randomness_t -> bool.
+
+(* v13 — per-FIPS 204 §6.2 R1/R2/R3/R4 accept events as ABSTRACT
+   COMPANIONS to `accept_signing_attempt`. The bundled predicate
+   stays opaque (downstream tactics like `do! split` in
+   `pulsar_n1_byte_equality`'s symmetric leg depend on the
+   abstract surface). The new per-R ops + a bridge axiom let
+   downstream callers REASON about the four conditions individually
+   without changing the existing `accept_signing_attempt` API.
+
+     R1: ‖z‖∞ < γ1 − β     (z-norm bound)
+     R2: ‖r0‖∞ < γ2 − β    (r0-low-bits-norm bound)
+     R3: ‖c·t0‖∞ < γ2      (ct0-norm bound)
+     R4: weight(h) ≤ ω     (hint-Hamming-weight bound)
+
+   See FIPS 204 §6.2 (ML-DSA.Sign_internal) for the rejection-loop
+   pseudocode. *)
+op accept_r1_z_norm    : share_t -> message_t -> ctx_t -> randomness_t -> bool.
+op accept_r2_r0_norm   : share_t -> message_t -> ctx_t -> randomness_t -> bool.
+op accept_r3_ct0_norm  : share_t -> message_t -> ctx_t -> randomness_t -> bool.
+op accept_r4_h_weight  : share_t -> message_t -> ctx_t -> randomness_t -> bool.
+
+axiom accept_signing_attempt_iff_R1234 :
+  forall sk m ctx rho_rnd,
+    accept_signing_attempt sk m ctx rho_rnd
+    <=> (accept_r1_z_norm   sk m ctx rho_rnd
+      /\ accept_r2_r0_norm  sk m ctx rho_rnd
+      /\ accept_r3_ct0_norm sk m ctx rho_rnd
+      /\ accept_r4_h_weight sk m ctx rho_rnd).
 
 op mldsa_accept_lower_bound : real.
 
