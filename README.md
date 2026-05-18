@@ -45,15 +45,16 @@ consumers who want the live production library should pin
 The high-assurance stack is now structurally ready for final
 mechanized closure. All local EasyCrypt theorem bodies are admit-free,
 per-push gates are green, threshold Jasmin CT is blocking, fuzz / KAT /
-interop / dudect gates are wired, and the extracted N1 theorem has no
-section-local module-contract axioms. The only remaining implementation-
-refinement assumptions are **two localized byte-walk axioms** over pure
-signature output, each with a committed proof roadmap. The Lean↔EC
-algebraic bridge is named, cited, and CI-guarded.
+interop / dudect gates are wired at documented budgets, and the
+extracted N1 theorem has no section-local module-contract axioms. The
+only remaining implementation-refinement assumptions are **two
+localized byte-walk axioms** over pure signature output, each with a
+committed proof roadmap. The Lean↔EC algebraic bridge is named, cited,
+and CI-guarded.
 
 The dependency graph is acyclic and each EC file owns one concern:
 
-```
+```text
 Memory             → pure byte-memory model
 Signature_Codec    → FIPS signature packing
 Combine_Layout     → combine ABI only
@@ -66,13 +67,17 @@ Extracted          → final composition theorem only
 ```
 
 Hard boundary:
-- 2 implementation-refinement byte-walk axioms (named, scoped, with roadmaps)
-- 4 Lean-bridged algebraic axioms (cited inline; CI-guarded)
+
+- 2 implementation-refinement byte-walk axioms, named/scoped with roadmaps
+- 4 Lean-bridged algebraic axioms, cited inline and CI-guarded
 - 0 admits
 - 0 section-local module-contract axioms in the extracted N1 corollary
 
 See `proofs/easycrypt/README.md` for the per-file dashboard and
 `proofs/lean-easycrypt-bridge.md` for the Lean↔EC correspondence.
+
+The next proof-count milestone is `combine_body_compute_sig_spec`:
+closing it reduces the implementation-refinement cone from 2 to 1.
 
 ## Why
 
