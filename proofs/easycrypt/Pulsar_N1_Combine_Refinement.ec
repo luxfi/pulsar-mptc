@@ -804,7 +804,7 @@ qed.
                under codec layouts not byte-walks), plus the
                structural `shake256_to_mu` definition shared with
                `Pulsar_N1.compute_mu`. `combine_body_mu_spec`
-               becomes a derived lemma. c_tilde sub-stage axiom
+               becomes a derived lemma. c_tilde dependency sub-stage axiom
                count goes 2 → 1 on this file (w1 only).
            v7 (this commit): w1 sub-stage axiom DECOMPOSED via
                HighBits structural split. `combine_body_w1_spec`
@@ -813,7 +813,7 @@ qed.
                HighBits/decompose), plus the structural
                `high_bits_of_w` definition shared with
                `Pulsar_N1.central_w1`. `combine_body_w1_spec`
-               becomes a derived lemma. c_tilde sub-stage axiom
+               becomes a derived lemma. c_tilde dependency sub-stage axiom
                count stays 1 on this file but is now NARROWER
                (about w, not w1).
 
@@ -892,7 +892,7 @@ qed.
          by `combine_body_w_spec` (narrower — about polynomial
          vector w before HighBits/decompose).
          Remaining byte-walk axioms on this file:
-           combine_body_w_spec    (c_tilde sub-stage, narrower than w1)
+           combine_body_w_spec    (c_tilde dependency sub-stage, narrower than w1)
            combine_body_z_spec    (stage-level)
            combine_body_h_spec    (stage-level)
          Plus 1 codec-layout axiom:

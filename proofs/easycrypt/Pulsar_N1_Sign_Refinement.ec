@@ -793,7 +793,7 @@ qed.
          `sign_body_w_spec` (narrower — about polynomial vector w
          before HighBits/decompose).
          Remaining byte-walk axioms on this file:
-           sign_body_w_spec    (c_tilde sub-stage, narrower than w1)
+           sign_body_w_spec    (c_tilde dependency sub-stage, narrower than w1)
            sign_body_z_spec    (stage-level)
            sign_body_h_spec    (stage-level)
          Plus 1 codec-layout axiom:

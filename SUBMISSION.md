@@ -223,7 +223,7 @@ mu and w1.
 | Category | Count | Notes |
 |---|---|---|
 | Stage-level byte-walk axioms | 4 | combine/sign × {z, h} |
-| c_tilde sub-stage axioms | 2 | combine/sign × {w} only — w1 sub-stage further decomposed via HighBits in v7 |
+| c_tilde dependency sub-stage axioms | 2 | combine/sign × {w} only — w1 sub-stage further decomposed via HighBits in v7 |
 | Derived c_tilde lemmas | 2 | `combine_body_c_tilde_spec`, `sign_body_c_tilde_spec` |
 | Derived mu lemmas | 2 | `combine_body_mu_spec`, `sign_body_mu_spec` (v6) |
 | Derived w1 lemmas | 2 | `combine_body_w1_spec`, `sign_body_w1_spec` (v7) |
@@ -240,7 +240,7 @@ Detail on the byte-walk + sub-stage axioms:
       `combine_body_h_spec`       — MakeHint stage (roadmap S7)
     sign side (tracked #3):
       `sign_body_z_spec`, `sign_body_h_spec`
-- **2 c_tilde sub-stage axioms** (NARROW; w only — mu sub-stage
+- **2 c_tilde dependency sub-stage axioms** (NARROW; w only — mu sub-stage
   decomposed in v6, w1 sub-stage further decomposed in v7 via
   HighBits structural split):
     combine side: `combine_body_w_spec`
@@ -325,7 +325,7 @@ What this gives the NIST reviewer at submission time:
    `pulsar_n1_byte_equality` with concrete wrapper modules. Trust
    reduces to:
    - 4 stage-level byte-walks (z + h on combine and sign);
-   - 2 c_tilde sub-stage axioms (w on combine and sign — w1 step
+   - 2 c_tilde dependency sub-stage axioms (w on combine and sign — w1 step
      decomposed further via HighBits in v7);
    - 2 FIPS 204 §5.4.1 ExternalMu byte-layout axioms (mu_input
      on combine and sign, classified under codec layouts);
@@ -474,10 +474,185 @@ and the Jasmin verified compiler, you trust every Pulsar signature".
 This is the right north star for the post-submission audit cycle.
 Each axiom converted to a derived lemma (or each primitive axiom
 decomposed into strictly-narrower sub-axioms) is one step toward
-it; the v5 c_tilde-stage axiom decomposition is one such step
-(`*_body_c_tilde_spec` is now a derived lemma; mu and w1 sub-stage
-specs remain axiomatic, narrower than the c_tilde bundle they
-replaced).
+it; v5/v6/v7 axiom decompositions are such steps (`*_body_c_tilde_spec`,
+`*_body_mu_spec`, `*_body_w1_spec` are now derived lemmas; trust
+localizes to narrower `*_body_w_spec`, `*_body_mu_input_spec`,
+`*_body_{z,h}_spec` axioms).
+
+## PQ security validation — evidence layers
+
+A compiling EasyCrypt proof is **one layer** of PQ security
+validation, not the whole story. NIST FIPS 204 standardizes ML-DSA
+for digital signatures and states that it is believed secure even
+against adversaries with a large-scale quantum computer
+(<https://csrc.nist.gov/pubs/fips/204>). A submission claim of
+"post-quantum secure threshold ML-DSA" needs evidence across six
+layers:
+
+### Layer 1 — Algorithm-level PQ strength (assumed, not proved here)
+
+| Item | This submission |
+|---|---|
+| Algorithm | ML-DSA (FIPS 204) — not pre-standard Dilithium |
+| Parameter set | **ML-DSA-65** (NIST security category 3) |
+| Claimed strength | Inherits the NIST ML-DSA-65 hardness analysis (Module-LWE / Module-SIS) |
+| Hash/XOF usage | SHAKE128 / SHAKE256 per FIPS 204 |
+| Encoding | pk / sk / sig / μ / w1 / z / h match FIPS 204 §3.5–§5.4 |
+| Rejection sampling | Distribution and acceptance behavior per FIPS 204 §6.2 |
+| Domain separation | Context string + pre-hash mode + message binding per FIPS 204 §5.4.1 ExternalMu |
+
+The claim is: **this implementation targets FIPS 204 ML-DSA-65
+semantics, assuming the ML-DSA-65 hardness assumptions and NIST
+security-category analysis.** It is **not** a lattice-hardness
+proof — the EasyCrypt refinement chain is an *implementation
+correctness* result.
+
+### Layer 2 — Implementation correctness (this is where the EC proof lives)
+
+Refinement chain:
+
+```
+machine code / Jasmin / extracted implementation
+  refines
+low-level EasyCrypt model (Pulsar_N1_{Combine,Sign}_Refinement.ec)
+  refines
+centralized ML-DSA functional model (MLDSA65_Functional.ec)
+  conforms to
+FIPS 204 ML-DSA algorithm
+```
+
+Evidence delivered:
+
+| Area | Evidence |
+|---|---|
+| EasyCrypt compile | `scripts/checks/ec-compile.sh` — 13/13 files, 0/0 admits |
+| Axiom inventory | This document (residual trust base, below) |
+| Derived lemmas | `*_body_c_tilde_spec`, `*_body_mu_spec`, `*_body_w1_spec`, `*_body_compute_{components,sig}_spec`, `*_body_{spec,separation}` — all no longer primitive |
+| FIPS traceability | Per-axiom mapping below; per-op MLDSA65_Functional bridges |
+| Extraction/model gap | Abstract ops `central_w`, `high_bits_of_w`, `shake_mu_w1`, `shake256_to_mu`, `external_mu_layout`, `pack_n1_signature` named with FIPS §-refs |
+| Test vectors | `vectors/` directory (KAT format) — TODO: ACVP/CAVP cross-check |
+| Differential testing | `test/interoperability/` — 3 independent ML-DSA verifiers |
+| Negative tests | `test/negative/` — malformed inputs, boundary cases |
+
+**Primitive EasyCrypt trust base after v7:**
+
+| Axiom | Category | FIPS section | Residual risk | Closure plan |
+|---|---|---|---|---|
+| `combine_body_w_spec` | byte-walk / polynomial | §6.2 | A·y at accepted κ + threshold aggregation | split into ExpandA, ExpandMask, mat_vec_mul + Lean Lagrange bridge for combine |
+| `sign_body_w_spec` | byte-walk / polynomial | §6.2 | A·y at accepted κ | split into ExpandA, ExpandMask, mat_vec_mul |
+| `combine_body_z_spec` | byte-walk / response | §6.2 | Lagrange aggregation of z_i | Lean bridge `Crypto.Threshold.Lagrange.threshold_partial_response_identity` |
+| `sign_body_z_spec` | byte-walk / response | §6.2 | y + c·s1 at accepted κ | reduce via vec ops + accepted-κ model |
+| `combine_body_h_spec` | byte-walk / hints | §6.2 | MakeHint over aggregated w_low/w_high | bridge to `MLDSA65_Functional.vec_k_make_hint` |
+| `sign_body_h_spec` | byte-walk / hints | §6.2 | same as combine sans aggregation | same bridge |
+| `combine_body_mu_input_spec` | codec layout | §5.4.1 | ExternalMu byte serialization | byte-level layout proof (mechanical) |
+| `sign_body_mu_input_spec` | codec layout | §5.4.1 | same | same |
+| `combine_no_reject_on_accepted_honest_layout` | protocol acceptance | §6.2 | honest accepted path | probabilistic Hoare logic on κ loop |
+| `sign_no_reject_on_accepted_honest_layout` | protocol acceptance | §6.2 | same | same |
+| `pack_unpack_n1_signature_roundtrip` | codec roundtrip | §3.5.5 | sig packing | bridge to `MLDSA65_Functional.pack_signature` |
+| `lagrange_inverse_eval` | Lean-bridged algebraic | §6.2 (FROST) | Lagrange identity at 0 | replace with checked translation artifact |
+| `add_share_zeroR`, `reconstruct_linear`, `shamir_correct` | Lean-bridged algebraic | (N4 cone) | Shamir/Lagrange algebra | same |
+| ~21 per-type FIPS 204 codec round-trips | codec roundtrip | §3 | encode/decode pairs | Barbosa-Barthe-Dupressoir style bit-level mechanization |
+| EasyCrypt / Jasmin / OCaml compiler TCB | trusted base | — | tooling correctness | external (compiler verification project) |
+
+**Proof claim** (narrow): *Under these axioms and trusted
+components, the N1 combine/sign implementation produces the same
+signature components as the centralized ML-DSA-65 functional
+model.*
+
+### Layer 3 — Side-channel and fault security (separate evidence)
+
+PQ implementations are typically broken in the implementation, not
+the math. Required evidence:
+
+| Risk | Validation status |
+|---|---|
+| Timing leakage on secret ops | `scripts/checks/jasmin.sh` — **jasmin-ct blocking** on threshold layer (round1, round2, combine all CT-clean); libjade sign advisory under #2 |
+| Memory access leakage | Same (Jasmin-CT analysis) |
+| Rejection sampling leakage | Documented in `ct/dudect/README.md` — `pulsar.Sign` is intentionally non-CT per FIPS 204 §3.3 |
+| Randomness misuse | `ct/dudect/` — dudect statistical tests at 10⁹ samples (nightly) |
+| Fault attacks | TODO: separate fault-injection analysis |
+| Key erasure | TODO: review zeroization in `ref/go/pkg/pulsar/` |
+| Encoding malleability | `test/negative/` covers some cases — full coverage TODO |
+
+Sensitive regions per FIPS 204: ExpandMask, sampling of y, w = A·y,
+HighBits/LowBits, rejection checks, hint generation, secret-key
+unpacking, any branch depending on secret or rejection conditions.
+The EC functional refinement does NOT by itself prove constant-time
+behavior; the jasmin-ct analysis provides that for the threshold layer.
+
+### Layer 4 — Federal/compliance validation (separate tracks)
+
+| Track | Status |
+|---|---|
+| ACVP / CAVP algorithm validation | TODO — lab-run pre-validation against NIST ACVP ML-DSA test vectors (<https://pages.nist.gov/ACVP/draft-celi-acvp-ml-dsa.html>) |
+| FIPS 140-3 module validation | Out of scope — applies to a packaged crypto module, not this reference implementation |
+
+For federal procurement, *"we implement ML-DSA"* is weaker than
+*"ACVP/CAVP-validated ML-DSA implementation plus FIPS 140-3
+validated module"*. This submission delivers the algorithm-level
+reference implementation; module packaging + lab validation are
+downstream of this submission.
+
+### Layer 5 — Test evidence (delivered, partial)
+
+Currently delivered (`scripts/test.sh`):
+- KAT vectors against pq-crystals reference (Dilithium3) via differential testing
+- BoringSSL FIPS / OpenSSL 3.0 PQ provider cross-validation (when available)
+- Internal KAT vectors in `vectors/` (deterministic generation)
+
+Required for full validation:
+- NIST ACVP-style KATs (ACVP ML-DSA test vector format)
+- Randomized signing vectors with seed control
+- Malformed pk/sk/sig tests
+- Context-string boundary tests (0, 1, 255 bytes)
+- Message-length boundary tests
+- Cross-implementation differential tests
+- Decoder/verifier fuzz testing
+
+### Layer 6 — Standard conformance audit (external)
+
+The EasyCrypt refinement chain says the implementation matches a
+functional model that *conforms to* FIPS 204 — but the conformance
+itself is by inspection, not machine-checked. A formal conformance
+audit by an accredited lab (or NIST-recognized review) is the
+external evidence step.
+
+### What this submission delivers vs. what it doesn't
+
+**Delivered**:
+- Layer 2 (implementation correctness) at the strongest level
+  short of full mechanized closure — EC refinement proof with
+  enumerated residual axioms;
+- Layer 3 (side-channel) on the threshold layer (Jasmin-CT blocking
+  green; libjade sign advisory documented under #2);
+- Layer 5 (test evidence) for differential and KAT validation.
+
+**Not delivered (out of scope or future work)**:
+- Layer 1 PQ hardness claim — assumed from NIST analysis;
+- Layer 4 ACVP/CAVP/FIPS 140-3 validation — lab work downstream;
+- Layer 6 standard conformance audit — external evidence;
+- Full Layer 2 mechanized closure of all residual axioms
+  (multi-month research project for the codec axioms; multi-week
+  for each of the w/z/h byte-walks).
+
+### Recommended next proof work (post-submission)
+
+Per the user's review prioritization (revised after v7):
+
+1. **`*_body_z_spec`** — likely easier than full w_spec with the
+   Lean Lagrange bridge already stable. Use
+   `Crypto.Threshold.Lagrange.threshold_partial_response_identity`
+   for combine; reduce via vec ops + accepted-κ model for sign.
+2. **`*_body_mu_input_spec`** — byte-layout proof, mechanical and
+   high-confidence once the FIPS 204 §5.4.1 byte serialization
+   is concretised.
+3. **`*_body_h_spec`** — bridge toward `vec_k_make_hint`.
+4. **`*_body_w_spec`** — the hardest target; requires the
+   loop/fixed-point accepted-κ model + ExpandA/ExpandMask/mat-vec.
+
+This reverses the earlier ordering (which had w as the natural
+next target after w1's HighBits decomposition). The revised
+ordering optimizes for fastest residual-trust reduction.
 
 ## What this submission does NOT claim
 

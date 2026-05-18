@@ -71,11 +71,11 @@ require import Pulsar_N1.
 
    Headline trust footprint:
      Was (v4): 6 stage-level byte-walks
-     Was (v5): 4 stage-level + 4 c_tilde sub-stage (mu + w1)
-     Was (v6): 4 stage-level + 2 c_tilde sub-stage (w1)
+     Was (v5): 4 stage-level + 4 c_tilde dependency sub-stage (mu + w1)
+     Was (v6): 4 stage-level + 2 c_tilde dependency sub-stage (w1)
              + 2 codec layout (mu_input)
      Now (v7): 4 stage-level (z + h)
-             + 2 c_tilde sub-stage (w only — HighBits structural)
+             + 2 c_tilde dependency sub-stage (w only — HighBits structural)
              + 2 codec layout (mu_input)
              = 6 byte-walk axioms + 2 codec layout axioms
      Continued axiom decomposition. Now `*_body_w1_spec`,
