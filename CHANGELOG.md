@@ -21,7 +21,8 @@ implementation-level changes see `git log`.
 | v9 base | `01bdbc3` | mu_shake_input_t = int list concretization | constructive prep |
 | v9 + v10 | `83e3c38` | 3-agent parallel: sign mu_input close + combine mu_input decomp + h-stage MakeHint bridge | `*_body_{mu_input,h}_spec` → derived lemmas |
 | v10 docs | `ec14c79` | full submission package: PATENTS + AXIOM-INVENTORY + PROOF-CLAIMS + FIPS-TRACEABILITY + TRUSTED-COMPUTING-BASE + NIST-SUBMISSION + docs/evaluation + docs/patent-claims | submission-grade documentation |
-| v11 (in flight) | TBD | sign z + w_spec + codec concretization + no-reject decomposition in parallel | TBD — multiple agents converging |
+| v11 sign z | `02c29f2` | sign z-stage via z = y + c·s1 structural split | `sign_body_z_spec` → derived lemma; 2 new sub-axioms `sign_body_y_spec` + `sign_body_cs1_spec` |
+| v11 codec | `81da17b` | signature_t concretization as record wrapping int list | **3 codec axioms ELIMINATED** (real closure, not decomposition) |
 
 ### Derived lemmas added (previously primitive axioms)
 
@@ -35,8 +36,23 @@ sub-axioms + structural composition):
 - `combine_body_z_spec` (v8 — Lean-bridged)
 - `combine_body_mu_input_spec`, `sign_body_mu_input_spec` (v9)
 - `combine_body_h_spec`, `sign_body_h_spec` (v10)
+- `sign_body_z_spec` (v11 — z = y + c·s1 structural split)
 
-Total: 11 axioms re-classified into derived lemmas across v5–v10.
+Total: 12 axioms re-classified into derived lemmas across v5–v11.
+
+### Actual axiom eliminations (v11 codec, real closure)
+
+In addition to the 12 re-classifications above, v11 also delivered
+3 PRIMITIVE AXIOM ELIMINATIONS in `Pulsar_N1_Signature_Codec.ec`
+(no replacement axiom on that path — concretized `signature_t` as
+a record wrapper):
+
+- `encode_decode_signature` (removed)
+- `decode_encode_signature_wf` (removed)
+- `encode_signature_wf` (kept, narrowed to a length-only axiom)
+- `encode_signature_len` → DERIVED via record-wrap structure
+
+3 axioms eliminated from the codec layer.
 
 ### Trust-footprint structure (post v10)
 

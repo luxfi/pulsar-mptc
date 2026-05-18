@@ -230,7 +230,8 @@ mu and w1.
 
 | Category | Count | Notes |
 |---|---|---|
-| Stage-level byte-walk axioms | 3 | `sign_body_z_spec`, `combine_body_h_spec`, `sign_body_h_spec` (combine z-stage moved to Lean bridge in v8) |
+| Stage-level byte-walk axioms (post v11) | 0 | All stage-level z + h axioms decomposed: combine z (v8 Lean bridge); sign z (v11 y+cs1 split); h (v10 MakeHint bridge, both sides) |
+| z-stage y/cs1 sub-axioms (v11) | 2 | sign side: `sign_body_y_spec` + `sign_body_cs1_spec` (combine handled via v8 Lean bridge) |
 | Narrow combine-side extraction | 2 | `combine_body_z_via_aggregation_spec` (structural — extracted z is Lagrange aggregation of partial responses) + `combine_body_partial_responses_spec` (per-party partial responses match centralised) |
 | c_tilde dependency sub-stage axioms | 2 | combine/sign × {w} only — w1 sub-stage further decomposed via HighBits in v7 |
 | Derived c_tilde lemmas | 2 | `combine_body_c_tilde_spec`, `sign_body_c_tilde_spec` |
