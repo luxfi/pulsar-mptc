@@ -46,11 +46,19 @@ serialization format) rather than mathematical.
 **EasyCrypt statement** (`proofs/easycrypt/Pulsar_N1.ec:177`):
 
 ```ec
+op poly_degree : share_t -> int.
+axiom poly_degree_nonneg (s : share_t) : 0 <= poly_degree s.
+
 axiom lagrange_inverse_eval (s : share_t) (Q : int list) :
   uniq Q =>
-  1 <= size Q =>
+  poly_degree s < size Q =>
   reconstruct Q (List.map (poly_eval s) Q) = s.
 ```
+
+The `poly_degree s < size Q` precondition matches the Lean
+theorem's `f.degree < s.card`. Earlier versions used the weaker
+`1 <= size Q` which permitted unsound instantiations on a
+short quorum reconstructing a non-constant polynomial.
 
 **Lean proof** (`lean/Crypto/Pulsar/Shamir.lean:76`):
 

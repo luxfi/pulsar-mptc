@@ -47,6 +47,13 @@ const (
 	tagSignPRNG      = "PULSAR-SIGN-PRNG-V1"
 	tagSignPRNGKey   = "PULSAR-SIGN-PRNGKEY-V1"
 	tagSignPRF       = "PULSAR-SIGN-PRF-V1"
+	// tagSignMask: per-attempt Round-1 mask derivation. Mixes the
+	// raw RNG output with (sid || attempt || NodeID) so a caller
+	// who accidentally reuses the same deterministic RNG across
+	// two attempts (or two parallel sessions) gets DISTINCT masks
+	// per (sid, attempt, NodeID). Closes the cross-attempt mask
+	// reuse window flagged by the cryptographer review (H2).
+	tagSignMask      = "PULSAR-SIGN-MASK-V1"
 	tagReshareCommit = "PULSAR-RESHARE-COMMIT-V1"
 	tagReshareTrans  = "PULSAR-RESHARE-TRANSCRIPT-V1"
 	tagReshareBeacon = "PULSAR-RESHARE-BEACON-V1"

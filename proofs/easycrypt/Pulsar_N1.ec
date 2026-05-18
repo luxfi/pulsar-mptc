@@ -169,9 +169,30 @@ op reconstruct (Q : int list) (shares : share_t list) : share_t.
 (* abstracting the polynomial's representation as its constant term).  *)
 op poly_eval : share_t -> int -> share_t.
 
+(* The dealer's Shamir polynomial degree.                              *)
+(*                                                                      *)
+(* `share_t` is abstract over the polynomial representation; this op   *)
+(* surfaces the polynomial's algebraic degree so the Lagrange-         *)
+(* recovery identity below can carry the right precondition.           *)
+(* Concretely for Pulsar's t-of-n threshold scheme, every share's     *)
+(* underlying polynomial has degree = threshold - 1.                  *)
+op poly_degree : share_t -> int.
+
+(* Non-negativity: a polynomial's degree is >= 0. Stated as an axiom  *)
+(* because share_t is abstract; trivially provable once share_t gets  *)
+(* a concrete representation. *)
+axiom poly_degree_nonneg (s : share_t) : 0 <= poly_degree s.
+
 (* Group-secret reconstruction is the identity on the dealer's secret. *)
 (* This is the Lagrange-interpolation identity at X = 0, encoded for   *)
 (* a generic share_t carrying R_q^ell coordinate semantics.            *)
+(*                                                                      *)
+(* PRECONDITION: |Q| > degree(f). The Lean theorem requires            *)
+(* `f.degree < s.card` (file:line below); without this bound,          *)
+(* Lagrange interpolation through |Q| points of a degree-d polynomial *)
+(* is undefined when d >= |Q|. Earlier versions of this axiom used    *)
+(* `1 <= size Q`, which was too weak — see Agent 2 critical finding   *)
+(* in the cryptographer review.                                       *)
 (*                                                                      *)
 (* BRIDGED TO LEAN: this axiom corresponds to                           *)
 (*   Crypto.Pulsar.Shamir.shamir_correct_at_target                      *)
@@ -186,7 +207,7 @@ op poly_eval : share_t -> int -> share_t.
 (* reprove it natively.                                                 *)
 axiom lagrange_inverse_eval (s : share_t) (Q : int list) :
   uniq Q =>
-  1 <= size Q =>
+  poly_degree s < size Q =>
   reconstruct Q (List.map (poly_eval s) Q) = s.
 
 (* R_q-linearity of `reconstruct` (FUTURE WORK).                       *)
@@ -213,7 +234,7 @@ axiom lagrange_inverse_eval (s : share_t) (Q : int list) :
 
 lemma reconstruct_of_share (s : share_t) (Q : int list) :
     uniq Q =>
-    1 <= size Q =>
+    poly_degree s < size Q =>
     reconstruct Q (List.map (poly_eval s) Q) = s.
 proof.
   (* Direct application of the Lagrange identity at X = 0. The         *)
@@ -230,8 +251,8 @@ qed.
 (* This is a genuine downstream consequence -- discharged here.         *)
 lemma reconstruct_quorum_invariant
       (s : share_t) (Q1 Q2 : int list) :
-    uniq Q1 => 1 <= size Q1 =>
-    uniq Q2 => 1 <= size Q2 =>
+    uniq Q1 => poly_degree s < size Q1 =>
+    uniq Q2 => poly_degree s < size Q2 =>
     reconstruct Q1 (List.map (poly_eval s) Q1) =
     reconstruct Q2 (List.map (poly_eval s) Q2).
 proof.

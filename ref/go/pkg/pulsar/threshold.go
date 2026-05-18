@@ -196,10 +196,28 @@ func NewThresholdSigner(
 // no "fresh mask per peer" because the commit is over a single
 // masked share that every peer aggregates equivalently.
 func (s *ThresholdSigner) Round1(message []byte) (*Round1Message, error) {
-	// Sample mask.
-	if _, err := io.ReadFull(s.rng, s.myMask[:]); err != nil {
+	// Sample 64 bytes of raw entropy from the caller's RNG, then
+	// derive the per-attempt mask by mixing the raw entropy with
+	// (sid, attempt, NodeID). This way a deterministic RNG that
+	// produces the same output across two attempts still yields
+	// DISTINCT masks per attempt — cross-attempt mask reuse window
+	// (Agent 4 H2) is closed.
+	var rngBytes [64]byte
+	if _, err := io.ReadFull(s.rng, rngBytes[:]); err != nil {
 		return nil, ErrShortRand
 	}
+	maskMix := make([]byte, 0, 64+16+4+len(s.NodeID))
+	maskMix = append(maskMix, rngBytes[:]...)
+	maskMix = append(maskMix, s.SessionID[:]...)
+	maskMix = append(maskMix,
+		byte(s.Attempt>>24), byte(s.Attempt>>16),
+		byte(s.Attempt>>8), byte(s.Attempt))
+	maskMix = append(maskMix, s.NodeID[:]...)
+	copy(s.myMask[:], cshake256(maskMix, 64, tagSignMask))
+	// Wipe the raw RNG buffer; it carries entropy that under a
+	// deterministic-RNG misuse could be observable.
+	zeroizeBytes(rngBytes[:])
+	zeroizeBytes(maskMix)
 	// Mask the share byte-by-byte XOR.
 	for i := 0; i < 64; i++ {
 		s.myMaskedShare[i] = s.SecretShare.Share[i] ^ s.myMask[i]
