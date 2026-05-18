@@ -204,12 +204,35 @@ axiom set:
   `proofs/easycrypt/extraction/sign-byte-walk-roadmap.md` and
   ctx/rho_rnd ghost contract pinned in
   `Pulsar_N1_Sign_Refinement.ec`).
-- **4 Lean-bridged algebraic axioms** — Shamir/Lagrange identities
-  that EasyCrypt's first-order theory does not natively cover.
-  Each axiom carries an inline citation comment naming the proved
-  Lean theorem; the bridge is operationally guarded by
-  `scripts/check-lean-bridge.sh`. Full correspondence table in
-  `proofs/lean-easycrypt-bridge.md`.
+- **2 accepted-path no-reject axioms** — protocol-correctness
+  companions to the byte-walks
+  (`combine_no_reject_on_accepted_honest_layout`,
+  `sign_no_reject_on_accepted_honest_layout`). Each asserts
+  `status = 0` for layout-conforming inputs CONDITIONED on the
+  ML-DSA-65 accept event (`accept_signing_attempt`). FIPS 204 §6.2
+  rejection sampling remains probabilistic; the probability bound
+  `mldsa_accept_lower_bound` (≈ 1 − 2^-128 after the kappa-bounded
+  loop) is tracked operationally rather than via probabilistic
+  Hoare logic — the deterministic EC model captures the accept-path
+  conditioning via the predicate.
+- **1 Lean-bridged algebraic axiom in the N1 cone**
+  (`lagrange_inverse_eval` in `Pulsar_N1.ec`) — the
+  Lagrange-interpolation identity at X = 0 over share_t. Bridged
+  to `Crypto.Pulsar.Shamir.shamir_correct_at_target`.
+- **3 additional Lean-bridged algebraic axioms in the N4 cone**
+  (`add_share_zeroR`, `reconstruct_linear`, `shamir_correct` in
+  `Pulsar_N4.ec`) — additive structure on share_t for reshare-
+  preservation. Bridged to Mathlib `AddCommMonoid` +
+  `Crypto.Threshold.Lagrange`.
+- **Per-type FIPS 204 codec round-trip axioms** (~21 across
+  `Pulsar_N1_Sign_Layout`, `Pulsar_N1_Combine_Layout`,
+  `Pulsar_N1_Signature_Codec`, and `Pulsar_N1`) — encode/decode
+  bidirectional round-trips guarded by `wf_*` well-formedness
+  predicates, per-component length identities (sk: rho/K/tr/s1/s2/t0
+  per FIPS 204 §3.5.4), share-polynomial-vector view (HIGH-5).
+  Each reduces to the corresponding `MLDSA65_Functional` bit-level
+  pack/unpack identity when that mechanization lands; for now they
+  are small structural axioms over the abstract types.
 - **0 section-local module-contract axioms** in the extracted
   corollary's cone (the corollary uses the concrete wrapper modules
   + proved bridge lemmas, not the section's declare-axiom
@@ -224,8 +247,16 @@ What this gives the NIST reviewer at submission time:
 3. The Class N1 byte-equality theorem **proven** in EasyCrypt as
    `pulsar_n1_byte_equality_extracted`, instantiating the generic
    `pulsar_n1_byte_equality` with concrete wrapper modules. Trust
-   reduces to two named byte-walk obligations + four Lean-bridged
-   algebraic identities.
+   reduces to:
+   - 2 named byte-walk obligations (combine + sign);
+   - 2 accepted-path no-reject axioms (combine + sign);
+   - 1 Lean-bridged algebraic identity in the N1 cone
+     (`lagrange_inverse_eval`);
+   - per-type FIPS 204 codec round-trips with `wf_*`
+     well-formedness guards.
+
+   The N4 cone adds 3 more Lean-bridged algebraic axioms
+   (`add_share_zeroR`, `reconstruct_linear`, `shamir_correct`).
 4. The Class N4 reshare-preservation theorem **proven** as a
    concrete lemma on `ReshareHonest`.
 5. jasmin-ct **blocking** on the threshold layer (round1, round2,
@@ -239,9 +270,21 @@ What remains in the high-assurance track:
   ~370-line extracted Jasmin procedures stage-by-stage. Roadmaps
   with named sub-claims are committed under
   `proofs/easycrypt/extraction/`.
-- Mechanizing the four Lean-bridged algebraic axioms inside
-  EasyCrypt directly (would require porting a minimal polynomial-
-  interpolation theory into EC).
+- The two accepted-path no-reject obligations
+  (`combine_no_reject_on_accepted_honest_layout`,
+  `sign_no_reject_on_accepted_honest_layout`) — these reduce to the
+  byte-walk completing the FIPS 204 §6.1 rejection-condition check,
+  but are stated separately so the obligation surface is visible.
+  The accompanying `mldsa_accept_lower_bound` probability tracking
+  is an operational (non-mechanized) bound from FIPS 204 §C.1.
+- Mechanizing the Lean-bridged algebraic axioms inside EasyCrypt
+  directly (1 in N1 cone, 3 in N4 cone) — would require porting a
+  minimal polynomial-interpolation theory into EC.
+- Concretizing the per-type FIPS 204 codec round-trips by linking
+  them to `MLDSA65_Functional.pack_signature` /
+  `MLDSA65_Functional.encode_sk` once the bit-level mechanization
+  lands. The `wf_*` well-formedness predicates make the discharge
+  point explicit.
 - Closing the libjade jasmin-ct annotation gap (#2) upstream.
 
 `scripts/check-high-assurance.sh` runs every per-push EC + jasmin-ct
