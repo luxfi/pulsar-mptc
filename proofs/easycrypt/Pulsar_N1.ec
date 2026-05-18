@@ -597,7 +597,7 @@ qed.
      The implementation-backed theorem to cite for end-to-end
      N1 byte-equality correctness is
 
-       Pulsar_N1_Wrapper_Bridge.pulsar_n1_byte_equality_extracted
+       Pulsar_N1_Extracted.pulsar_n1_byte_equality_extracted
 
      The generic theorem below (this file) is parametric and
      assumes the two section-local module contracts

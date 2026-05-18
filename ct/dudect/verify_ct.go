@@ -4,20 +4,33 @@
 // verify_ct.go — cgo bridge exposing pulsar.Verify to the C dudect
 // harness in dudect_verify.c.
 //
-// FIPS 204 §6.3 mandates that Verify is CONSTANT-TIME OVER VALID
-// SIGNATURES from honest signers. It does NOT require constant time
-// over arbitrary byte patterns — Verify holds no secret state, so an
-// attacker has no secret to learn by observing how fast an INVALID
-// signature is rejected. circl's ML-DSA Verify (the dispatch target
-// of pulsar.Verify) is documented as CT over the valid-sig class.
+// HONEST CT-population framing (NOT a FIPS 204 citation).
 //
-// Accordingly the dudect harness here tests the RIGHT CT population:
-// BOTH classes are VALID signatures on the same (pk, message); they
-// differ only in the per-signing randomness (signing is randomised
-// per FIPS 204 §3.5.2), so the byte strings vary but the verify
-// pipeline executes the same code path. Any timing difference dudect
-// detects between class-A and class-B samples is a real signature-
-// content-dependent timing in Verify.
+// FIPS 204 itself does not carve out a "valid signatures only" CT
+// requirement for Verify — §6.3 is the Verify algorithm spec, not a
+// CT requirement section. The reason we test the valid-signature
+// population here is OPERATIONAL, not standards-cited:
+//
+//   * Verify holds no long-term secret state. An attacker observing
+//     the rejection-path timing of garbage bytes does not learn any
+//     confidential value — the attacker SUPPLIED the garbage.
+//   * The class of inputs over which Verify is interesting to
+//     constant-time-test is the class of inputs an attacker would
+//     submit to extract information about a SECRET in the verifier.
+//     Verify has no secret, so the empirically meaningful CT
+//     property is "signatures with identical structural validity
+//     should not be timing-distinguishable" — i.e., the valid-sig
+//     class.
+//   * circl's ML-DSA Verify (the dispatch target of pulsar.Verify)
+//     is documented as constant-time over the valid-signature
+//     pipeline. Our test exercises that pipeline.
+//
+// The dudect harness BOTH classes are VALID signatures on the same
+// (pk, message); they differ only in the per-signing randomness
+// (signing is randomised per FIPS 204 §3.5.2), so the byte strings
+// vary but the verify pipeline executes the same code path. Any
+// timing difference dudect detects between class-A and class-B
+// samples is a real signature-content-dependent timing in Verify.
 //
 // The bridge precomputes a pool of K_VALID valid signatures at
 // startup. prepare_inputs (in dudect_verify.c) copies pool[0] for
@@ -27,8 +40,9 @@
 // Earlier versions of this harness used zero-bytes (class A) vs
 // random-bytes (class B). Both were invalid sigs but on different
 // rejection paths (z-range pass vs fail), so dudect detected a
-// rejection-path timing difference that was NOT a FIPS 204 §6.3
-// violation. See ct/dudect/README.md "Verify smoke CT framing".
+// rejection-path timing difference that is not the CT property
+// pulsar.Verify is claimed to satisfy (see "valid-signature class"
+// framing above). See ct/dudect/README.md "Verify CT population".
 //
 // Build:
 //   GOWORK=off go build -buildmode=c-shared \

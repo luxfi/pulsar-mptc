@@ -8,7 +8,8 @@ provers**:
 * **EasyCrypt** drives the procedure-level refinement / equiv proofs
   for the threshold layer (`proofs/easycrypt/Pulsar_N1.ec`,
   `Pulsar_N4.ec`, the two `*_Refinement.ec` files, the two
-  `*_Layout.ec` files, and `Pulsar_N1_Wrapper_Bridge.ec`).
+  `*_Layout.ec` files, the `Pulsar_N1_{Combine,Sign}_Wrapper.ec`
+  files, and `Pulsar_N1_Extracted.ec`).
   EasyCrypt is the right tool for procedural Hoare/equiv goals with
   side-channel-aware semantics — but its first-order theory of
   finite fields and polynomial interpolation is comparatively

@@ -33,16 +33,9 @@
 (*     shape as the combine-side per-type axioms).                      *)
 (*                                                                      *)
 (* What this file does NOT yet provide:                                 *)
-(*   - The sign-side wrapper-bridge identity                            *)
-(*     (`sign_wrapper_bridge` in Pulsar_N1_Wrapper_Bridge.ec). The      *)
-(*     bridge still needs to align the wrapper file's abstract          *)
-(*     `encode_sign_args` (4-arg) with this file's concrete one         *)
-(*     (3-arg, sk/m/m_len; no ctx/rnd in the libjade single-party      *)
-(*     ABI). That alignment is the next narrow target after this        *)
-(*     layout file lands, mirroring the combine-side roadmap.           *)
-(*   - The `sign_body_spec` byte-walk; that still requires walking     *)
-(*     the extracted `M.sign` body and stays as an axiom in            *)
-(*     `Pulsar_N1_Sign_Refinement.ec`.                                  *)
+(*   - The `sign_body_compute_sig_spec` byte-walk; that still requires  *)
+(*     walking the extracted libjade `M.sign` body and stays as an     *)
+(*     axiom in `Pulsar_N1_Sign_Refinement.ec` (tracked #3).            *)
 (* -------------------------------------------------------------------- *)
 
 require import AllCore List Int IntDiv SmtMap.
@@ -370,13 +363,11 @@ qed.
               5 proved lemmas, 0 admits.
 
    Status of the wider implementation-refinement count:
-     The remaining 2 axioms in `Pulsar_N1_Sign_Refinement.ec`
-     (sign_body_spec, sign_body_separation) are the byte-walk
-     trust boundary and remain. Collapsing `sign_wrapper_bridge`
-     in `Pulsar_N1_Wrapper_Bridge.ec` to a lemma requires
-     aligning the wrapper file's abstract `encode_sign_args`
-     (4-tuple: sk, m, ctx, rnd) with this file's concrete one
-     (3-tuple: sk, m, m_len_val; the libjade single-party ABI
-     has no ctx and derives rnd internally) — a separate
-     refactor, matching the combine-side roadmap.
+     The remaining 1 axiom in `Pulsar_N1_Sign_Refinement.ec`
+     (`sign_body_compute_sig_spec`) is the byte-walk trust
+     boundary and remains. `sign_wrapper_bridge` (in
+     `Pulsar_N1_Sign_Wrapper.ec`) and `sign_body_spec` (in
+     `Pulsar_N1_Sign_Refinement.ec`) are now PROVED lemmas via
+     the wrapper-bridge collapse (d86218d) and the
+     body-separation refactor (c4148a0).
    =================================================================== *)

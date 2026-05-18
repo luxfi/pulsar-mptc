@@ -357,7 +357,7 @@ qed.
    it writes them.
 
    The wrapper bridge (`sign_wrapper_bridge`) in
-   Pulsar_N1_Wrapper_Bridge.ec derives from `sign_body_spec` (now a
+   Pulsar_N1_Sign_Wrapper.ec derives from `sign_body_spec` (now a
    lemma, was an axiom). When the byte-walk axiom itself closes via
    the extraction byte-walk (tracked #3), this file contains ZERO
    axioms.

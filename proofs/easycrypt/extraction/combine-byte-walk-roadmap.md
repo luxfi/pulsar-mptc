@@ -156,8 +156,10 @@ remains an axiom in this commit. The value is:
 
 ## Cross-references
 
-* The wider trust accounting: `proofs/easycrypt/Pulsar_N1_Wrapper_Bridge.ec`
-  end-of-file accounting block.
+* The wider trust accounting: `proofs/easycrypt/Pulsar_N1_Extracted.ec`
+  (composition theorem) and the per-file `ACCOUNTING` blocks at the
+  end of each refinement / wrapper / layout file. See
+  `proofs/easycrypt/README.md` for the per-file dashboard.
 * Algebraic bridge: `proofs/lean-easycrypt-bridge.md`.
 * Sign-side counterpart: `proofs/easycrypt/extraction/sign-byte-walk-roadmap.md`.
 * Linear-issue tracker: #4.

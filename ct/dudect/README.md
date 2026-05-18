@@ -9,14 +9,18 @@ target leaks information through wall-clock time.
 This directory holds the Pulsar dudect harness. We measure two
 operations:
 
-1. **`pulsar.Verify`** — the load-bearing entry point. Must be
-   constant-time in the public key, message, and signature bytes
-   **for the class of VALID signatures from honest signers**
-   (FIPS 204 §6.3). Verify holds no secret state, so timing
-   differences over INVALID inputs (random byte patterns rejected
-   at parse / range check) are not a security property — the
-   attacker has no secret to learn by observing how fast a bogus
-   signature is rejected.
+1. **`pulsar.Verify`** — the load-bearing entry point. Tested for
+   constant-time over the class of VALID signatures from honest
+   signers — i.e., the population an attacker can observe in a
+   real protocol exchange. Verify holds no long-term secret
+   state, so timing differences over INVALID inputs (random byte
+   patterns rejected at parse / range check) are not a
+   confidentiality property: the attacker SUPPLIED the garbage.
+   The valid-sig class is the OPERATIONALLY meaningful CT
+   population for Verify; this is not a FIPS 204 carve-out
+   (FIPS 204 §6.3 is the Verify algorithm spec, not a CT
+   requirement section), it's a property of where attacker-
+   observable timing actually matters.
 2. **`pulsar.Combine`** — the threshold aggregator. Must be
    constant-time in the per-party signature shares (which DO carry
    secret-derived randomness). A leak here is a real CT regression
@@ -32,12 +36,15 @@ Sign property the underlying FIPS 204 implementation gives.
 
 ### Verify CT population
 
-`dudect_verify` tests the FIPS 204 §6.3 CT property over the
-**valid-signature class**: both class A and class B are valid
-signatures on the same `(pk, message)`, varying only in the
-per-signing randomness (ML-DSA signing is randomised per FIPS 204
-§3.5.2, so two valid sigs over the same message have different
-byte strings but verify through the same code path).
+`dudect_verify` tests Verify CT over the **valid-signature class**:
+both class A and class B are valid signatures on the same
+`(pk, message)`, varying only in the per-signing randomness
+(ML-DSA signing is randomised per FIPS 204 §3.5.2, so two valid
+sigs over the same message have different byte strings but
+verify through the same code path). The valid-sig class is the
+operationally meaningful CT population for Verify (the spec
+itself — FIPS 204 §6.3 — is the Verify algorithm, not a CT
+requirement; see comments in `verify_ct.go` for the framing).
 
 - Class A: `pool[0]` every time (Welch's t-test requires
   byte-identical class-A samples).
@@ -54,11 +61,12 @@ Both are INVALID signatures but on different rejection paths:
 zeros pass the `||z||_∞ < γ1-β` range check (z=0 is trivially in
 range) and run the full pipeline; random bytes usually fail
 range fast and early-reject. dudect detected that timing
-difference — but it is **NOT a FIPS 204 §6.3 violation**. The
-spec's CT requirement applies to the valid-signature class only;
-Verify holds no secret, so timing differences over arbitrary
-byte patterns are not a security property. The current design
-tests the actually-relevant population.
+difference — but it is **NOT a security property Verify is
+claimed to satisfy**. Verify holds no long-term secret; timing
+differences over arbitrary attacker-supplied byte patterns do
+not leak any confidential value. The current design tests the
+operationally meaningful population (valid sigs the attacker
+might observe in a real exchange).
 
 ### Smoke vs submission budget
 

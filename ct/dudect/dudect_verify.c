@@ -44,10 +44,16 @@ static size_t g_pool_size  = 0;
  * see.
  *
  * Both classes are VALID signatures on the same (pk, message) —
- * this is the FIPS 204 §6.3 CT population. Class A is always
- * pool[0] (byte-identical across class-A samples as Welch's t-test
- * requires); class B is pool[rand % pool_size] (varying valid
- * sigs, drawn uniformly from the precomputed pool).
+ * this is the OPERATIONALLY MEANINGFUL CT population for Verify
+ * (valid sigs are what an attacker can observe in a real
+ * exchange; Verify holds no secret, so timing differences over
+ * attacker-supplied garbage are not a confidentiality property).
+ * The valid-sig framing is a test-design choice, not a FIPS 204
+ * standard mandate — see verify_ct.go header for the full
+ * framing. Class A is always pool[0] (byte-identical across
+ * class-A samples as Welch's t-test requires); class B is
+ * pool[rand % pool_size] (varying valid sigs, drawn uniformly
+ * from the precomputed pool).
  *
  * Any timing difference detected by dudect under this design is a
  * REAL data-dependent path in pulsar.Verify (i.e., circl's

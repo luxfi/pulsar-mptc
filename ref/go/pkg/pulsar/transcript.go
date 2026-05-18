@@ -34,7 +34,16 @@ const (
 	tagDKGTranscript = "PULSAR-DKG-TRANSCRIPT-V1"
 	tagSignR1        = "PULSAR-SIGN-R1-V1"
 	tagSignR1MAC     = "PULSAR-SIGN-R1-MAC-V1"
-	tagSignR2        = "PULSAR-SIGN-R2-V1"
+	// tagSignR2 = "PULSAR-SIGN-R2-V1" — RESERVED for a future
+	// Round-2 MAC envelope as defense-in-depth (see
+	// docs/threat-model.md "Round-2 integrity"). The v0.1
+	// design relies on commit-bind (Round-1's D_i digest
+	// equals cSHAKE256(mask||masked||τ_1) — tampered Round-2
+	// reveals fail commit re-derivation in Combine and are
+	// rejected, verified by TestThresholdSwap_RejectedByCommitBind
+	// in threshold_test.go). The MAC tag is intentionally left
+	// undefined here so a stale rebase reusing the name catches
+	// the inconsistency at compile time.
 	tagSignPRNG      = "PULSAR-SIGN-PRNG-V1"
 	tagSignPRNGKey   = "PULSAR-SIGN-PRNGKEY-V1"
 	tagSignPRF       = "PULSAR-SIGN-PRF-V1"

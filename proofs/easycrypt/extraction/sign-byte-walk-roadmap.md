@@ -149,8 +149,10 @@ dominated by the kappa loop).
 
 ## Cross-references
 
-* The wider trust accounting: `proofs/easycrypt/Pulsar_N1_Wrapper_Bridge.ec`
-  end-of-file accounting block.
+* The wider trust accounting: `proofs/easycrypt/Pulsar_N1_Extracted.ec`
+  (composition theorem) and the per-file `ACCOUNTING` blocks at the
+  end of each refinement / wrapper / layout file. See
+  `proofs/easycrypt/README.md` for the per-file dashboard.
 * Algebraic bridge: `proofs/lean-easycrypt-bridge.md`.
 * Combine-side counterpart: `proofs/easycrypt/extraction/combine-byte-walk-roadmap.md`.
 * Ghost contract: named block in `proofs/easycrypt/Pulsar_N1_Sign_Refinement.ec`.
