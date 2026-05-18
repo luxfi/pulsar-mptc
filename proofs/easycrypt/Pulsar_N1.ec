@@ -188,6 +188,21 @@ axiom poly_share_of_injective :
     size ps1 = share_dim => size ps2 = share_dim =>
     poly_share_of ps1 = poly_share_of ps2 => ps1 = ps2.
 
+(* Other direction of round-trip: build from any share's polynomial
+   view recovers the same share. Together with the existing
+   `poly_share_roundtrip` (share_polys ∘ poly_share_of = id on dim-
+   correct inputs), this pins `share_polys` and `poly_share_of` as
+   mutual inverses on the dim-correct domain.
+
+   Followup B reinforcement: the user's specified round-trip
+   direction. Without this, `share_t` could in principle have
+   "ghost" extra structure invisible to `share_polys` — adversaries
+   could realise distinct shares with identical polynomial views.
+   The injectivity axiom above rules that out, and this round-trip
+   makes the inverse identity directly applicable in proofs. *)
+axiom poly_share_of_share_polys (s : share_t) :
+  poly_share_of (share_polys s) = s.
+
 (* Component-wise Lagrange reconstruct over polynomial vectors.
    For a quorum Q and a list of polynomial vectors, returns the
    polynomial vector obtained by per-coordinate Lagrange interpolation
@@ -262,6 +277,23 @@ axiom reconstruct_polys_view :
   forall (Q : int list) (shares : share_t list),
     share_polys (reconstruct Q shares)
     = reconstruct_polys Q (List.map share_polys shares).
+
+(* Derived: poly_share_of form of the same identity. Proved by
+   applying `poly_share_of` to both sides of `reconstruct_polys_view`
+   and using `poly_share_of_share_polys` to collapse the LHS.
+
+   This is the form a Lean-bridge consumer cites — "reconstruction
+   on shares = build-from-polys ∘ reconstruct_poly ∘ map share_polys"
+   makes the polynomial bridge directly applicable. *)
+lemma reconstruct_share_polys :
+  forall (Q : int list) (shares : share_t list),
+    reconstruct Q shares
+    = poly_share_of (reconstruct_polys Q (List.map share_polys shares)).
+proof.
+  move=> Q shares.
+  rewrite -reconstruct_polys_view.
+  by rewrite poly_share_of_share_polys.
+qed.
 
 (* Polynomial evaluation: poly_eval p i = P(i) where P is the dealer's *)
 (* Shamir polynomial in R_q^ell[X] (parametrised by p : share_t        *)
