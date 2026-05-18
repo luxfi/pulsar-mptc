@@ -124,9 +124,46 @@ require import Pulsar_N1_Signature_Codec.
 (* never needs the byte-width.                                          *)
 type byte_seq = bool list.
 
+(* Polynomial in R_q = Z_q[X] / (X^256 + 1), with q = 8380417 (FIPS 204
+   ML-DSA-65 Table 1, level 3). Kept abstract: the algebraic operators
+   below name the structure without forcing a concrete byte-level
+   coefficient representation. *)
+type poly_t.
+
 (* Secret-key share: an element of R_q^ell (per-party Shamir share of *)
 (* the FIPS 204 secret s_1, alongside the Pedersen blinding share).   *)
+(*                                                                      *)
+(* Concrete structural view (Agent 1 HIGH-5 closure):                   *)
+(*   share_t is conceptually a polynomial vector in R_q^ell. The op    *)
+(*   `share_polys` surfaces this view: every share has a polynomial-   *)
+(*   list representation of dimension `share_dim` = 5 (FIPS 204         *)
+(*   ML-DSA-65 ell parameter).                                          *)
+(*                                                                      *)
+(* The type itself remains abstract — we do NOT pin its concrete byte  *)
+(* representation here (that's a libjade ABI detail and lives in        *)
+(* Pulsar_N1_Sign_Layout's encode_sk component projectors). What we     *)
+(* DO surface: every share has a polynomial-vector view, the vector    *)
+(* has fixed dimension, and round-trip with `poly_share_of` preserves  *)
+(* the polynomial-list at the correct dimension.                       *)
 type share_t.
+
+(* FIPS 204 ML-DSA-65 parameter ell = 5 (Table 1 level 3). *)
+op share_dim : int = 5.
+
+(* Project a share to its polynomial-vector view. *)
+op share_polys : share_t -> poly_t list.
+
+(* Build a share from a polynomial vector of the correct dimension. *)
+op poly_share_of : poly_t list -> share_t.
+
+(* Every share's polynomial vector has dimension share_dim. *)
+axiom share_dim_correct (s : share_t) : size (share_polys s) = share_dim.
+
+(* Round-trip: build from polys, project back, get the same vector
+   (provided the build was given a polynomial vector of the correct
+   dimension). *)
+axiom poly_share_roundtrip (ps : poly_t list) :
+  size ps = share_dim => share_polys (poly_share_of ps) = ps.
 
 (* Group public key (FIPS 204 ML-DSA public-key encoding -- 1952 bytes *)
 (* for ML-DSA-65, but we keep it abstract here).                       *)
