@@ -4,10 +4,30 @@ This document is the cover sheet for the Pulsar submission to the
 NIST Multi-Party Threshold Cryptography (MPTC) project. It is written
 for NIST reviewers and points at every artifact a reviewer needs.
 
+The `pulsar-mptc` repository is the **submission framework**: it
+carries the cover sheet, the LaTeX spec, the high-assurance proof
+artifacts (EasyCrypt, Lean bridge, Jasmin), the KAT vector format,
+the constant-time evidence, and the tarball-cut tooling. The
+algorithm being submitted is implemented in the canonical Pulsar
+library at <https://github.com/luxfi/pulsar>; this framework pins
+that library at `v1.0.6` (commit `20f87d8`) via `go.mod` and snapshots
+it into `vendor/github.com/luxfi/pulsar/` at tarball-cut time via
+`go mod vendor`, so a NIST reviewer gets a self-contained checkout
+that does not require network access.
+
 The repository is **active** (not frozen). The submission tarball is
-cut from a tag on `main` at NIST's deadline; reviewer feedback and
-post-submission patches land in this same repository so the artifact
-chain stays auditable.
+cut from a tag on `main` at NIST's deadline via
+`scripts/cut-submission.sh`; reviewer feedback and post-submission
+patches land in this same repository so the artifact chain stays
+auditable.
+
+**Date stamp (this revision): 2026-05-18.**
+
+**Maturity stamp**: v0.1 ready. This submission is **not**
+NIST-ratified, **not** FIPS 140-3 validated, **not** ACVP-validated.
+It is the algorithm-level reference plus reproducibility tooling
+plus high-assurance proof artifacts. ACVP/CAVP/FIPS 140-3 are
+downstream of this submission (see §"Layer 4" below).
 
 ## At a glance
 
@@ -20,8 +40,10 @@ chain stays auditable.
 | Underlying primitive | FIPS 204 ML-DSA-65 |
 | Round count | 2 rounds per signature |
 | Signature output | **Byte-identical** to single-party FIPS 204 ML-DSA-65 |
-| Repository | <https://github.com/luxfi/pulsar-mptc> |
-| Submission tag | `submission-` (cut from `main` at deadline) |
+| Submission framework repo | <https://github.com/luxfi/pulsar-mptc> (cover sheet + spec + proofs + tooling) |
+| Algorithm source | <https://github.com/luxfi/pulsar> @ `v1.0.6` (commit `20f87d8`); vendored into the tarball as `vendor/github.com/luxfi/pulsar/` |
+| Tarball cut tool | `scripts/cut-submission.sh` (strips local-dev replace, runs `go mod vendor`, regenerates KATs, tars) |
+| Submission tag | `submission-YYYY-MM-DD` (cut from `main` at deadline) |
 | Spec PDF | `spec/pulsar.pdf` (built via `scripts/build.sh`) |
 | License | Apache-2.0 (code) — see `LICENSE` |
 | Patent posture | **Royalty-free grant** — see `PATENTS.md` (public-facing grant text) and `docs/patent-claims.md` (attorney-prep claim drafts). Lux Industries grants a worldwide, royalty-free, irrevocable patent license to any FIPS 204 ML-DSA-conformant implementation under Apache-2.0 or compatible OSI license, OR any NIST MPTC / PQC / ACVP submission, validation, or interoperability test. Defensive termination mirrors Apache-2.0 §3 and extends to all NIST-standardized PQ signature schemes. |
@@ -51,14 +73,55 @@ rejection sampling remains probabilistic per FIPS 204, and the
 deterministic EC model captures the accepted-path conditioning via
 the predicate rather than via probabilistic Hoare logic.
 
-Cross-validation evidence: every KAT vector in `vectors/kat-v1.json` is
-verified by three independent ML-DSA implementations
+Cross-validation evidence: every KAT vector in `vectors/` is verified
+by three independent ML-DSA implementations
 (`test/interoperability/`):
 
-1. The reference implementation in `ref/go/`
+1. The canonical Pulsar reference implementation at
+   `github.com/luxfi/pulsar` v1.0.6 (commit `20f87d8`), pinned via
+   `go.mod` and snapshotted into `vendor/` at tarball-cut time
 2. The FIPS 204 reference (pq-crystals Dilithium C reference)
-3. A third independent implementation (BoringSSL FIPS or OpenSSL 3.0 PQ
-   provider, whichever is available at test time)
+3. A third independent implementation (`cloudflare/circl` FIPS 204
+   verifier; BoringSSL FIPS or OpenSSL 3.0 PQ provider when available)
+
+## Algorithm scope and audit-response closure
+
+The algorithm being submitted is the merged Pulsar implementation
+at `luxfi/pulsar` v1.0.6 (commit `20f87d8`). The merge consolidated
+the prior submission-grade implementation back into the production
+canonical library so a single Go module is both production and
+submission.
+
+The following audit-response items are **closed on the
+small-committee path (≤256 parties)**:
+
+| ID | Issue | Resolution in v1.0.6 |
+|---|---|---|
+| CR-6 | DKG round-1 commit was vacuous | Removed. Each party's coefficient commitment is now bound to the long-term identity public key and to the DKG session identifier. |
+| CR-7 | Threshold-sign session keys were absent | Each (sender, receiver, session-id, transcript) quadruple derives a fresh 32-byte session key from the authenticated ML-KEM-768 + HKDF stage; per-pair `SymmetricSession`. |
+| CR-8 | DKG and reshare envelopes shipped in plaintext | Envelopes are now KEM-wrapped (ML-KEM-768) and authenticated under the long-term ML-DSA-65 identity key. Identity layer at `pulsar.GenerateIdentity` / `IdentityKey` / `IdentityDirectory` is mandatory. |
+
+**Wide-committee (large_*) path scope**: the large-committee
+GF(q)-arithmetic code path is present in v1.0.6 for production use,
+but it currently runs the v0.1 plaintext-envelope flow and is **not
+in the submission tarball's claim surface**. The KEM-wrapped
+envelope flow for wide committees is the next deliverable on the
+roadmap; the submission's N1 / N4 claims and KAT vectors are
+small-committee-only (n ≤ 10, t ≤ 7 in the threshold-sign KAT
+sweep; n ≤ 7 in the DKG sweep).
+
+**Proof artifact counts (post-merge, v1.0.6 algorithm)**:
+
+| Artifact | Count | Location |
+|---|---|---|
+| EasyCrypt files compiling clean, 0/0 admits | 13/13 | `proofs/easycrypt/` (gate: `scripts/checks/ec-compile.sh` + `scripts/checks/ec-admits.sh`) |
+| Lean ↔ EC bridge files (algebraic identities) | 5/5 | `~/work/lux/proofs/lean/Crypto/` + `proofs/lean-easycrypt-bridge.md` (gate: `scripts/check-lean-bridge.sh`) |
+| jasmin-ct blocking targets on the threshold layer | 3/3 | `jasmin/threshold/{round1,round2,combine}.jazz` (gate: `scripts/checks/jasmin.sh`) |
+
+These artifact counts continue to refer to the merged v1.0.6
+implementation; the proof artifacts themselves live in
+`pulsar-mptc/{proofs/easycrypt, jasmin}/` and are unaffected by
+the merge.
 
 ## What to read first
 
@@ -87,12 +150,14 @@ A reviewer with limited time should read in this order:
 
 ## What to run
 
-The reproducibility gate is `scripts/build.sh` from a fresh clone:
+The reproducibility gate is `scripts/build.sh` against the tarball
+extract (which carries a pinned `vendor/github.com/luxfi/pulsar/`
+tree, so no network access is required):
 
 ```bash
-git clone --branch submission- https://github.com/luxfi/pulsar-mptc
+tar xzf submission-YYYY-MM-DD.tar.gz
 cd pulsar-mptc
-scripts/build.sh          # builds Go ref + spec PDF
+scripts/build.sh          # builds Go ref against vendored pulsar + spec PDF
 scripts/test.sh           # runs unit + KAT + interoperability tests
 scripts/bench.sh          # produces signature/verification benchmarks
 scripts/gen_vectors.sh    # regenerates KAT vectors (deterministic)
@@ -101,6 +166,20 @@ scripts/gen_vectors.sh    # regenerates KAT vectors (deterministic)
 `scripts/build.sh` exits non-zero on any failure. CI runs the same
 script on every commit; the reproducibility property is the load-
 bearing one for the submission.
+
+To cut a fresh tarball from the framework repo (maintainer-side):
+
+```bash
+scripts/cut-submission.sh                       # dry-run, no tarball
+scripts/cut-submission.sh submission-2026-11-16 # production cut + tag
+```
+
+The cut script verifies a clean tree, verifies all proof gates are
+green, strips the local-dev `replace` directive from `go.mod`, runs
+`go mod vendor` to snapshot `luxfi/pulsar` v1.0.6 into
+`vendor/github.com/luxfi/pulsar/`, regenerates the KATs against the
+vendored copy, re-runs the round-trip replay tests, tars, and prints
+the SHA-256.
 
 ## What's in this package
 
@@ -111,7 +190,12 @@ pulsar-mptc/
 ├── LICENSE                  # Apache-2.0
 ├── SECURITY.md              # threat model + responsible disclosure
 ├── CONTRIBUTING.md          # external-contribution policy (post-submission)
-├── go.mod                   # module path: github.com/luxfi/pulsar
+├── go.mod                   # module: github.com/luxfi/pulsar-mptc; depends on
+│                            #   github.com/luxfi/pulsar v1.0.6
+├── vendor/github.com/luxfi/pulsar/  # SNAPSHOT of v1.0.6 (commit 20f87d8) —
+│                            #   produced by scripts/cut-submission.sh via
+│                            #   `go mod vendor`. This is the algorithm
+│                            #   being submitted.
 ├── spec/                    # LaTeX specification source
 │   ├── pulsar.tex         # main spec document
 │   ├── parameters.tex       # ML-DSA-44/65/87 parameter sets
@@ -119,9 +203,9 @@ pulsar-mptc/
 │   ├── security-games.tex   # EUF-CMA + identifiable-abort games
 │   ├── references.bib       # bibliography
 │   └── pulsar.pdf         # built PDF (committed for reviewer convenience)
-├── ref/go/                  # reference implementation (Go)
-│   ├── cmd/genkat/          # KAT vector generator
-│   └── pkg/pulsar/         # core library
+├── ref/go/                  # framework-side glue + KAT generator
+│   └── cmd/genkat/          # KAT vector generator (imports the vendored
+│                            #   luxfi/pulsar package)
 ├── vectors/                 # KAT test vectors
 │   ├── README.md
 │   ├── dkg.json             # DKG transcripts
@@ -155,6 +239,7 @@ pulsar-mptc/
 ├── scripts/                 # per-push + nightly gate orchestrators
 │   ├── check-high-assurance.sh, test.sh   # per-push (REAL — under 60s)
 │   ├── nightly.sh                         # cron-scheduled REAL-budget gate
+│   ├── cut-submission.sh                  # tarball cut (vendors v1.0.6)
 │   ├── checks/                            # per-check independent scripts
 │   └── build / bench / gen_vectors / SBOM / extract-jasmin-ec
 └── docs/                    # design notes + decision-record archive
@@ -612,7 +697,7 @@ the math. Required evidence:
 | Rejection sampling leakage | Documented in `ct/dudect/README.md` — `pulsar.Sign` is intentionally non-CT per FIPS 204 §3.3 |
 | Randomness misuse | `ct/dudect/` — dudect statistical tests at 10⁹ samples (nightly) |
 | Fault attacks | TODO: separate fault-injection analysis |
-| Key erasure | TODO: review zeroization in `ref/go/pkg/pulsar/` |
+| Key erasure | Landed in `luxfi/pulsar` v1.0.6 (`zeroize.go`); fuzz harness and N1 byte-equality test ride alongside it. |
 | Encoding malleability | `test/negative/` covers some cases — full coverage TODO |
 
 Sensitive regions per FIPS 204: ExpandMask, sampling of y, w = A·y,
