@@ -10,7 +10,7 @@ artifacts (EasyCrypt, Lean bridge, Jasmin), the KAT vector format,
 the constant-time evidence, and the tarball-cut tooling. The
 algorithm being submitted is implemented in the canonical Pulsar
 library at <https://github.com/luxfi/pulsar>; this framework pins
-that library at `v1.0.6` (commit `20f87d8`) via `go.mod` and snapshots
+that library at `v1.0.7` (commit `174941a`) via `go.mod` and snapshots
 it into `vendor/github.com/luxfi/pulsar/` at tarball-cut time via
 `go mod vendor`, so a NIST reviewer gets a self-contained checkout
 that does not require network access.
@@ -41,7 +41,7 @@ downstream of this submission (see §"Layer 4" below).
 | Round count | 2 rounds per signature |
 | Signature output | **Byte-identical** to single-party FIPS 204 ML-DSA-65 |
 | Submission framework repo | <https://github.com/luxfi/pulsar-mptc> (cover sheet + spec + proofs + tooling) |
-| Algorithm source | <https://github.com/luxfi/pulsar> @ `v1.0.6` (commit `20f87d8`); vendored into the tarball as `vendor/github.com/luxfi/pulsar/` |
+| Algorithm source | <https://github.com/luxfi/pulsar> @ `v1.0.7` (commit `174941a`); vendored into the tarball as `vendor/github.com/luxfi/pulsar/` |
 | Tarball cut tool | `scripts/cut-submission.sh` (strips local-dev replace, runs `go mod vendor`, regenerates KATs, tars) |
 | Submission tag | `submission-YYYY-MM-DD` (cut from `main` at deadline) |
 | Spec PDF | `spec/pulsar.pdf` (built via `scripts/build.sh`) |
@@ -78,7 +78,7 @@ by three independent ML-DSA implementations
 (`test/interoperability/`):
 
 1. The canonical Pulsar reference implementation at
-   `github.com/luxfi/pulsar` v1.0.6 (commit `20f87d8`), pinned via
+   `github.com/luxfi/pulsar` v1.0.7 (commit `174941a`), pinned via
    `go.mod` and snapshotted into `vendor/` at tarball-cut time
 2. The FIPS 204 reference (pq-crystals Dilithium C reference)
 3. A third independent implementation (`cloudflare/circl` FIPS 204
@@ -87,30 +87,32 @@ by three independent ML-DSA implementations
 ## Algorithm scope and audit-response closure
 
 The algorithm being submitted is the merged Pulsar implementation
-at `luxfi/pulsar` v1.0.6 (commit `20f87d8`). The merge consolidated
-the prior submission-grade implementation back into the production
-canonical library so a single Go module is both production and
-submission.
+at `luxfi/pulsar` v1.0.7 (commit `174941a`). v1.0.6 consolidated the
+prior submission-grade implementation back into the production
+canonical library; v1.0.7 ported the identity-stage uniformity to
+the large-committee GF(q) path so a single Go module is both
+production and submission across both committee-size paths.
 
-The following audit-response items are **closed on the
-small-committee path (≤256 parties)**:
+The following audit-response items are **closed on both the
+small-committee (≤256, GF(257)) and large-committee (>256, GF(q))
+paths** as of v1.0.7:
 
-| ID | Issue | Resolution in v1.0.6 |
+| ID | Issue | Resolution |
 |---|---|---|
-| CR-6 | DKG round-1 commit was vacuous | Removed. Each party's coefficient commitment is now bound to the long-term identity public key and to the DKG session identifier. |
-| CR-7 | Threshold-sign session keys were absent | Each (sender, receiver, session-id, transcript) quadruple derives a fresh 32-byte session key from the authenticated ML-KEM-768 + HKDF stage; per-pair `SymmetricSession`. |
-| CR-8 | DKG and reshare envelopes shipped in plaintext | Envelopes are now KEM-wrapped (ML-KEM-768) and authenticated under the long-term ML-DSA-65 identity key. Identity layer at `pulsar.GenerateIdentity` / `IdentityKey` / `IdentityDirectory` is mandatory. |
+| CR-6 | DKG round-1 commit was vacuous | Removed. Each party's coefficient commitment is now bound to the long-term identity public key and to the DKG session identifier. Small path closed in v1.0.6; large path closed in v1.0.7. |
+| CR-7 | Threshold-sign session keys were absent | Each (sender, receiver, session-id, transcript) quadruple derives a fresh 32-byte session key from the authenticated ML-KEM-768 + HKDF stage; per-pair `SymmetricSession`. Small path closed in v1.0.6; large path closed in v1.0.7 (`legacyDeriveMACKeyLarge` removed). |
+| CR-8 | DKG and reshare envelopes shipped in plaintext | Envelopes are now KEM-wrapped (ML-KEM-768) and authenticated under the long-term ML-DSA-65 identity key. Identity layer at `pulsar.GenerateIdentity` / `IdentityKey` / `IdentityDirectory` is mandatory. Small path closed in v1.0.6; large path closed in v1.0.7 via uniform `sealEnvelope` / `sealOpenEnvelope` slice API. |
 
-**Wide-committee (large_*) path scope**: the large-committee
-GF(q)-arithmetic code path is present in v1.0.6 for production use,
-but it currently runs the v0.1 plaintext-envelope flow and is **not
-in the submission tarball's claim surface**. The KEM-wrapped
-envelope flow for wide committees is the next deliverable on the
-roadmap; the submission's N1 / N4 claims and KAT vectors are
-small-committee-only (n ≤ 10, t ≤ 7 in the threshold-sign KAT
-sweep; n ≤ 7 in the DKG sweep).
+**Committee-size coverage**: v1.0.7 makes both paths uniform under
+the identity stage. KAT vectors in `vectors/` exercise the
+small-committee path (n ≤ 10, t ≤ 7 in the threshold-sign sweep;
+n ≤ 7 in the DKG sweep); the large-committee path has its own
+test suite (`large_e2e_test.go`, `largeshamir_test.go`) but no
+committed KAT vectors in this submission package. KAT vectors are
+byte-identical between v1.0.6 and v1.0.7 because the large-path
+changes do not touch the small-committee byte stream.
 
-**Proof artifact counts (post-merge, v1.0.6 algorithm)**:
+**Proof artifact counts (algorithm v1.0.7)**:
 
 | Artifact | Count | Location |
 |---|---|---|
@@ -118,10 +120,12 @@ sweep; n ≤ 7 in the DKG sweep).
 | Lean ↔ EC bridge files (algebraic identities) | 5/5 | `~/work/lux/proofs/lean/Crypto/` + `proofs/lean-easycrypt-bridge.md` (gate: `scripts/check-lean-bridge.sh`) |
 | jasmin-ct blocking targets on the threshold layer | 3/3 | `jasmin/threshold/{round1,round2,combine}.jazz` (gate: `scripts/checks/jasmin.sh`) |
 
-These artifact counts continue to refer to the merged v1.0.6
-implementation; the proof artifacts themselves live in
+These artifact counts continue to refer to the merged Pulsar
+implementation at v1.0.7; the proof artifacts themselves live in
 `pulsar-mptc/{proofs/easycrypt, jasmin}/` and are unaffected by
-the merge.
+the merge or the v1.0.6 → v1.0.7 large-committee identity-stage
+port (the algebraic identities the proofs cover are independent
+of the envelope-encryption layer).
 
 ## What to read first
 
@@ -176,7 +180,7 @@ scripts/cut-submission.sh submission-2026-11-16 # production cut + tag
 
 The cut script verifies a clean tree, verifies all proof gates are
 green, strips the local-dev `replace` directive from `go.mod`, runs
-`go mod vendor` to snapshot `luxfi/pulsar` v1.0.6 into
+`go mod vendor` to snapshot `luxfi/pulsar` v1.0.7 into
 `vendor/github.com/luxfi/pulsar/`, regenerates the KATs against the
 vendored copy, re-runs the round-trip replay tests, tars, and prints
 the SHA-256.
@@ -191,8 +195,8 @@ pulsar-mptc/
 ├── SECURITY.md              # threat model + responsible disclosure
 ├── CONTRIBUTING.md          # external-contribution policy (post-submission)
 ├── go.mod                   # module: github.com/luxfi/pulsar-mptc; depends on
-│                            #   github.com/luxfi/pulsar v1.0.6
-├── vendor/github.com/luxfi/pulsar/  # SNAPSHOT of v1.0.6 (commit 20f87d8) —
+│                            #   github.com/luxfi/pulsar v1.0.7
+├── vendor/github.com/luxfi/pulsar/  # SNAPSHOT of v1.0.7 (commit 174941a) —
 │                            #   produced by scripts/cut-submission.sh via
 │                            #   `go mod vendor`. This is the algorithm
 │                            #   being submitted.
@@ -239,7 +243,7 @@ pulsar-mptc/
 ├── scripts/                 # per-push + nightly gate orchestrators
 │   ├── check-high-assurance.sh, test.sh   # per-push (REAL — under 60s)
 │   ├── nightly.sh                         # cron-scheduled REAL-budget gate
-│   ├── cut-submission.sh                  # tarball cut (vendors v1.0.6)
+│   ├── cut-submission.sh                  # tarball cut (vendors v1.0.7)
 │   ├── checks/                            # per-check independent scripts
 │   └── build / bench / gen_vectors / SBOM / extract-jasmin-ec
 └── docs/                    # design notes + decision-record archive
@@ -697,7 +701,7 @@ the math. Required evidence:
 | Rejection sampling leakage | Documented in `ct/dudect/README.md` — `pulsar.Sign` is intentionally non-CT per FIPS 204 §3.3 |
 | Randomness misuse | `ct/dudect/` — dudect statistical tests at 10⁹ samples (nightly) |
 | Fault attacks | TODO: separate fault-injection analysis |
-| Key erasure | Landed in `luxfi/pulsar` v1.0.6 (`zeroize.go`); fuzz harness and N1 byte-equality test ride alongside it. |
+| Key erasure | Landed in `luxfi/pulsar` v1.0.7 (`zeroize.go`); fuzz harness and N1 byte-equality test ride alongside it. |
 | Encoding malleability | `test/negative/` covers some cases — full coverage TODO |
 
 Sensitive regions per FIPS 204: ExpandMask, sampling of y, w = A·y,
