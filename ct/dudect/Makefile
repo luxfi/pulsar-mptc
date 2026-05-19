@@ -76,11 +76,13 @@ all: verify combine
 
 libpulsar_verify.$(SHLIB_EXT): verify_ct.go check-dudect
 	$(GOENV) $(GO) build -buildmode=c-shared \
+		-tags pulsar_verify_ct \
 		-o libpulsar_verify.$(SHLIB_EXT) \
 		./verify_ct.go
 
 libpulsar_combine.$(SHLIB_EXT): combine_ct.go check-dudect
 	$(GOENV) $(GO) build -buildmode=c-shared \
+		-tags pulsar_combine_ct \
 		-o libpulsar_combine.$(SHLIB_EXT) \
 		./combine_ct.go
 

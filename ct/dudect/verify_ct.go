@@ -1,6 +1,8 @@
 // Copyright (C) 2025-2026, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
+//go:build pulsar_verify_ct
+
 // verify_ct.go — cgo bridge exposing pulsar.Verify to the C dudect
 // harness in dudect_verify.c.
 //
@@ -53,7 +55,13 @@
 
 package main
 
+// Force-include the ARM compat shim on AArch64 hosts so that
+// dudect/src/dudect.h's unconditional <emmintrin.h>/<x86intrin.h>
+// includes resolve via the shim's blocking #defines. Matches the
+// Makefile behavior so `go build` and `make` agree on arm64.
+
 /*
+#cgo arm64 CFLAGS: -include ${SRCDIR}/dudect_compat.h
 #include <stdint.h>
 #include <stddef.h>
 */
