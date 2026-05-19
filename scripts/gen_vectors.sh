@@ -19,6 +19,6 @@ echo "==> Reference KAT generator"
 go run ./ref/go/cmd/genkat -out vectors
 
 echo "==> Verifying KAT round-trip via replay tests"
-go test -count=1 -run "^TestKAT_" ./ref/go/pkg/pulsarm/
+go test -count=1 -run "^TestKAT_" github.com/luxfi/pulsar/ref/go/pkg/pulsar
 
 echo "==> done"

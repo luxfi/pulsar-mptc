@@ -50,7 +50,7 @@ import (
 	"crypto/rand"
 	"unsafe"
 
-	"github.com/luxfi/pulsar-mptc/ref/go/pkg/pulsar"
+	"github.com/luxfi/pulsar/ref/go/pkg/pulsar"
 )
 
 // Pool size — K independent valid threshold ceremonies over the
