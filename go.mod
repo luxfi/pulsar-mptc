@@ -4,7 +4,7 @@ go 1.26.3
 
 require (
 	github.com/cloudflare/circl v1.6.3
-	github.com/luxfi/pulsar v1.0.6
+	github.com/luxfi/pulsar v1.0.7
 )
 
 require (
