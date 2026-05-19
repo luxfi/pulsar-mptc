@@ -86,11 +86,13 @@ if [[ $DRY_RUN -eq 0 ]]; then
 fi
 
 # -----------------------------------------------------------------------------
-# Restore handler — always reverts go.mod and removes vendor/, even on
-# failure or interrupt. Recorded BEFORE step 4 modifies go.mod.
+# Restore handler — always reverts go.mod + go.sum and removes vendor/,
+# even on failure or interrupt. Recorded BEFORE step 4 modifies them.
 # -----------------------------------------------------------------------------
 GO_MOD="$REPO_ROOT/go.mod"
 GO_MOD_BACKUP="$REPO_ROOT/.go.mod.cut-submission.bak"
+GO_SUM="$REPO_ROOT/go.sum"
+GO_SUM_BACKUP="$REPO_ROOT/.go.sum.cut-submission.bak"
 RESTORE_NEEDED=0
 
 restore_state() {
@@ -99,6 +101,10 @@ restore_state() {
         if [[ -f "$GO_MOD_BACKUP" ]]; then
             mv -f "$GO_MOD_BACKUP" "$GO_MOD"
             echo "==> cut-submission: restored go.mod from backup"
+        fi
+        if [[ -f "$GO_SUM_BACKUP" ]]; then
+            mv -f "$GO_SUM_BACKUP" "$GO_SUM"
+            echo "==> cut-submission: restored go.sum from backup"
         fi
         if [[ -d "$REPO_ROOT/vendor" ]]; then
             rm -rf "$REPO_ROOT/vendor"
@@ -164,6 +170,7 @@ bash "$REPO_ROOT/scripts/check-high-assurance.sh"
 echo
 echo "==> Step 4: strip local-dev replace directive from go.mod"
 cp -p "$GO_MOD" "$GO_MOD_BACKUP"
+cp -p "$GO_SUM" "$GO_SUM_BACKUP"
 RESTORE_NEEDED=1
 
 # Drop any `replace github.com/luxfi/pulsar => ...` line (and the
@@ -187,10 +194,17 @@ echo "    [ok] replace directive removed; go.mod now points at the published v1.
 
 # -----------------------------------------------------------------------------
 # Step 5: go mod vendor (snapshot luxfi/pulsar v1.0.6).
+#
+# go.sum must carry the upstream module hash for v1.0.6 before
+# `go mod vendor` can resolve it. `go mod download` populates go.sum
+# without rewriting go.mod (unlike `go mod tidy`).
 # -----------------------------------------------------------------------------
 echo
 echo "==> Step 5: go mod vendor (snapshot luxfi/pulsar v1.0.6)"
 export GOWORK=off
+echo "    [step 5a] go mod download (populates go.sum for upstream v1.0.6)"
+go mod download
+echo "    [step 5b] go mod vendor"
 go mod vendor
 
 if [[ ! -d "$REPO_ROOT/vendor/github.com/luxfi/pulsar" ]]; then
